@@ -1,0 +1,177 @@
+<UserControl x:Class="SRdeckPlugin.Ft8.Views.Ft8SettingsView"
+              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+              xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+              Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10">
+    <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="36"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <ContentControl Content="{Binding DialFrequencyText}" Tag="FT8"
+                            ToolTip="{Binding DialFrequencyText}"
+                            Style="{DynamicResource PluginSettingsHeaderStyle}" />
+            <TabControl Grid.Row="1" Style="{DynamicResource PluginSettingsTabControlStyle}">
+                <TabItem Header="受信設定">
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="28" />
+                                <RowDefinition Height="Auto" MinHeight="28" />
+                                <RowDefinition Height="28" />
+                                <RowDefinition Height="28" />
+                                <RowDefinition Height="28" />
+                                <RowDefinition Height="28" />
+                                <RowDefinition Height="28" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="モード" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}"
+                                      Style="{DynamicResource PluginComboBoxStyle}"
+                                      Width="110" HorizontalAlignment="Left"
+                                      IsEnabled="{Binding IsBandSelectorEnabled}"/>
+
+                            <TextBlock Grid.Row="1" Text="受信周波数"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Bands}"
+                                      SelectedItem="{Binding SelectedBand}"
+                                      DisplayMemberPath="BandDisplayName" Style="{DynamicResource PluginComboBoxStyle}"
+                                      Width="240" HorizontalAlignment="Left"
+                                      IsEnabled="{Binding IsBandSelectorEnabled}" />
+
+                            <TextBlock Grid.Row="2" Text="同時受信"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <ScrollViewer Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
+                                          Margin="0,3,0,3"
+                                          VerticalScrollBarVisibility="Disabled"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl ItemsSource="{Binding NearbyBands}">
+                                    <ItemsControl.Style>
+                                        <Style TargetType="ItemsControl">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasNearbyBands}" Value="False">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ItemsControl.Style>
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <CheckBox Content="{Binding DisplayText}"
+                                                          IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                          IsEnabled="{Binding DataContext.IsBandSelectorEnabled,
+                                                              RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                          Foreground="{DynamicResource TextPrimaryBrush}"
+                                                          Margin="0,0,14,0" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                            </ScrollViewer>
+
+                            <TextBlock x:Name="MonitorAudioLabelTextBlock" Grid.Row="3" Text="モニター音声"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <StackPanel Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2"
+                                        Orientation="Horizontal" VerticalAlignment="Center">
+                                <ToggleButton x:Name="MonitorAudioToggleButton"
+                                              Content="音声出力"
+                                              IsChecked="{Binding MonitorAudioEnabled, Mode=TwoWay}"
+                                              Style="{DynamicResource PluginToggleButtonStyle}"
+                                              Width="60" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <ToggleButton Content="受信ブザー"
+                                              Style="{DynamicResource PluginToggleButtonStyle}"
+                                              Width="65" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="4" Text="最小同期スコア" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+                            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding MinimumSyncScore, UpdateSourceTrigger=LostFocus}"
+                                     Style="{DynamicResource PluginTextBoxStyle}" MaxWidth="150" HorizontalAlignment="Left"/>
+                            <TextBlock Grid.Row="4" Grid.Column="2" Text="0～40" VerticalAlignment="Center" Margin="10,0,0,0"
+                                       Style="{DynamicResource PluginSettingsHintStyle}"/>
+
+                            <TextBlock Grid.Row="5" Text="最大候補数" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+                            <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding MaximumCandidates, UpdateSourceTrigger=LostFocus}"
+                                     Style="{DynamicResource PluginTextBoxStyle}" MaxWidth="150" HorizontalAlignment="Left"/>
+                            <TextBlock Grid.Row="5" Grid.Column="2" Text="50～1000" VerticalAlignment="Center" Margin="10,0,0,0"
+                                       Style="{DynamicResource PluginSettingsHintStyle}"/>
+
+                            <TextBlock Grid.Row="6" Text="LDPC/RS試行回数" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+                            <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding LdpcIterations, UpdateSourceTrigger=LostFocus}"
+                                     Style="{DynamicResource PluginTextBoxStyle}" MaxWidth="150" HorizontalAlignment="Left"/>
+                            <TextBlock Grid.Row="6" Grid.Column="2" Text="10～100" VerticalAlignment="Center" Margin="10,0,0,0"
+                                       Style="{DynamicResource PluginSettingsHintStyle}"/>
+
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+                <TabItem Header="プラグイン設定">
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <Grid Margin="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="表示と履歴の保持" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" />
+                            <TextBlock Grid.Row="1" Text="履歴保持件数はJSONLと時系列タブに適用され、地図マーカー数は別に指定します。"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,4,0,10" />
+                            <Grid Grid.Row="2" HorizontalAlignment="Left">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="300" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="28"/><RowDefinition Height="28"/><RowDefinition Height="28"/><RowDefinition Height="28"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="最大表示局数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Column="1" Text="{Binding MaximumStations, UpdateSourceTrigger=LostFocus}" Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Column="2" Text="局一覧・地図に同時に保持する最大局数" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Row="1" Text="局非表示時間（分）" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding RetentionMinutes, UpdateSourceTrigger=LostFocus}" Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="電波途絶から局一覧から消去するまでの時間" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Row="2" Text="地図マーカー数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding MapMarkerLimit, UpdateSourceTrigger=LostFocus}" Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Row="2" Grid.Column="2" Text="地図上に描画する最大マーカー数" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Row="3" Text="履歴保持件数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding MaximumHistory, UpdateSourceTrigger=LostFocus}"
+                                         Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Row="3" Grid.Column="2" Text="JSONLと時系列タブに保持する最大件数"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                             </Grid>
+                             <controls:PluginResetView Grid.Row="3" />
+                             <TextBlock Grid.Row="4" Text="過去録音" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,7" />
+                             <TextBlock Grid.Row="5" Text="受信中に直前20秒のIQデータを保存します。"
+                                        Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,4,0,10" />
+                             <Grid Grid.Row="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Content="IQ 録音 (直前20秒)" Command="{Binding StartCaptureCommand}"
+                                        Style="{DynamicResource PluginButtonStyle}" Height="22" Width="130" HorizontalAlignment="Left"/>
+                                <TextBlock Grid.Column="1" Text="{Binding CaptureStatus}"
+                                           Style="{DynamicResource PluginSettingsActionStatusStyle}"/>
+                            </Grid>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </Border>
+</UserControl>

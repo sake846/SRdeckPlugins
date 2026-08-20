@@ -1,0 +1,111 @@
+<UserControl x:Class="SRdeckPlugin.Hfdl.Views.HfdlSettingsView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10">
+    <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="36"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <ContentControl Content="{Binding SettingStatus}" Tag="HFDL"
+                            ToolTip="{Binding SettingStatus}"
+                            Style="{DynamicResource PluginSettingsHeaderStyle}" />
+            <TabControl Grid.Row="1" Style="{DynamicResource PluginSettingsTabControlStyle}">
+                <TabItem Header="受信設定">
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86"/>
+                                <ColumnDefinition Width="250"/>
+                                <ColumnDefinition Width="22"/>
+                                <ColumnDefinition Width="92"/>
+                                <ColumnDefinition Width="120"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" MinHeight="28"/>
+                                <RowDefinition Height="Auto" MinHeight="28"/>
+                                <RowDefinition Height="Auto" MinHeight="42"/>
+                                <RowDefinition Height="Auto" MinHeight="28"/>
+                                    <RowDefinition Height="Auto" MinHeight="28"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="地上局" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding GroundStations}" DisplayMemberPath="DisplayName"
+                                      SelectedValuePath="Id" SelectedValue="{Binding SelectedGroundStationId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="22"/>
+                            <TextBlock Grid.Row="1" Text="周波数" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+                            <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding StationChannels}" DisplayMemberPath="FrequencyDisplay"
+                                      SelectedValuePath="Id" SelectedValue="{Binding SelectedChannelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="22"/>
+                            <TextBlock Grid.Row="1" Grid.Column="3" Text="信号中心" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="4" Grid.ColumnSpan="2" Text="{Binding SelectedChannel.FrequencyHz, Mode=OneWay, StringFormat={}{0:N0} Hz + 1\,440 Hz}" Style="{DynamicResource PluginSettingsValueStyle}"/>
+                            <Border Grid.Row="2" Grid.ColumnSpan="6" Style="{DynamicResource PluginMetricCardStyle}" Padding="8,5" Margin="0,3">
+                                <TextBlock Text="{Binding PropagationGuidance}" Style="{DynamicResource PluginSettingsHintStyle}" Margin="0"/>
+                            </Border>
+                            <TextBlock x:Name="MonitorAudioLabelTextBlock" Grid.Row="3" Text="モニター音声"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+                            <CheckBox x:Name="MonitorAudioCheckBox" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="5"
+                                      Content="モニター音声を有効にする"
+                                      IsChecked="{Binding MonitorAudioEnabled, Mode=TwoWay}"
+                                      VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <TextBlock Grid.Row="4" Grid.ColumnSpan="6" Text="時間帯表示は電離層伝搬の目安です。実際の稼働周波数は地上局が随時変更します。受信中も地上局と周波数を切り替えられます。" Style="{DynamicResource PluginSettingsHintStyle}"/>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+                <TabItem Header="プラグイン設定">
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <Grid Margin="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="表示と履歴の保持" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" />
+                            <TextBlock Grid.Row="1" Text="履歴保持件数はディスク履歴と時系列表示に適用されます。"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,4,0,10" />
+                            <Grid Grid.Row="2" HorizontalAlignment="Left">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="300" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="28"/><RowDefinition Height="28"/><RowDefinition Height="28"/><RowDefinition Height="28"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="最大表示機数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Column="1" Text="{Binding MaximumAircraft, UpdateSourceTrigger=LostFocus}" Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Column="2" Text="Flight ID一覧・地図に同時に保持する最大機数" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Row="1" Text="機体非表示時間（分）" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding RetentionMinutes, UpdateSourceTrigger=LostFocus}" Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="電波途絶から一覧・地図から消去するまでの時間" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Row="2" Text="航跡保持点数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding MaximumTrailPoints, UpdateSourceTrigger=LostFocus}"
+                                         Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Row="2" Grid.Column="2" Text="地図上に保持する航跡点数（ディスク履歴とは別）"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Row="3" Text="履歴保持件数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding MaximumHistory, UpdateSourceTrigger=LostFocus}"
+                                         Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Row="3" Grid.Column="2" Text="JSONLと時系列表示に保持する最大件数"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                             </Grid>
+                             <controls:PluginResetView Grid.Row="3" />
+                             <TextBlock Grid.Row="4" Text="過去録音" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,7" />
+                             <TextBlock Grid.Row="5" Text="受信中に直前3秒のIQデータを保存します。"
+                                        Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,4,0,10" />
+                             <Grid Grid.Row="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Content="IQ 録音 (直前3秒)" Command="{Binding StartCaptureCommand}"
+                                        Style="{DynamicResource PluginButtonStyle}" Height="22" Width="130" HorizontalAlignment="Left"/>
+                                <TextBlock Grid.Column="1" Text="{Binding CaptureStatus}" Style="{DynamicResource PluginSettingsActionStatusStyle}" />
+                            </Grid>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </Border>
+</UserControl>

@@ -1,0 +1,133 @@
+<UserControl x:Class="SRdeckPlugin.Ais.Views.AisSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+             Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10">
+    <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+        <Grid>
+            <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <ContentControl Content="{Binding SettingStatus}" Tag="AIS"
+                            ToolTip="{Binding SettingStatus}"
+                            Style="{DynamicResource PluginSettingsHeaderStyle}" />
+            <TabControl Grid.Row="1" Style="{DynamicResource PluginSettingsTabControlStyle}">
+                <TabItem Header="受信設定">
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="230" />
+                                <ColumnDefinition Width="22" />
+                                <ColumnDefinition Width="92" />
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                 <RowDefinition Height="28" />
+                                 <RowDefinition Height="28" />
+                                 <RowDefinition Height="28" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="受信周波数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <TextBlock Grid.Column="1" Grid.ColumnSpan="5"
+                                       Text="AIS 1: 161.975 MHz    AIS 2: 162.025 MHz"
+                                       Style="{DynamicResource PluginSettingsValueStyle}" />
+                            <TextBlock x:Name="MonitorAudioLabelTextBlock" Grid.Row="1"
+                                       Text="モニター音声" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="5"
+                                        Orientation="Horizontal" VerticalAlignment="Center">
+                                <ToggleButton x:Name="MonitorAudioToggleButton"
+                                              Content="音声出力"
+                                              IsChecked="{Binding MonitorAudioEnabled, Mode=TwoWay}"
+                                              Style="{DynamicResource PluginToggleButtonStyle}"
+                                              Width="60" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <ToggleButton Content="受信ブザー"
+                                              Style="{DynamicResource PluginToggleButtonStyle}"
+                                              Width="65" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="2" Text="スケルチ" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="5"
+                                        Orientation="Horizontal" VerticalAlignment="Center">
+                                <ToggleButton x:Name="SquelchToggleButton"
+                                              Content="スケルチ"
+                                              IsChecked="{Binding SquelchEnabled, Mode=TwoWay}"
+                                              Style="{DynamicResource PluginToggleButtonStyle}"
+                                              Width="60" Margin="0,0,10,0" />
+                                <TextBlock Text="しきい値" Style="{DynamicResource PluginSettingsFieldLabelStyle}"
+                                           VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <Slider x:Name="SquelchThresholdSlider"
+                                        Minimum="-160" Maximum="0" Width="120"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        IsEnabled="{Binding SquelchEnabled}"
+                                        Value="{Binding SquelchThresholdDbm, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock Text="{Binding SquelchThresholdDbm, StringFormat={}{0:F0} dBm}"
+                                           Width="64" TextAlignment="Right" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+                <TabItem Header="プラグイン設定">
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <Grid Margin="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="表示と履歴の保持" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" />
+                            <TextBlock Grid.Row="1" Text="一覧に表示する局数と、保存済みデータの件数を指定します。"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,4,0,10" />
+                            <Grid Grid.Row="2" HorizontalAlignment="Left">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="300" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="28" /><RowDefinition Height="28" /><RowDefinition Height="28" />
+                                    <RowDefinition Height="28" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="最大表示局数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Column="1" Text="{Binding MaximumTargets, UpdateSourceTrigger=LostFocus}"
+                                         Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Column="2" Text="一覧に保持する最大局数"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Row="1" Text="局非表示時間（分）" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding RetentionMinutes, UpdateSourceTrigger=LostFocus}"
+                                         Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="一覧・地図から局を除外する時間"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Row="2" Text="航跡保持点数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding MaximumTrailPoints, UpdateSourceTrigger=LostFocus}"
+                                         Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Row="2" Grid.Column="2" Text="地図上に保持する航跡点数（ディスク履歴とは別）"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Row="3" Text="履歴保持件数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding HistoryMaximum, UpdateSourceTrigger=LostFocus}"
+                                         Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Row="3" Grid.Column="2" Text="保存する受信フレームの最大件数"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                             </Grid>
+                             <controls:PluginResetView Grid.Row="3" />
+                             <TextBlock Grid.Row="4" Text="過去録音" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,7" />
+                             <TextBlock Grid.Row="5" Text="受信中に直前3秒のIQデータを保存します。"
+                                        Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,4,0,10" />
+                             <Grid Grid.Row="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Content="IQ 録音 (直前3秒)" Style="{DynamicResource PluginButtonStyle}"
+                                        Height="22" Width="130" HorizontalAlignment="Left" />
+                            </Grid>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </Border>
+</UserControl>

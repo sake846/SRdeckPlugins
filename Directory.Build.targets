@@ -1,0 +1,16 @@
+<Project>
+  <!-- Plugin projects use sibling ProjectReferences in the development
+       monorepo.  A published plugin snapshot replaces those references with
+       packages produced by the matching SRdeck release. -->
+  <ItemGroup Condition="'$(UseLocalSRdeckSources)' != 'true'">
+    <ProjectReference Remove="..\SRdeckPlugin.Contracts\SRdeckPlugin.Contracts.csproj" />
+    <ProjectReference Remove="..\SRdeckPlugin.Sdk\SRdeckPlugin.Sdk.csproj" />
+    <ProjectReference Remove="..\SRdeckPlugin.Wpf\SRdeckPlugin.Wpf.csproj" />
+    <ProjectReference Remove="..\SRdeckCore.SignalProcessing\SRdeckCore.SignalProcessing.csproj" />
+
+    <PackageReference Include="SRdeckPlugin.Contracts" Version="$(SRdeckPlatformVersion)" />
+    <PackageReference Include="SRdeckPlugin.Sdk" Version="$(SRdeckPlatformVersion)" />
+    <PackageReference Include="SRdeckPlugin.Wpf" Version="$(SRdeckPlatformVersion)" />
+    <PackageReference Include="SRdeckCore.SignalProcessing" Version="$(SRdeckPlatformVersion)" />
+  </ItemGroup>
+</Project>

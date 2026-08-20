@@ -1,0 +1,224 @@
+<UserControl x:Class="SRdeckPlugin.Meshtastic.Views.MeshtasticSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+             Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{StaticResource MainFontFamily}"
+             FontSize="10">
+    <UserControl.Resources>
+        <ResourceDictionary Source="/SRdeckPlugin.Meshtastic;component/Views/MeshtasticStyles.xaml" />
+    </UserControl.Resources>
+    <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="36" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <ContentControl Content="{Binding MeshtasticChannelSettingStatus}" Tag="Meshtastic"
+                            Style="{DynamicResource PluginSettingsHeaderStyle}" />
+
+            <TabControl Grid.Row="1" Style="{DynamicResource PluginSettingsTabControlStyle}">
+                <TabItem Header="受信設定">
+                    <Grid Margin="10,7">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <!-- 地域, モード, 探索帯域/方式 を横並びに配置 -->
+                        <WrapPanel Grid.Row="0" Margin="0,2,0,10" VerticalAlignment="Center">
+                            <!-- 1. 地域 -->
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,3,36,3">
+                                <TextBlock Text="地域" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,10,0" />
+                                <ComboBox ItemsSource="{Binding MeshtasticRegions}"
+                                          SelectedItem="{Binding SelectedMeshtasticRegion}" Width="84" Height="22"
+                                          FontSize="10" Style="{DynamicResource PluginComboBoxStyle}" />
+                            </StackPanel>
+
+                            <!-- 2. モード -->
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,3,36,3">
+                                <TextBlock Text="モード" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,10,0" />
+                                <ComboBox Width="92" Height="22" FontSize="10"
+                                          Style="{DynamicResource PluginComboBoxStyle}"
+                                          VerticalAlignment="Center">
+                                    <ComboBoxItem Content="探索"
+                                                  IsSelected="{Binding IsMeshtasticDiscoveryMode, Mode=TwoWay}" />
+                                    <ComboBoxItem Content="条件指定"
+                                                  IsSelected="{Binding IsMeshtasticSpecifiedMonitorMode, Mode=TwoWay}" />
+                                </ComboBox>
+                            </StackPanel>
+
+                            <!-- 3. 探索帯域 (探索モード時) / 方式 (条件指定モード時) -->
+                            <Grid VerticalAlignment="Center" Margin="0,3,0,3">
+                                <!-- 探索帯域 (探索モード時) -->
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsMeshtasticDiscoveryMode}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <TextBlock Text="探索帯域" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,10,0" />
+                                    <ToggleButton Content="250 kHz" FontSize="10" Width="60"
+                                                  IsChecked="{Binding MeshtasticDiscoveryUses250Khz, Mode=TwoWay}"
+                                                  Style="{DynamicResource PluginToggleButtonStyle}"
+                                                  Margin="0,0,12,0" VerticalAlignment="Center" />
+                                    <ToggleButton Content="125 kHz" FontSize="10" Width="60"
+                                                  IsChecked="{Binding MeshtasticDiscoveryUses125Khz, Mode=TwoWay}"
+                                                  Style="{DynamicResource PluginToggleButtonStyle}"
+                                                  VerticalAlignment="Center" />
+                                </StackPanel>
+
+                                <!-- 方式 (条件指定モード時) -->
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsMeshtasticDiscoveryMode}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <TextBlock Text="方式" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,10,0" />
+                                    <ComboBox Width="132" Height="22"
+                                              ItemsSource="{Binding MeshtasticSpecifiedModemPresets}"
+                                              SelectedItem="{Binding SelectedMeshtasticSpecifiedModemPreset}"
+                                              FontSize="10" Style="{DynamicResource PluginComboBoxStyle}" />
+                                </StackPanel>
+                            </Grid>
+
+                        </WrapPanel>
+
+                        <!-- Slot selection gets the full panel width with limited height. -->
+                        <Grid Grid.Row="1" MaxHeight="170" VerticalAlignment="Top">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0" Background="{DynamicResource PanelSurfaceBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="8">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers><DataTrigger Binding="{Binding MeshtasticUses250Khz}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Grid>
+                                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                                    <DockPanel Margin="0,0,0,5">
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                            <Button Content="全選択" Command="{Binding SelectAllMeshtasticSlots250Command}" Width="62" FontSize="10" Margin="2,0" Style="{DynamicResource MeshtasticSlotActionButtonStyle}" />
+                                            <Button Content="解除" Command="{Binding ClearMeshtasticSlots250Command}" Width="50" FontSize="10" Margin="2,0" Style="{DynamicResource MeshtasticSlotActionButtonStyle}" />
+                                        </StackPanel>
+                                        <TextBlock Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center">
+                                            <Run Text="250 kHz  "/><Run Text="{Binding Meshtastic250SlotRange, Mode=OneWay}" Foreground="{DynamicResource TextDimBrush}" FontWeight="Normal" />
+                                        </TextBlock>
+                                    </DockPanel>
+                                    <ScrollViewer Grid.Row="1" MaxHeight="120" VerticalAlignment="Top" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsControl ItemsSource="{Binding MeshtasticSlots250}" VerticalAlignment="Top">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><UniformGrid Columns="6" VerticalAlignment="Top" /></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Height="18">
+                                                        <CheckBox Content="{Binding Label}" FontSize="10"
+                                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="2,0"
+                                                                  VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Column="2" Background="{DynamicResource PanelSurfaceBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="8">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers><DataTrigger Binding="{Binding MeshtasticUses125Khz}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Grid>
+                                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                                    <DockPanel Margin="0,0,0,5">
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                            <Button Content="全選択" Command="{Binding SelectAllMeshtasticSlots125Command}" Width="62" FontSize="10" Margin="2,0" Style="{DynamicResource MeshtasticSlotActionButtonStyle}" />
+                                            <Button Content="解除" Command="{Binding ClearMeshtasticSlots125Command}" Width="50" FontSize="10" Margin="2,0" Style="{DynamicResource MeshtasticSlotActionButtonStyle}" />
+                                        </StackPanel>
+                                        <TextBlock Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center">
+                                            <Run Text="125 kHz  "/><Run Text="{Binding Meshtastic125SlotRange, Mode=OneWay}" Foreground="{DynamicResource TextDimBrush}" FontWeight="Normal" />
+                                        </TextBlock>
+                                    </DockPanel>
+                                    <ScrollViewer Grid.Row="1" MaxHeight="120" VerticalAlignment="Top" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsControl ItemsSource="{Binding MeshtasticSlots125}" VerticalAlignment="Top">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><UniformGrid Columns="6" VerticalAlignment="Top" /></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Height="18">
+                                                        <CheckBox Content="{Binding Label}" FontSize="10"
+                                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="2,0"
+                                                                  VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </TabItem>
+
+                <TabItem Header="プラグイン設定">
+                    <Grid Margin="12,10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="表示と履歴の保持" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,7" />
+                        <TextBlock Grid.Row="1"
+                                   Text="時系列に表示する件数と、保存済みデータを保持する期間を指定します。"
+                                   Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,4,0,10" />
+                        <Grid Grid.Row="2" HorizontalAlignment="Left">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="92" />
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="260" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="28" /><RowDefinition Height="28" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="表示件数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <TextBox Grid.Column="1" Text="{Binding MeshtasticHistoryDisplayLimit}"
+                                     Width="100" HorizontalAlignment="Left"
+                                     Style="{DynamicResource PluginTextBoxStyle}" />
+                            <TextBlock Grid.Column="2" Text="時系列タブに表示する最大件数"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0" />
+                            <TextBlock Grid.Row="1" Text="保持日数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding MeshtasticHistoryRetentionDays}"
+                                     Width="100" HorizontalAlignment="Left"
+                                     Style="{DynamicResource PluginTextBoxStyle}" />
+                            <TextBlock Grid.Row="1" Grid.Column="2" Text="0で期間制限なし"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0" />
+                        </Grid>
+                        <controls:PluginResetView Grid.Row="3" />
+                        </Grid>
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </Border>
+</UserControl>

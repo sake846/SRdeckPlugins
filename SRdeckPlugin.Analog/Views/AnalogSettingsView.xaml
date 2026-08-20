@@ -1,0 +1,265 @@
+<UserControl x:Class="SRdeckPlugin.Analog.Views.AnalogSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="36" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <ContentControl Grid.Row="0" Tag="アナログ復調" Style="{DynamicResource PluginSettingsHeaderStyle}">
+                <TextBlock x:Name="StatusTextBlock"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+            </ContentControl>
+
+            <TabControl Grid.Row="1" Style="{DynamicResource PluginSettingsTabControlStyle}">
+                <TabItem Header="受信設定">
+                    <!-- 設定コンテンツ領域 -->
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <StackPanel Margin="2">
+
+                            <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="方式"
+                                   Style="{DynamicResource PluginSettingsFieldLabelStyle}"
+                                   Margin="0,0,6,0" />
+                        <ComboBox x:Name="ProfileComboBox"
+                                  Grid.Column="1"
+                                  Style="{DynamicResource PluginComboBoxStyle}"
+                                  Height="22"
+                                  FontSize="10"
+                                  HorizontalAlignment="Left"
+                                  Width="75"
+                                  Margin="0,0,16,0"
+                                  DisplayMemberPath="DisplayName"
+                                  SelectedValuePath="Id"
+                                  SelectionChanged="ProfileComboBox_OnSelectionChanged" />
+                        <TextBlock x:Name="SidebandLabel"
+                                   Grid.Column="2"
+                                   Text="側波帯"
+                                   Style="{DynamicResource PluginSettingsFieldLabelStyle}"
+                                   Margin="0,0,6,0" />
+                        <ComboBox x:Name="SidebandComboBox"
+                                  Grid.Column="3"
+                                  Style="{DynamicResource PluginComboBoxStyle}"
+                                  Height="22"
+                                  FontSize="10"
+                                  HorizontalAlignment="Left"
+                                  Width="75"
+                                  Margin="0,0,16,0"
+                                  SelectionChanged="SidebandComboBox_OnSelectionChanged">
+                            <ComboBoxItem Content="USB" Tag="False" />
+                            <ComboBoxItem Content="LSB" Tag="True" />
+                        </ComboBox>
+                        <TextBlock Grid.Column="4"
+                                   Text="受信帯域"
+                                   Style="{DynamicResource PluginSettingsFieldLabelStyle}"
+                                   Margin="0,0,6,0" />
+                        <ComboBox x:Name="BandwidthComboBox"
+                                  Grid.Column="5"
+                                  Style="{DynamicResource PluginComboBoxStyle}"
+                                  Height="22"
+                                  FontSize="10"
+                                  HorizontalAlignment="Left"
+                                  Width="85"
+                                  Margin="0,0,16,0"
+                                  DisplayMemberPath="Label"
+                                  SelectedValuePath="Value"
+                                  SelectionChanged="BandwidthComboBox_OnSelectionChanged" />
+                        <TextBlock Grid.Column="6"
+                                   Text="ステップ"
+                                   Style="{DynamicResource PluginSettingsFieldLabelStyle}"
+                                   Margin="0,0,6,0" />
+                        <ComboBox x:Name="StepComboBox"
+                                  Grid.Column="7"
+                                  Style="{DynamicResource PluginComboBoxStyle}"
+                                  Height="22"
+                                  FontSize="10"
+                                  HorizontalAlignment="Left"
+                                  Width="85"
+                                  DisplayMemberPath="Label"
+                                  SelectedValuePath="Value"
+                                  SelectionChanged="StepComboBox_OnSelectionChanged" />
+                    </Grid>
+
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="周波数"
+                                   Style="{DynamicResource PluginSettingsFieldLabelStyle}"
+                                   Margin="0,0,6,0" />
+                        <TextBox x:Name="FrequencyTextBox"
+                                 Grid.Column="1"
+                                 Style="{DynamicResource PluginTextBoxStyle}"
+                                 Height="22"
+                                 Width="160"
+                                 Padding="5,2"
+                                 HorizontalContentAlignment="Right"
+                                 ToolTip="数字＋M/m: MHz、数字＋K/k: kHz、Enter: Hz"
+                                 PreviewMouseDown="FrequencyTextBox_OnPreviewMouseDown"
+                                 GotKeyboardFocus="FrequencyTextBox_OnGotKeyboardFocus"
+                                 KeyDown="FrequencyTextBox_OnKeyDown"
+                                 LostFocus="FrequencyTextBox_OnLostFocus" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="4,0,0,0">
+                            <Button x:Name="StepDownButton"
+                                    Style="{DynamicResource PluginLeftStepButtonStyle}"
+                                    Content="◀"
+                                    Width="24"
+                                    Height="22"
+                                    Click="StepDownButton_OnClick"
+                                    ToolTip="周波数ダウン" />
+                            <Button x:Name="StepUpButton"
+                                    Style="{DynamicResource PluginRightStepButtonStyle}"
+                                    Content="▶"
+                                    Width="24"
+                                    Height="22"
+                                    Click="StepUpButton_OnClick"
+                                    ToolTip="周波数アップ" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ToggleButton x:Name="MuteButton"
+                                      Style="{DynamicResource PluginToggleButtonStyle}"
+                                      Content="ミュート"
+                                      Width="60"
+                                      Margin="0,0,10,0"
+                                      Checked="MuteButton_OnChanged"
+                                      Unchecked="MuteButton_OnChanged" />
+                        <ToggleButton x:Name="AfcButton"
+                                      Grid.Column="1"
+                                      Style="{DynamicResource PluginToggleButtonStyle}"
+                                      Content="AFC"
+                                      Width="60"
+                                      Margin="0,0,10,0"
+                                      Checked="AfcButton_OnChanged"
+                                      Unchecked="AfcButton_OnChanged" />
+                        <ToggleButton x:Name="StereoButton"
+                                      Grid.Column="2"
+                                      Style="{DynamicResource PluginToggleButtonStyle}"
+                                      Content="ステレオ"
+                                      Width="60"
+                                      Margin="0,0,10,0"
+                                      Checked="StereoButton_OnChanged"
+                                      Unchecked="StereoButton_OnChanged" />
+                        <ToggleButton x:Name="SquelchButton"
+                                      Grid.Column="3"
+                                      Style="{DynamicResource PluginToggleButtonStyle}"
+                                      Content="スケルチ"
+                                      Width="60"
+                                      Margin="0,0,10,0"
+                                      Checked="SquelchButton_OnChanged"
+                                      Unchecked="SquelchButton_OnChanged" />
+                        <TextBlock Grid.Column="4"
+                                   Text="しきい値"
+                                   Style="{DynamicResource PluginSettingsFieldLabelStyle}"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,6,0" />
+                        <Slider x:Name="SquelchThresholdSlider"
+                                Grid.Column="5"
+                                Minimum="-150"
+                                Maximum="0"
+                                Width="110"
+                                TickFrequency="5"
+                                IsSnapToTickEnabled="True"
+                                VerticalAlignment="Center"
+                                Margin="0,0,8,0"
+                                ValueChanged="SquelchThresholdSlider_OnValueChanged" />
+                        <StackPanel Grid.Column="6" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBox x:Name="SquelchThresholdTextBox"
+                                     Style="{DynamicResource PluginTextBoxStyle}"
+                                     Height="22"
+                                     Width="46"
+                                     Padding="4,2"
+                                     HorizontalContentAlignment="Right"
+                                     PreviewMouseDown="SquelchThresholdTextBox_OnPreviewMouseDown"
+                                     GotKeyboardFocus="SquelchThresholdTextBox_OnGotKeyboardFocus"
+                                     KeyDown="SquelchThresholdTextBox_OnKeyDown"
+                                     LostFocus="SquelchThresholdTextBox_OnLostFocus" />
+                            <TextBlock Text="dBm" Style="{DynamicResource PluginSettingsFieldLabelStyle}" VerticalAlignment="Center" Margin="4,0,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="7" Orientation="Horizontal" Margin="6,0,0,0" VerticalAlignment="Center">
+                            <Button x:Name="SquelchDownButton"
+                                    Style="{DynamicResource PluginLeftStepButtonStyle}"
+                                    Content="▼"
+                                    Width="24"
+                                    Height="22"
+                                    Click="SquelchDownButton_OnClick"
+                                    ToolTip="SQしきい値ダウン (-1 dBm)" />
+                            <Button x:Name="SquelchUpButton"
+                                    Style="{DynamicResource PluginRightStepButtonStyle}"
+                                    Content="▲"
+                                    Width="24"
+                                    Height="22"
+                                    Click="SquelchUpButton_OnClick"
+                                    ToolTip="SQしきい値アップ (+1 dBm)" />
+                        </StackPanel>
+                    </Grid>
+
+                </StackPanel>
+            </ScrollViewer>
+                </TabItem>
+                <TabItem Header="プラグイン設定">
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <Grid Margin="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <controls:PluginResetView Grid.Row="0" />
+                            <TextBlock Grid.Row="1" Text="過去録音" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,7" />
+                            <TextBlock Grid.Row="2" Text="受信中に直前3秒のIQデータを保存します。"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,4,0,10" />
+                            <Grid Grid.Row="3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Content="IQ 録音 (直前3秒)"
+                                        Style="{DynamicResource PluginButtonStyle}"
+                                        Height="22"
+                                        Width="130"
+                                        HorizontalAlignment="Left"
+                                        Click="StartCaptureButton_OnClick" />
+                                <TextBlock x:Name="CaptureStatusTextBlock"
+                                           Grid.Column="1"
+                                           Style="{DynamicResource PluginSettingsActionStatusStyle}" />
+                            </Grid>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </Border>
+</UserControl>

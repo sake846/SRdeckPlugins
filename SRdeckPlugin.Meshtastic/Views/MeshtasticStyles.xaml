@@ -1,0 +1,37 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/SRdeckPlugin.Wpf;component/Themes/PluginControls.xaml" />
+    </ResourceDictionary.MergedDictionaries>
+    <Style x:Key="MeshtasticRaisedPanelStyle"
+           TargetType="Border"
+           BasedOn="{StaticResource PluginFlatOuterPanelStyle}" />
+
+    <Style x:Key="MeshtasticPanelStyle" TargetType="Border" BasedOn="{StaticResource MeshtasticRaisedPanelStyle}">
+    </Style>
+
+    <Style x:Key="MeshtasticPanelHeaderStyle" TargetType="Border" BasedOn="{StaticResource PluginStatusHeaderStyle}">
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <Style x:Key="MeshtasticPanelTitleStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource PluginStatusHeaderTitleStyle}">
+    </Style>
+
+    <Style x:Key="MeshtasticPanelStatusStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}"/>
+        <Setter Property="FontFamily" Value="{DynamicResource MainFontFamily}"/>
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+    </Style>
+
+    <!-- Slot actions sit on PanelSurfaceBrush cards; keep their face color on
+         that same surface while retaining the shared raised-button template. -->
+    <Style x:Key="MeshtasticSlotActionButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource PluginButtonStyle}">
+        <Setter Property="Background" Value="{DynamicResource PanelSurfaceBrush}" />
+    </Style>
+</ResourceDictionary>

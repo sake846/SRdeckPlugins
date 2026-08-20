@@ -1,0 +1,167 @@
+<UserControl x:Class="SRdeckPlugin.WiSun.Views.WiSunSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+             mc:Ignorable="d"
+             Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10"
+             d:DesignWidth="700" d:DesignHeight="230">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/SRdeckPlugin.Wpf;component/Themes/PluginControls.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="WiSunSlotActionButtonStyle" TargetType="Button" BasedOn="{StaticResource PluginButtonStyle}">
+                <Setter Property="Background" Value="{DynamicResource PanelSurfaceBrush}" />
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="36"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <ContentControl Tag="Wi-SUN" Style="{DynamicResource PluginSettingsHeaderStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Wi-SUN 920 MHz / IEEE 802.15.4g SUN FSK"
+                               Foreground="{DynamicResource TextDimBrush}" Margin="0,0,8,0"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    <CheckBox Grid.Column="1" Content="受信有効" IsChecked="{Binding IsReceiverEnabled}"
+                               Style="{DynamicResource PluginCheckBoxStyle}"
+                               Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                </Grid>
+            </ContentControl>
+
+            <TabControl Grid.Row="1" Style="{DynamicResource PluginSettingsTabControlStyle}">
+                <TabItem Header="受信設定">
+                    <Grid Margin="10,7">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <!-- PHY Mode / 通信速度 -->
+                        <WrapPanel Grid.Row="0" Margin="0,2,0,10" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,3,36,3">
+                                <TextBlock Text="PHY Mode / 通信速度" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,10,0" />
+                                <ComboBox ItemsSource="{Binding PhyOptions}"
+                                          DisplayMemberPath="DisplayName"
+                                          SelectedItem="{Binding SelectedPhyOption, Mode=TwoWay}"
+                                          Width="220" Height="22" FontSize="10"
+                                          Style="{DynamicResource PluginComboBoxStyle}" />
+                            </StackPanel>
+                        </WrapPanel>
+
+                        <!-- Channel selection / Custom PHY panel -->
+                        <Grid Grid.Row="1" MaxHeight="170" VerticalAlignment="Top">
+                            <!-- Standard PHY: Channel selection -->
+                            <Border Background="{DynamicResource PanelSurfaceBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="8">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsCustomPhy}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <DockPanel Margin="0,0,0,5">
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                            <Button Content="全選択" Command="{Binding SelectAllChannelsCommand}" Width="62" FontSize="10" Margin="2,0" Style="{DynamicResource WiSunSlotActionButtonStyle}" />
+                                            <Button Content="解除" Command="{Binding ClearChannelsCommand}" Width="50" FontSize="10" Margin="2,0" Style="{DynamicResource WiSunSlotActionButtonStyle}" />
+                                        </StackPanel>
+                                        <TextBlock Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center">
+                                            <Run Text="受信チャンネル  "/><Run Text="{Binding WiSunChannelRange, Mode=OneWay}" Foreground="{DynamicResource TextDimBrush}" FontWeight="Normal" />
+                                        </TextBlock>
+                                    </DockPanel>
+                                    <ScrollViewer Grid.Row="1" MaxHeight="120" VerticalAlignment="Top" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsControl ItemsSource="{Binding ChannelSelections}" VerticalAlignment="Top">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <UniformGrid Columns="10" VerticalAlignment="Top" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Height="18">
+                                                        <CheckBox Content="{Binding Label}" FontSize="10"
+                                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="2,0"
+                                                                  VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
+
+                            <!-- Custom PHY panel -->
+                            <Border Background="{DynamicResource PanelSurfaceBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="8">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsCustomPhy}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="16"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="16"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="80"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="周波数 (MHz)" VerticalAlignment="Center" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,6,0"/>
+                                    <TextBox Grid.Column="1" Text="{Binding CustomFrequencyMHzText, UpdateSourceTrigger=LostFocus}"
+                                             Height="22" VerticalAlignment="Center" Padding="4,2" FontSize="10"
+                                             Style="{DynamicResource PluginTextBoxStyle}"/>
+
+                                    <TextBlock Grid.Column="3" Text="伝送速度" VerticalAlignment="Center" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,6,0"/>
+                                    <ComboBox Grid.Column="4" ItemsSource="{Binding BitRateOptions}"
+                                              DisplayMemberPath="DisplayName"
+                                              SelectedItem="{Binding SelectedBitRateOption, Mode=TwoWay}"
+                                              Height="22" VerticalAlignment="Center" FontSize="10"
+                                              Style="{DynamicResource PluginComboBoxStyle}"/>
+
+                                    <TextBlock Grid.Column="6" Text="SFD (16進)" VerticalAlignment="Center" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,6,0"/>
+                                    <TextBox Grid.Column="7" Text="{Binding CustomSfdHex, UpdateSourceTrigger=LostFocus}"
+                                             Height="22" VerticalAlignment="Center" Padding="4,2" MaxLength="4" FontSize="10"
+                                             Style="{DynamicResource PluginTextBoxStyle}"/>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </TabItem>
+                <TabItem Header="プラグイン設定">
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <Grid Margin="12,10">
+                            <controls:PluginResetView />
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </Border>
+</UserControl>
