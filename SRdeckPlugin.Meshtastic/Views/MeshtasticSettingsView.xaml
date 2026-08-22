@@ -7,7 +7,7 @@
     <UserControl.Resources>
         <ResourceDictionary Source="/SRdeckPlugin.Meshtastic;component/Views/MeshtasticStyles.xaml" />
     </UserControl.Resources>
-    <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+    <Border Style="{DynamicResource PluginSettingsPanelStyle}" MinHeight="320">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="36" />
@@ -182,41 +182,67 @@
                 </TabItem>
 
                 <TabItem Header="プラグイン設定">
-                    <Grid Margin="12,10">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <TextBlock Text="表示と履歴の保持" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,7" />
-                        <TextBlock Grid.Row="1"
-                                   Text="時系列に表示する件数と、保存済みデータを保持する期間を指定します。"
-                                   Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,4,0,10" />
-                        <Grid Grid.Row="2" HorizontalAlignment="Left">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="92" />
-                                <ColumnDefinition Width="110" />
-                                <ColumnDefinition Width="260" />
-                            </Grid.ColumnDefinitions>
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <Grid Margin="12,10">
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="28" /><RowDefinition Height="28" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <TextBlock Text="表示件数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
-                            <TextBox Grid.Column="1" Text="{Binding MeshtasticHistoryDisplayLimit}"
-                                     Width="100" HorizontalAlignment="Left"
-                                     Style="{DynamicResource PluginTextBoxStyle}" />
-                            <TextBlock Grid.Column="2" Text="時系列タブに表示する最大件数"
-                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0" />
-                            <TextBlock Grid.Row="1" Text="保持日数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
-                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding MeshtasticHistoryRetentionDays}"
-                                     Width="100" HorizontalAlignment="Left"
-                                     Style="{DynamicResource PluginTextBoxStyle}" />
-                            <TextBlock Grid.Row="1" Grid.Column="2" Text="0で期間制限なし"
-                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0" />
+                            <TextBlock Text="表示と履歴の保持" Style="{DynamicResource PluginSettingsSectionHeaderStyle}" />
+                            <TextBlock Grid.Row="1"
+                                       Text="時系列に表示する件数と、保存済みデータを保持する期間を指定します。"
+                                       Style="{DynamicResource PluginSettingsDescriptionStyle}" />
+                            <Grid Grid.Row="2" HorizontalAlignment="Left">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="92" />
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="260" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="28" /><RowDefinition Height="28" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="表示件数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Column="1" Text="{Binding MeshtasticHistoryDisplayLimit}"
+                                         Width="100" HorizontalAlignment="Left"
+                                         Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Column="2" Text="時系列タブに表示する最大件数"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0" />
+                                <TextBlock Grid.Row="1" Text="保持日数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding MeshtasticHistoryRetentionDays}"
+                                         Width="100" HorizontalAlignment="Left"
+                                         Style="{DynamicResource PluginTextBoxStyle}" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="0で期間制限なし"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0" />
+                            </Grid>
+                            <controls:PluginResetView Grid.Row="3" />
+                            <TextBlock Grid.Row="4" Text="過去録音" Style="{DynamicResource PluginSettingsSectionHeaderStyle}" />
+                            <Grid Grid.Row="5" Style="{DynamicResource PluginSettingsActionRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="受信中に直前10秒のIQデータを保存します。"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,0,16,0" />
+                                <Button Grid.Column="1" Content="IQ 録音 (直前10秒)"
+                                        Command="{Binding StartCaptureCommand}"
+                                        Style="{DynamicResource PluginButtonStyle}"
+                                        Height="22"
+                                        Width="130"
+                                        HorizontalAlignment="Left" />
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding CaptureStatus}"
+                                           Style="{DynamicResource PluginSettingsActionStatusStyle}"
+                                           VerticalAlignment="Center"
+                                           Margin="10,0,0,0" />
+                            </Grid>
                         </Grid>
-                        <controls:PluginResetView Grid.Row="3" />
-                        </Grid>
+                    </ScrollViewer>
                 </TabItem>
             </TabControl>
         </Grid>

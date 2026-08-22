@@ -34,6 +34,7 @@ public partial class MeshtasticViewModel
     [ObservableProperty] private string _meshtasticRatePathText = "—";
     [ObservableProperty] private string _meshtasticLastSignalStatus = "最終信号: -";
     [ObservableProperty] private string _meshtasticLastFailureStatus = "直近の失敗: -";
+    [ObservableProperty] private string _meshtasticFrequencyCorrectionText = "—";
 
     [ObservableProperty] private int _meshtasticHistoryDisplayLimit = 10_000;
     [ObservableProperty] private int _meshtasticHistoryRetentionDays = 90;

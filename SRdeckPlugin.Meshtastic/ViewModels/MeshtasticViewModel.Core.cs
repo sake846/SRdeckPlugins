@@ -28,7 +28,6 @@ public partial class MeshtasticViewModel
 {
     private readonly IMeshtasticReceiveService _meshtasticReceiveService;
     private readonly MeshtasticHistoryAnalyzer _meshtasticHistoryAnalyzer = new();
-    private readonly MeshtasticMapProjectionService _meshtasticMapProjectionService = new();
     private readonly MeshtasticSettingsService _meshtasticSettingsService = new();
     private IPluginHostContext? _hostContext;
     private PluginJsonLinesHistoryWriter<MeshtasticDisplayItem>? _meshtasticHistoryWriter;
@@ -231,8 +230,7 @@ public partial class MeshtasticViewModel
     public ObservableCollection<MeshtasticNodeDisplayItem> MeshtasticNodes { get; } = new();
     public ObservableCollection<MeshtasticNodeDisplayItem> FilteredMeshtasticNodes { get; } = new();
     public ObservableCollection<MeshtasticMapPoint> MeshtasticMapPoints { get; } = new();
-    public ObservableCollection<MeshtasticMapPoint> VisibleMeshtasticMapPoints { get; } = new();
-    public ObservableCollection<MeshtasticNodeDisplayItem> VisibleMeshtasticMapNodes { get; } = new();
+    public ObservableCollection<GeoMapMarker> MapMarkers { get; } = new();
     private readonly Dictionary<uint, MeshtasticNodeDisplayItem> _meshtasticNodesById = new();
     private readonly Dictionary<uint, MeshtasticMapPoint> _meshtasticMapPointsById = new();
 
@@ -241,6 +239,13 @@ public partial class MeshtasticViewModel
 
     [ObservableProperty]
     private OverallStatusKind _meshtasticReceiverStatusKind = OverallStatusKind.Running;
+
+    [ObservableProperty] private string _captureStatus = "IQ録音: 待機";
+
+    internal Action? CaptureRequested { get; set; }
+
+    [RelayCommand]
+    private void StartCapture() => CaptureRequested?.Invoke();
 
     [ObservableProperty]
     private MeshtasticNodeDisplayItem? _selectedMeshtasticNode;
@@ -264,13 +269,14 @@ public partial class MeshtasticViewModel
     partial void OnMeshtasticNodesActiveOnlyChanged(bool value) => RefreshFilteredMeshtasticNodes();
     partial void OnMeshtasticNodesDirectOnlyChanged(bool value) => RefreshFilteredMeshtasticNodes();
     partial void OnMeshtasticNodesWithPositionOnlyChanged(bool value) => RefreshFilteredMeshtasticNodes();
-    partial void OnMeshtasticMapActiveOnlyChanged(bool value) => RefreshVisibleMeshtasticMapPoints();
-    partial void OnMeshtasticMapDirectOnlyChanged(bool value) => RefreshVisibleMeshtasticMapPoints();
+    partial void OnMeshtasticMapActiveOnlyChanged(bool value) => RefreshMeshtasticMapMarkers();
+    partial void OnMeshtasticMapDirectOnlyChanged(bool value) => RefreshMeshtasticMapMarkers();
     partial void OnSelectedMeshtasticNodeChanged(MeshtasticNodeDisplayItem? value)
     {
         RefreshSelectedMeshtasticNodeReceptions();
         foreach (MeshtasticMapPoint point in MeshtasticMapPoints)
             point.IsSelected = point.NodeNumber == value?.NodeNumber;
+        RefreshMeshtasticMapMarkers();
     }
 
     public void SelectMeshtasticNode(uint nodeNumber)
@@ -279,12 +285,20 @@ public partial class MeshtasticViewModel
             SelectedMeshtasticNode = node;
     }
 
+    [RelayCommand]
+    private void SelectMeshtasticMapMarker(string? markerId)
+    {
+        if (uint.TryParse(markerId, NumberStyles.None, CultureInfo.InvariantCulture, out uint nodeNumber))
+            SelectMeshtasticNode(nodeNumber);
+    }
+
     private void RefreshSelectedMeshtasticNodeReceptions()
     {
         SelectedMeshtasticNodeReceptions.Clear();
         if (SelectedMeshtasticNode is null) return;
-        foreach (MeshtasticDisplayItem item in MeshtasticMessages
-                     .Where(item => string.Equals(item.Sender, SelectedMeshtasticNode.NodeId, StringComparison.OrdinalIgnoreCase)))
+        IEnumerable<MeshtasticDisplayItem> nodeMessages = MeshtasticMessages
+            .Where(item => string.Equals(item.Sender, SelectedMeshtasticNode.NodeId, StringComparison.OrdinalIgnoreCase));
+        foreach (MeshtasticDisplayItem item in _meshtasticHistoryAnalyzer.PreferDirectReceptions(nodeMessages))
             SelectedMeshtasticNodeReceptions.Add(item);
     }
 
@@ -328,6 +342,7 @@ public partial class MeshtasticViewModel
             () =>
             {
                 RefreshMeshtasticPacketGroups();
+                RefreshSelectedMeshtasticNodeReceptions();
                 RefreshFilteredMeshtasticNodes();
             });
         if (!_meshtasticDerivedRefreshTimer.IsEnabled) _meshtasticDerivedRefreshTimer.Start();
@@ -402,7 +417,7 @@ public partial class MeshtasticViewModel
             SelectedMeshtasticNode = FilteredMeshtasticNodes.FirstOrDefault();
     }
 
-    private void RefreshVisibleMeshtasticMapPoints()
+    private void RefreshMeshtasticMapMarkers()
     {
         IEnumerable<MeshtasticMapPoint> points = MeshtasticMapPoints;
         if (MeshtasticMapActiveOnly)
@@ -410,13 +425,19 @@ public partial class MeshtasticViewModel
         if (MeshtasticMapDirectOnly)
             points = points.Where(point => point.HasDirectReception);
 
-        VisibleMeshtasticMapPoints.Clear();
-        VisibleMeshtasticMapNodes.Clear();
+        MapMarkers.Clear();
         foreach (MeshtasticMapPoint point in points)
         {
-            VisibleMeshtasticMapPoints.Add(point);
-            if (_meshtasticNodesById.TryGetValue(point.NodeNumber, out MeshtasticNodeDisplayItem? node))
-                VisibleMeshtasticMapNodes.Add(node);
+            string reception = point.HasDirectReception ? "直接受信あり" : "中継受信のみ";
+            MapMarkers.Add(new GeoMapMarker(
+                point.NodeNumber.ToString(CultureInfo.InvariantCulture),
+                point.Latitude,
+                point.Longitude,
+                point.Label,
+                $"{point.ActivityStatus} / {reception}\n{point.Coordinates}",
+                MeshtasticMapPresentation.GetNodeColor(point.ActivityStatus),
+                Symbol: "station",
+                IsSelected: point.IsSelected));
         }
     }
 

@@ -238,22 +238,25 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <controls:PluginResetView Grid.Row="0" />
-                            <TextBlock Grid.Row="1" Text="過去録音" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,7" />
-                            <TextBlock Grid.Row="2" Text="受信中に直前3秒のIQデータを保存します。"
-                                       Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,4,0,10" />
-                            <Grid Grid.Row="3">
+                            <TextBlock Grid.Row="1" Text="過去録音" Style="{DynamicResource PluginSettingsSectionHeaderStyle}" />
+                            <Grid Grid.Row="2" Style="{DynamicResource PluginSettingsActionRowStyle}">
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Button Content="IQ 録音 (直前3秒)"
+                                <TextBlock Text="受信中に直前3秒のIQデータを保存します。"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,0,16,0" />
+                                <Button Grid.Column="1" Content="IQ 録音 (直前3秒)"
                                         Style="{DynamicResource PluginButtonStyle}"
                                         Height="22"
                                         Width="130"
                                         HorizontalAlignment="Left"
                                         Click="StartCaptureButton_OnClick" />
                                 <TextBlock x:Name="CaptureStatusTextBlock"
-                                           Grid.Column="1"
+                                           Grid.Column="2"
+                                           VerticalAlignment="Center"
+                                           Margin="10,0,0,0"
                                            Style="{DynamicResource PluginSettingsActionStatusStyle}" />
                             </Grid>
                         </Grid>

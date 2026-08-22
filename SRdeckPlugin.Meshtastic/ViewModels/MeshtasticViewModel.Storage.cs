@@ -153,8 +153,7 @@ public partial class MeshtasticViewModel
         FilteredMeshtasticNodes.Clear();
         _meshtasticNodesById.Clear();
         MeshtasticMapPoints.Clear();
-        VisibleMeshtasticMapPoints.Clear();
-        VisibleMeshtasticMapNodes.Clear();
+        MapMarkers.Clear();
         _meshtasticMapPointsById.Clear();
         SelectedMeshtasticNode = null;
         ResetMeshtasticHistoryWriter();

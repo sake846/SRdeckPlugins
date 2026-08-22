@@ -175,7 +175,21 @@ public partial class MeshtasticViewModel
         RefreshMeshtasticStatistics();
     }
 
-    private void HandleMeshtasticFrameSynchronized(LoRaFrameSynchronization synchronization) => RefreshMeshtasticStatistics();
+    private void HandleMeshtasticFrameSynchronized(LoRaFrameSynchronization synchronization)
+    {
+        string status = FormatMeshtasticFrequencyCorrection(synchronization);
+        _hostContext?.Dispatcher.Post(() => MeshtasticFrequencyCorrectionText = status);
+        RefreshMeshtasticStatistics();
+    }
+
+    internal static string FormatMeshtasticFrequencyCorrection(LoRaFrameSynchronization synchronization) =>
+        synchronization.CompensationApplied
+            ? $"推定ずれ {synchronization.CarrierFrequencyOffsetHz:+0.0;-0.0;0.0} Hz / " +
+              $"補正 {-synchronization.CarrierFrequencyOffsetHz:+0.0;-0.0;0.0} Hz / " +
+              $"タイミング {synchronization.TimingCorrectionSamples:+#;-#;0} sample"
+            : synchronization.CompensationRequired
+                ? $"推定ずれ {synchronization.CarrierFrequencyOffsetHz:+0.0;-0.0;0.0} Hz / 安全範囲外のため未補正"
+                : $"推定ずれ {synchronization.CarrierFrequencyOffsetHz:+0.0;-0.0;0.0} Hz / 許容範囲内（補正不要）";
     private void HandleMeshtasticHeaderDecoded(LoRaExplicitHeader header) => RefreshMeshtasticStatistics();
 
     private void HandleMeshtasticPayloadDecoded(LoRaPayloadFrame frame)
@@ -201,7 +215,7 @@ public partial class MeshtasticViewModel
             string transmission = reception.Packet.WasRelayed switch
             {
                 false => "直接",
-                true => $"リピーター 0x{reception.Packet.RelayNode:X2}",
+                true => $"中継 0x{reception.Packet.RelayNode:X2}",
                 null => "経路不明"
             };
             var item = new MeshtasticDisplayItem(
@@ -232,9 +246,7 @@ public partial class MeshtasticViewModel
             MeshtasticMessages.Insert(0, item);
             AppendMeshtasticHistory(item);
             if (SelectedMeshtasticNode?.NodeNumber == reception.Packet.From)
-            {
-                SelectedMeshtasticNodeReceptions.Insert(0, item);
-            }
+                RefreshSelectedMeshtasticNodeReceptions();
             while (MeshtasticMessages.Count > MeshtasticHistoryDisplayLimit)
                 MeshtasticMessages.RemoveAt(MeshtasticMessages.Count - 1);
             SelectedTimelineMessage ??= item;
@@ -305,6 +317,7 @@ public partial class MeshtasticViewModel
         Interlocked.Exchange(ref _meshtasticPayloadFailureAccumulator, 0);
         MeshtasticLastSignalStatus = "最終信号: -";
         MeshtasticLastFailureStatus = "直近の失敗: -";
+        MeshtasticFrequencyCorrectionText = "—";
         Interlocked.Exchange(ref _lastMeshtasticSuccessfulPayloadTicks, 0);
         Interlocked.Exchange(ref _lastMeshtasticFailureTicks, 0);
         RefreshMeshtasticStatistics();

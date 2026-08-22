@@ -66,7 +66,7 @@
             <TabItem Header="概要">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="10,8">
-                        <TextBlock Text="監視範囲" Style="{DynamicResource PluginSecondarySectionHeaderStyle}"
+                        <TextBlock Text="監視範囲" Style="{DynamicResource PluginPrimarySectionHeaderStyle}"
                                    Margin="2,12,0,5"/>
                         <Border Style="{DynamicResource PluginDetailPanelStyle}">
                             <StackPanel>
@@ -99,7 +99,7 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="送信局別" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource TextDimBrush}" FontSize="10"/>
+                                   Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontSize="10"/>
                         <TextBlock Grid.Column="1" Text="検索" Style="{DynamicResource PluginListSearchLabelStyle}"/>
                         <TextBox Grid.Column="2" Text="{Binding StationSearchText, UpdateSourceTrigger=PropertyChanged}"
                                  Style="{DynamicResource PluginListSearchTextBoxStyle}"/>
@@ -185,7 +185,7 @@
                                     </Grid.ColumnDefinitions>
                                     <Grid Grid.ColumnSpan="2">
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding Callsign}" Style="{DynamicResource PluginSelectionDetailHeaderStyle}"/>
+                                        <TextBlock Text="{Binding Callsign}" Style="{DynamicResource PluginIdentityTextStyle}"/>
                                         <TextBlock Grid.Column="1" Foreground="{DynamicResource TextDimBrush}">
                                             <Run Text="{Binding Count, Mode=OneWay, StringFormat={}{0:N0} 件}"/><Run Text="  最終受信 "/>
                                             <Run Text="{Binding LastReceivedAt, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd HH:mm:ss}}"/>
@@ -193,12 +193,12 @@
                                     </Grid>
                                     <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,4,8,0">
                                         <UniformGrid Columns="2" Margin="0,0,0,5">
-                                            <StackPanel><TextBlock Text="宛先 / 種別" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding LatestReception.ToCall, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding LatestReception.MessageType, Mode=OneWay}"/></TextBlock></StackPanel>
-                                            <StackPanel><TextBlock Text="Mode / SNR" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding LatestReception.Mode, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding LatestReception.SnrDb, Mode=OneWay, StringFormat={}{0:+0;-0;0} dB}"/></TextBlock></StackPanel>
+                                            <StackPanel><TextBlock Text="宛先 / 種別" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding LatestReception.ToCall, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding LatestReception.MessageType, Mode=OneWay}"/></TextBlock></StackPanel>
+                                            <StackPanel><TextBlock Text="Mode / SNR" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding LatestReception.Mode, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding LatestReception.SnrDb, Mode=OneWay, StringFormat={}{0:+0;-0;0} dB}"/></TextBlock></StackPanel>
                                         </UniformGrid>
                                         <UniformGrid Columns="2">
-                                            <StackPanel><TextBlock Text="DT / Sync" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding LatestReception.TimeOffsetSeconds, Mode=OneWay, StringFormat={}{0:F2} s}"/><Run Text=" / "/><Run Text="{Binding LatestReception.SyncScore, Mode=OneWay}"/></TextBlock></StackPanel>
-                                            <StackPanel><TextBlock Text="Grid / RF" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding Locator, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding LatestReception.BandFrequencyText, Mode=OneWay}"/></TextBlock></StackPanel>
+                                            <StackPanel><TextBlock Text="DT / Sync" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding LatestReception.TimeOffsetSeconds, Mode=OneWay, StringFormat={}{0:F2} s}"/><Run Text=" / "/><Run Text="{Binding LatestReception.SyncScore, Mode=OneWay}"/></TextBlock></StackPanel>
+                                            <StackPanel><TextBlock Text="Grid / RF" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding Locator, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding LatestReception.BandFrequencyText, Mode=OneWay}"/></TextBlock></StackPanel>
                                         </UniformGrid>
                                     </StackPanel>
                                     <Border Grid.Row="1" Grid.Column="1" BorderBrush="{DynamicResource ControlBorderBrush}"
@@ -239,7 +239,7 @@
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="5"/><RowDefinition Height="160" MinHeight="96" MaxHeight="260"/></Grid.RowDefinitions>
                 <Grid Grid.Row="0" Margin="8,6">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                    <TextBlock Text="受信イベントを新しい順に表示します" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="時系列順" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" VerticalAlignment="Center"/>
                     <TextBlock Grid.Column="1" Text="検索" Style="{DynamicResource PluginListSearchLabelStyle}"/>
                     <TextBox Grid.Column="2" Text="{Binding HistorySearchText, UpdateSourceTrigger=PropertyChanged}" Style="{DynamicResource PluginListSearchTextBoxStyle}"/>
                     <TextBlock Grid.Column="3" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" Margin="8,0,0,0"><Run Text="{Binding FilteredHistory.Count, Mode=OneWay, StringFormat=N0}"/><Run Text=" 件"/></TextBlock>
@@ -305,14 +305,14 @@
                     EmptyText="時系列の復号結果を選択すると、スロットとデコード詳細が表示されます">
                     <controls:TimelineDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="4,2">
                         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding FromCall}" Style="{DynamicResource PluginSelectionDetailHeaderStyle}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding LocalReceivedAt, StringFormat={}{0:yyyy/MM/dd HH:mm:ss.fff}}" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/>
+                            <TextBlock Text="{Binding FromCall}" Style="{DynamicResource PluginIdentityTextStyle}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding LocalReceivedAt, StringFormat={}{0:yyyy/MM/dd HH:mm:ss.fff}}" Style="{DynamicResource PluginTimelineDetailTimestampStyle}"/>
                         </Grid>
                         <UniformGrid Columns="4" Margin="0,4,0,2">
                             <StackPanel><TextBlock Text="宛先 / 種別" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding ToCall, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding MessageType, Mode=OneWay}"/></TextBlock></StackPanel>
-                            <StackPanel><TextBlock Text="Mode / SNR" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding Mode, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding SnrDb, StringFormat={}{0:+0;-0;0} dB}"/></TextBlock></StackPanel>
-                            <StackPanel><TextBlock Text="DT / Sync" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding TimeOffsetSeconds, StringFormat={}{0:F1} s}"/><Run Text=" / "/><Run Text="{Binding SyncScore, Mode=OneWay}"/></TextBlock></StackPanel>
-                            <StackPanel><TextBlock Text="RF / Audio" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding BandFrequencyText, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding AudioFrequencyHz, Mode=OneWay}"/><Run Text=" Hz"/></TextBlock></StackPanel>
+                            <StackPanel><TextBlock Text="モード / SNR" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding Mode, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding SnrDb, StringFormat={}{0:+0;-0;0} dB}"/></TextBlock></StackPanel>
+                            <StackPanel><TextBlock Text="時刻差 / 同期" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding TimeOffsetSeconds, StringFormat={}{0:F1} s}"/><Run Text=" / "/><Run Text="{Binding SyncScore, Mode=OneWay}"/></TextBlock></StackPanel>
+                            <StackPanel><TextBlock Text="無線周波数 / 音声周波数" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding BandFrequencyText, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding AudioFrequencyHz, Mode=OneWay}"/><Run Text=" Hz"/></TextBlock></StackPanel>
                         </UniformGrid>
                         <TextBox Text="{Binding Message, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" />
                         <Expander Header="ペイロード (HEX)" Style="{DynamicResource PluginTimelineExpanderStyle}">

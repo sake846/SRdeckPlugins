@@ -12,6 +12,25 @@ namespace SRdeckPlugin.Meshtastic.Services;
 /// </summary>
 public sealed class MeshtasticHistoryAnalyzer
 {
+    /// <summary>
+    /// Returns one display item per packet, preferring a direct reception when
+    /// the same packet was also received through a relay.
+    /// </summary>
+    public IReadOnlyList<MeshtasticDisplayItem> PreferDirectReceptions(
+        IEnumerable<MeshtasticDisplayItem> messages)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+
+        return messages
+            .GroupBy(item => (item.Sender, Packet: GetPacketIdentity(item)))
+            .Select(group => group
+                .OrderByDescending(item => item.IsDirect)
+                .ThenByDescending(item => item.ReceivedAt)
+                .First())
+            .OrderByDescending(item => item.ReceivedAt)
+            .ToArray();
+    }
+
     public MeshtasticHistoryAnalysisResult Analyze(
         IReadOnlyList<MeshtasticDisplayItem> messages,
         IReadOnlyList<MeshtasticNodeDisplayItem> nodes,
@@ -89,22 +108,23 @@ public sealed class MeshtasticHistoryAnalyzer
                 : item).ToArray();
     }
 
-    private static IReadOnlyList<MeshtasticDisplayItem> BuildTextMessages(
+    private IReadOnlyList<MeshtasticDisplayItem> BuildTextMessages(
         IReadOnlyList<MeshtasticDisplayItem> messages,
         int displayLimit)
     {
         int limit = Math.Max(0, displayLimit);
-        return messages
-            .Where(item => item.IsTextMessage)
-            .GroupBy(item => (item.Sender, PacketId: item.PacketId != 0 ? (object)item.PacketId : item.Summary))
-            .Select(group => group
-                .OrderByDescending(item => item.IsDirect)
-                .ThenByDescending(item => item.HopLimit)
-                .ThenByDescending(item => item.ReceivedAt)
-                .First())
+        return PreferDirectReceptions(messages.Where(item => item.IsTextMessage))
             .OrderByDescending(item => item.ReceivedAt)
             .Take(limit)
             .ToArray();
+    }
+
+    private static string GetPacketIdentity(MeshtasticDisplayItem item)
+    {
+        if (item.PacketId != 0)
+            return $"id:{item.PacketId:X8}";
+
+        return $"payload:{item.PayloadHex}|{item.Port}|{item.Summary}";
     }
 
 }

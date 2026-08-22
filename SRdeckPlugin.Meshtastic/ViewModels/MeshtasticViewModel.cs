@@ -53,6 +53,10 @@ public sealed record MeshtasticDisplayItem(
     public string ReceivedDateTimeText => ReceivedAt == default
         ? ReceivedTime
         : ReceivedAt.ToLocalTime().ToString("yyyy/MM/dd\nHH:mm:ss", CultureInfo.InvariantCulture);
+    [JsonIgnore]
+    public string ReceivedDateTimeSingleLineText => ReceivedAt == default
+        ? ReceivedTime
+        : ReceivedAt.ToLocalTime().ToString("yyyy/MM/dd HH:mm:ss", CultureInfo.InvariantCulture);
     public bool IsTextMessage => string.Equals(Port, "TEXT_MESSAGE_APP", StringComparison.OrdinalIgnoreCase);
 
     public bool IsDirect => WasRelayed == false || string.Equals(Transmission, "直接", StringComparison.OrdinalIgnoreCase);
@@ -152,7 +156,7 @@ internal static class MeshtasticRouteDisplay
         return reception.Packet.WasRelayed switch
         {
             false => "直接",
-            true => $"リピーター 0x{reception.Packet.RelayNode:X2}",
+            true => $"中継 0x{reception.Packet.RelayNode:X2}",
             null => "経路不明"
         };
     }
@@ -164,8 +168,6 @@ public sealed partial class MeshtasticMapPoint : ObservableObject
     public uint NodeNumber { get; }
     [ObservableProperty] private string _label = "";
     [ObservableProperty] private string _coordinates = "";
-    [ObservableProperty] private double _x;
-    [ObservableProperty] private double _y;
     [ObservableProperty] private string _activityStatus = "不明";
     [ObservableProperty] private bool _isSelected;
     [ObservableProperty] private bool _hasDirectReception;
@@ -299,6 +301,25 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
     private MeshtasticNodeInfo? _nodeInfo;
     private MeshtasticPosition? _latestPosition;
     private MeshtasticTelemetry? _latestTelemetry;
+    private readonly Dictionary<uint, bool> _preferredDirectReceptionByPacket = new();
+
+    private bool ShouldUpdateLatestReception(MeshtasticRadioPacket packet)
+    {
+        bool isDirect = packet.WasRelayed == false;
+        if (!_preferredDirectReceptionByPacket.TryGetValue(packet.PacketId, out bool preferredIsDirect))
+        {
+            _preferredDirectReceptionByPacket[packet.PacketId] = isDirect;
+            return true;
+        }
+
+        if (preferredIsDirect && !isDirect)
+            return false;
+
+        if (isDirect && !preferredIsDirect)
+            _preferredDirectReceptionByPacket[packet.PacketId] = true;
+
+        return true;
+    }
 
     public void Update(MeshtasticDataReception reception, string? receivedContent = null)
     {
@@ -307,9 +328,16 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
         CountRoute(reception.Packet);
 
         RecordSeenAt(reception.Packet.ReceivedAt);
+        bool updateLatestReception = ShouldUpdateLatestReception(reception.Packet);
+        Counts = $"Packet {_packetCount} / Reception {_receptionCount}";
+        if (!updateLatestReception)
+        {
+            Details = BuildDetails();
+            return;
+        }
+
         Route = $"{MeshtasticRouteDisplay.Format(reception)} / Hop {reception.Packet.HopLimit}/{reception.Packet.HopStart}";
         Mode = reception.Radio.Summary;
-        Counts = $"Packet {_packetCount} / Reception {_receptionCount}";
         SignalQuality = reception.Quality.Summary;
 
         switch (reception.Data.DecodedPayload)
@@ -362,9 +390,16 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
         if (!reception.IsDuplicate) _packetCount++;
         CountRoute(reception.Packet);
         RecordSeenAt(reception.Packet.ReceivedAt);
+        bool updateLatestReception = ShouldUpdateLatestReception(reception.Packet);
+        Counts = $"Packet {_packetCount} / Reception {_receptionCount}";
+        if (!updateLatestReception)
+        {
+            Details = BuildDetails();
+            return;
+        }
+
         Route = $"{FormatPacketRoute(reception.Packet)} / Hop {reception.Packet.HopLimit}/{reception.Packet.HopStart}";
         Mode = reception.Radio.Summary;
-        Counts = $"Packet {_packetCount} / Reception {_receptionCount}";
         SignalQuality = reception.Quality.Summary;
         LastReceivedContent = receivedContent ??
             $"復号できないパケット / Channel 0x{reception.Packet.ChannelHash:X2}";
@@ -378,7 +413,7 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
     private static string FormatPacketRoute(MeshtasticRadioPacket packet) => packet.WasRelayed switch
     {
         false => "直接",
-        true => $"リピーター 0x{packet.RelayNode:X2}",
+        true => $"中継 0x{packet.RelayNode:X2}",
         null => "経路不明"
     };
 

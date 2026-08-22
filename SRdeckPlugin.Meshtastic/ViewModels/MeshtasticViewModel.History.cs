@@ -67,9 +67,7 @@ public partial class MeshtasticViewModel
             }
             AppendMeshtasticHistory(item);
             if (SelectedMeshtasticNode?.NodeNumber == reception.Packet.From)
-            {
-                SelectedMeshtasticNodeReceptions.Insert(0, item);
-            }
+                RefreshSelectedMeshtasticNodeReceptions();
             while (MeshtasticMessages.Count > MeshtasticHistoryDisplayLimit)
             {
                 MeshtasticMessages.RemoveAt(MeshtasticMessages.Count - 1);
@@ -144,22 +142,7 @@ public partial class MeshtasticViewModel
         point.ActivityStatus = node.ActivityStatus;
         point.HasDirectReception = node.DirectReceptionCount > 0;
         point.IsSelected = node.NodeNumber == SelectedMeshtasticNode?.NodeNumber;
-        RecalculateMeshtasticMapPoints();
-        RefreshVisibleMeshtasticMapPoints();
-    }
-
-    private void RecalculateMeshtasticMapPoints()
-    {
-        if (MeshtasticMapPoints.Count == 0) return;
-        MeshtasticMapCoordinate[] coordinates = MeshtasticMapPoints
-            .Select(point => new MeshtasticMapCoordinate(point.NodeNumber, point.Latitude, point.Longitude))
-            .ToArray();
-        IReadOnlyList<MeshtasticMapProjection> projections = _meshtasticMapProjectionService.Project(coordinates);
-        for (int index = 0; index < MeshtasticMapPoints.Count; index++)
-        {
-            MeshtasticMapPoints[index].X = projections[index].X;
-            MeshtasticMapPoints[index].Y = projections[index].Y;
-        }
+        RefreshMeshtasticMapMarkers();
     }
 
     private void LoadMeshtasticState()

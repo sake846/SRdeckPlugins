@@ -7,7 +7,7 @@ namespace SRdeckPlugin.Meshtastic.Dsp;
 
 /// <summary>
 /// Streaming LoRa acquisition state machine. It detects repeated up-chirps,
-/// corrects the coarse symbol boundary, verifies the two sync-word symbols,
+/// corrects the symbol boundary to sample resolution, verifies the two sync-word symbols,
 /// then confirms the first two down-chirps of the SFD.
 /// </summary>
 internal sealed partial class LoRaPreambleDetector
@@ -44,7 +44,7 @@ internal sealed partial class LoRaPreambleDetector
     private int _sampleCount;
     private int _samplesSinceAnalysis;
     private int _lastPeakBin = -1;
-    private int _preamblePeakBin = -1;
+    private float _preamblePeakBin = float.NaN;
     private int _consecutiveSymbols;
     private int _missedSymbols;
     private int _syncDirection;
@@ -57,6 +57,8 @@ internal sealed partial class LoRaPreambleDetector
     private LoRaExplicitHeader? _activeHeader;
     private int _payloadCorrectedCodewords;
     private float _lastDownPeakHz;
+    private float _sfdDownPeakHzSum;
+    private float _carrierFrequencyCorrectionHz;
     private int _consecutiveLowSnrSymbols;
     private bool _reported;
     private AcquisitionState _state;
@@ -163,18 +165,44 @@ internal sealed partial class LoRaPreambleDetector
     {
         Complex[] fftInput = _fft.InputData;
         double totalPower = 0.0;
-        for (int n = 0; n < _symbolSamples; n++)
+        if (_carrierFrequencyCorrectionHz == 0)
         {
-            Complex sample = _ring[_writeIndex + n];
-            Complex reference = _downChirp[n];
-            if (!dechirpUpChirp) reference.Y = -reference.Y;
-            float x = sample.X * reference.X - sample.Y * reference.Y;
-            float y = sample.X * reference.Y + sample.Y * reference.X;
-            fftInput[n] = new Complex { X = x, Y = y };
-            totalPower += (x * x) + (y * y);
+            for (int n = 0; n < _symbolSamples; n++)
+            {
+                Complex sample = _ring[_writeIndex + n];
+                Complex reference = _downChirp[n];
+                if (!dechirpUpChirp) reference.Y = -reference.Y;
+                float x = sample.X * reference.X - sample.Y * reference.Y;
+                float y = sample.X * reference.Y + sample.Y * reference.X;
+                fftInput[n] = new Complex { X = x, Y = y };
+                totalPower += (x * x) + (y * y);
+            }
+        }
+        else
+        {
+            double carrierI = 1.0;
+            double carrierQ = 0.0;
+            double carrierStep = -2.0 * Math.PI * _carrierFrequencyCorrectionHz / _sampleRateHz;
+            double carrierStepI = Math.Cos(carrierStep);
+            double carrierStepQ = Math.Sin(carrierStep);
+            for (int n = 0; n < _symbolSamples; n++)
+            {
+                Complex sample = _ring[_writeIndex + n];
+                float correctedSampleI = (float)((sample.X * carrierI) - (sample.Y * carrierQ));
+                float correctedSampleQ = (float)((sample.X * carrierQ) + (sample.Y * carrierI));
+                double nextCarrierI = (carrierI * carrierStepI) - (carrierQ * carrierStepQ);
+                carrierQ = (carrierI * carrierStepQ) + (carrierQ * carrierStepI);
+                carrierI = nextCarrierI;
+                Complex reference = _downChirp[n];
+                if (!dechirpUpChirp) reference.Y = -reference.Y;
+                float x = correctedSampleI * reference.X - correctedSampleQ * reference.Y;
+                float y = correctedSampleI * reference.Y + correctedSampleQ * reference.X;
+                fftInput[n] = new Complex { X = x, Y = y };
+                totalPower += (x * x) + (y * y);
+            }
         }
 
-        if (totalPower < 1e-10) return new SpectrumPeak(0, float.NegativeInfinity, 0.0f);
+        if (totalPower < 1e-10) return new SpectrumPeak(0, 0.0f, float.NegativeInfinity, 0.0f);
 
         _fft.ExecutePower(System.Numerics.BitOperations.Log2((uint)_symbolSamples));
         float[] spectrum = _fft.OutputData;
@@ -222,7 +250,7 @@ internal sealed partial class LoRaPreambleDetector
         float interpolatedBin = peakBin + delta;
         float interpolatedFreqHz = (interpolatedBin - (len / 2.0f)) * (_sampleRateHz / (float)len);
 
-        return new SpectrumPeak(peakBin, peakToAverageDb, interpolatedFreqHz);
+        return new SpectrumPeak(peakBin, interpolatedBin, peakToAverageDb, interpolatedFreqHz);
     }
 
     private void RegisterSearchMiss()
@@ -266,7 +294,7 @@ internal sealed partial class LoRaPreambleDetector
     {
         _state = AcquisitionState.Search;
         _lastPeakBin = -1;
-        _preamblePeakBin = -1;
+        _preamblePeakBin = float.NaN;
         _consecutiveSymbols = 0;
         _missedSymbols = 0;
         _syncDirection = 0;
@@ -276,17 +304,25 @@ internal sealed partial class LoRaPreambleDetector
         _payloadNibbles = null;
         _activeHeader = null;
         _payloadCorrectedCodewords = 0;
+        _lastDownPeakHz = 0;
+        _sfdDownPeakHzSum = 0;
+        _carrierFrequencyCorrectionHz = 0;
         _consecutiveLowSnrSymbols = 0;
         _reported = false;
     }
 
     private int ToSignedBin(int shiftedBin) => shiftedBin - (_symbolSamples / 2);
 
-    private float BinToFrequencyHz(int shiftedBin) => ToSignedBin(shiftedBin) * (_sampleRateHz / (float)_symbolSamples);
+    private float ToSignedBin(float shiftedBin) => shiftedBin - (_symbolSamples / 2.0f);
 
-    private int SymbolDelta(int bin, int referenceBin)
+    private float BinToFrequencyHz(float shiftedBin) => ToSignedBin(shiftedBin) * (_sampleRateHz / (float)_symbolSamples);
+
+    private float FrequencyToShiftedBin(float frequencyHz) =>
+        Mod((frequencyHz * _symbolSamples / _sampleRateHz) + (_symbolSamples / 2.0f), _symbolSamples);
+
+    private float SymbolDelta(float bin, float referenceBin)
     {
-        int delta = Mod(ToSignedBin(bin) - ToSignedBin(referenceBin), _symbolValues);
+        float delta = Mod(ToSignedBin(bin) - ToSignedBin(referenceBin), _symbolValues);
         if (delta >= _symbolValues / 2) delta -= _symbolValues;
         return delta;
     }
@@ -309,6 +345,12 @@ internal sealed partial class LoRaPreambleDetector
         return result < 0 ? result + modulus : result;
     }
 
+    private static float Mod(float value, int modulus)
+    {
+        float result = value % modulus;
+        return result < 0 ? result + modulus : result;
+    }
+
     private static Complex[] CreateDownChirp(int sampleCount, int sampleRateHz, int bandwidthHz)
     {
         var result = new Complex[sampleCount];
@@ -326,5 +368,9 @@ internal sealed partial class LoRaPreambleDetector
         return result;
     }
 
-    private readonly record struct SpectrumPeak(int Bin, float PeakToAverageDb, float FrequencyHz);
+    private readonly record struct SpectrumPeak(
+        int Bin,
+        float InterpolatedBin,
+        float PeakToAverageDb,
+        float FrequencyHz);
 }

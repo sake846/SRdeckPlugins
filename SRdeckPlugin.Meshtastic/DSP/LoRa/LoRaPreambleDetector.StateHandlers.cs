@@ -33,15 +33,18 @@ internal sealed partial class LoRaPreambleDetector
             peak.FrequencyHz - _expectedCenterOffsetHz,
             _consecutiveSymbols));
 
-        // A cyclic time shift of an up-chirp appears as a dechirped tone.
-        // Use it to move the next FFT window onto the coarse symbol boundary.
-        int timingSymbol = Mod(ToSignedBin(peak.Bin) - _expectedCenterBin, _symbolValues);
-        int timingOffsetSamples = timingSymbol * _samplesPerChip;
+        // A cyclic time shift of an up-chirp appears as a dechirped tone. Preserve
+        // the interpolated FFT position here: at 500 kS/s one chip is two samples,
+        // so an integer-bin correction can otherwise select only one CIC phase.
+        float timingSymbol = Mod(ToSignedBin(peak.InterpolatedBin) - _expectedCenterBin, _symbolValues);
+        int timingOffsetSamples = Mod(
+            (int)MathF.Round(timingSymbol * _samplesPerChip, MidpointRounding.AwayFromZero),
+            _symbolSamples);
         ReportDiagnostic(
             "TIMING",
-            $"Coarse boundary correction scheduled: symbolOffset={timingSymbol} sampleOffset={timingOffsetSamples}",
+            $"Fine boundary correction scheduled: symbolOffset={timingSymbol:F3} sampleOffset={timingOffsetSamples}",
             peak,
-            timingSymbol,
+            (int)MathF.Round(timingSymbol),
             null,
             false);
         _samplesSinceAnalysis = timingOffsetSamples;
@@ -72,13 +75,13 @@ internal sealed partial class LoRaPreambleDetector
             return;
         }
 
-        _preamblePeakBin = peak.Bin;
+        _preamblePeakBin = peak.InterpolatedBin;
         _lastPeakBin = peak.Bin;
         _missedSymbols = 0;
         _state = AcquisitionState.Preamble;
         ReportDiagnostic(
             "ALIGN",
-            $"Preamble boundary aligned: referenceBin={ToSignedBin(peak.Bin)}",
+            $"Preamble boundary aligned: referenceBin={ToSignedBin(peak.InterpolatedBin):F3}",
             peak,
             0,
             0,
@@ -93,7 +96,7 @@ internal sealed partial class LoRaPreambleDetector
             return;
         }
 
-        int delta = SymbolDelta(peak.Bin, _preamblePeakBin);
+        float delta = SymbolDelta(peak.InterpolatedBin, _preamblePeakBin);
         if (Math.Abs(delta) <= PeakBinTolerance)
         {
             _missedSymbols = 0;
@@ -107,12 +110,13 @@ internal sealed partial class LoRaPreambleDetector
             _syncDirection = Math.Abs(delta - expectedHigh) <= PeakBinTolerance ? 1 : -1;
             _missedSymbols = 0;
             _state = AcquisitionState.SyncLow;
-            ReportDiagnostic("SYNC1", "First sync-word symbol accepted", peak, delta, _syncDirection * expectedHigh, false);
+            ReportDiagnostic("SYNC1", "First sync-word symbol accepted", peak, (int)MathF.Round(delta), _syncDirection * expectedHigh, false);
             return;
         }
 
-        ReportDiagnostic("SYNC1", "Candidate did not match first sync-word symbol", peak, delta, expectedHigh, true);
-        RegisterFrameMiss("SYNC1", "Repeated first sync-word mismatch; acquisition reset", peak, delta, expectedHigh);
+        int observedDelta = (int)MathF.Round(delta);
+        ReportDiagnostic("SYNC1", "Candidate did not match first sync-word symbol", peak, observedDelta, expectedHigh, true);
+        RegisterFrameMiss("SYNC1", "Repeated first sync-word mismatch; acquisition reset", peak, observedDelta, expectedHigh);
     }
 
     private void ProcessSyncLow(SpectrumPeak peak)
@@ -125,17 +129,18 @@ internal sealed partial class LoRaPreambleDetector
         }
 
         int expectedLow = DecodeSyncNibble(_syncWord & 0x0F);
-        int delta = SymbolDelta(peak.Bin, _preamblePeakBin);
+        float delta = SymbolDelta(peak.InterpolatedBin, _preamblePeakBin);
         if (Math.Abs(delta - (_syncDirection * expectedLow)) > PeakBinTolerance)
         {
-            ReportDiagnostic("SYNC2", "Second sync-word symbol rejected", peak, delta, _syncDirection * expectedLow, true);
+            ReportDiagnostic("SYNC2", "Second sync-word symbol rejected", peak, (int)MathF.Round(delta), _syncDirection * expectedLow, true);
             ResetAcquisition();
             return;
         }
 
         _sfdSymbols = 0;
+        _sfdDownPeakHzSum = 0;
         _state = AcquisitionState.Sfd;
-        ReportDiagnostic("SYNC2", "Second sync-word symbol accepted", peak, delta, _syncDirection * expectedLow, false);
+        ReportDiagnostic("SYNC2", "Second sync-word symbol accepted", peak, (int)MathF.Round(delta), _syncDirection * expectedLow, false);
     }
 
     private void ProcessSfd(SpectrumPeak peak)
@@ -148,19 +153,61 @@ internal sealed partial class LoRaPreambleDetector
         }
 
         _sfdSymbols++;
-        _lastDownPeakHz = peak.FrequencyHz;
+        _sfdDownPeakHzSum += peak.FrequencyHz;
+        _lastDownPeakHz = _sfdDownPeakHzSum / _sfdSymbols;
         ReportDiagnostic("SFD", $"Down-chirp {_sfdSymbols} accepted", peak, null, null, false);
         if (_sfdSymbols < 2) return;
+
+        float upChirpPeakHz = BinToFrequencyHz(_preamblePeakBin) - _expectedCenterOffsetHz;
+        float downChirpPeakHz = _lastDownPeakHz - _expectedCenterOffsetHz;
+        float carrierFrequencyOffsetHz = (upChirpPeakHz + downChirpPeakHz) * 0.5f;
+        float timingToneHz = (upChirpPeakHz - downChirpPeakHz) * 0.5f;
+        int requestedTimingCorrectionSamples = (int)MathF.Round(
+            timingToneHz * _symbolSamples / _bandwidthHz,
+            MidpointRounding.AwayFromZero);
+        bool compensationRequired =
+            float.IsFinite(carrierFrequencyOffsetHz) &&
+            Math.Abs(carrierFrequencyOffsetHz) >= _bandwidthHz * 0.02f;
+        bool compensationApplied =
+            compensationRequired &&
+            float.IsFinite(carrierFrequencyOffsetHz) &&
+            Math.Abs(carrierFrequencyOffsetHz) <= _bandwidthHz * 0.20f &&
+            Math.Abs(requestedTimingCorrectionSamples) <= _symbolSamples / 4;
+        int timingCorrectionSamples = compensationApplied ? requestedTimingCorrectionSamples : 0;
+        if (compensationApplied)
+        {
+            // Coarse acquisition cannot distinguish carrier offset from a cyclic
+            // chirp time shift. The opposite SFD slope separates the two. Move
+            // the header window to the true boundary, derotate subsequent IQ,
+            // and return the relative-symbol reference to the selected channel.
+            _carrierFrequencyCorrectionHz = carrierFrequencyOffsetHz;
+            _preamblePeakBin = FrequencyToShiftedBin(_expectedCenterOffsetHz);
+        }
 
         FrameSynchronized?.Invoke(new LoRaFrameSynchronization(
             DateTimeOffset.UtcNow,
             _syncWord,
-            BinToFrequencyHz(_preamblePeakBin) - _expectedCenterOffsetHz,
-            _lastDownPeakHz - _expectedCenterOffsetHz,
-            _symbolSamples / 4));
+            upChirpPeakHz,
+            downChirpPeakHz,
+            _symbolSamples / 4,
+            carrierFrequencyOffsetHz,
+            timingCorrectionSamples,
+            compensationApplied,
+            compensationRequired));
+        ReportDiagnostic(
+            "CFO",
+            compensationApplied
+                ? $"Frame compensation applied: carrierOffset={carrierFrequencyOffsetHz:F1}Hz timingCorrection={timingCorrectionSamples} samples"
+                : compensationRequired
+                    ? $"Frame compensation skipped: carrierOffset={carrierFrequencyOffsetHz:F1}Hz timingCorrection={requestedTimingCorrectionSamples} samples"
+                    : $"Frame compensation not required: carrierOffset={carrierFrequencyOffsetHz:F1}Hz",
+            peak,
+            timingCorrectionSamples,
+            null,
+            false);
         _headerSymbolCount = 0;
         _consecutiveLowSnrSymbols = 0;
-        _samplesSinceAnalysis = -(_symbolSamples / 4);
+        _samplesSinceAnalysis = -(_symbolSamples / 4) + timingCorrectionSamples;
         _state = AcquisitionState.Header;
     }
 
@@ -181,8 +228,12 @@ internal sealed partial class LoRaPreambleDetector
             _consecutiveLowSnrSymbols = 0;
         }
 
-        int relativeRawSymbol = Mod(ToSignedBin(peak.Bin) - ToSignedBin(_preamblePeakBin), _symbolValues);
-        int reducedRateSymbol = Mod(relativeRawSymbol - 1, _symbolValues) / 4;
+        float relativeRawSymbol = Mod(
+            ToSignedBin(peak.InterpolatedBin) - ToSignedBin(_preamblePeakBin),
+            _symbolValues);
+        int reducedRateSymbol = Mod(
+            (int)MathF.Round((relativeRawSymbol - 1.0f) / 4.0f, MidpointRounding.AwayFromZero),
+            _symbolValues / 4);
         int grayMappedSymbol = reducedRateSymbol ^ (reducedRateSymbol >> 1);
         _headerSymbols[_headerSymbolCount++] = (ushort)grayMappedSymbol;
         if (_headerSymbolCount < _headerSymbols.Length) return;
@@ -249,8 +300,12 @@ internal sealed partial class LoRaPreambleDetector
             _consecutiveLowSnrSymbols = 0;
         }
 
-        int relativeRawSymbol = Mod(ToSignedBin(peak.Bin) - ToSignedBin(_preamblePeakBin), _symbolValues);
-        int binarySymbol = Mod(relativeRawSymbol - 1, _symbolValues);
+        float relativeRawSymbol = Mod(
+            ToSignedBin(peak.InterpolatedBin) - ToSignedBin(_preamblePeakBin),
+            _symbolValues);
+        int binarySymbol = Mod(
+            (int)MathF.Round(relativeRawSymbol - 1.0f, MidpointRounding.AwayFromZero),
+            _symbolValues);
         int grayMappedSymbol = binarySymbol ^ (binarySymbol >> 1);
         _payloadBlockSymbols[_payloadBlockSymbolCount++] = (ushort)grayMappedSymbol;
         if (_payloadBlockSymbolCount < header.CodingRateDenominator) return;

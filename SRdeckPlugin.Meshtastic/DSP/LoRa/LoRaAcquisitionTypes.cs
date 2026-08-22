@@ -14,7 +14,11 @@ public sealed record LoRaFrameSynchronization(
     byte SyncWord,
     float UpChirpPeakHz,
     float DownChirpPeakHz,
-    int PayloadDelaySamples);
+    int PayloadDelaySamples,
+    float CarrierFrequencyOffsetHz = 0,
+    int TimingCorrectionSamples = 0,
+    bool CompensationApplied = false,
+    bool CompensationRequired = false);
 
 public sealed record LoRaAcquisitionDiagnostic(
     DateTimeOffset Timestamp,

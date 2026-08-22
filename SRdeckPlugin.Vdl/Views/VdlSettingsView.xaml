@@ -73,10 +73,10 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <TextBlock Text="表示と履歴の保持" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" />
+                            <TextBlock Text="表示と履歴の保持" Style="{DynamicResource PluginSettingsSectionHeaderStyle}" />
                             <TextBlock Grid.Row="1"
                                        Text="履歴保持件数はJSONLと時系列表示に適用され、保存対象を設定できます。"
-                                       Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,4,0,10" />
+                                       Style="{DynamicResource PluginSettingsDescriptionStyle}" />
 
                             <Grid Grid.Row="2" HorizontalAlignment="Left">
                                 <Grid.ColumnDefinitions>
@@ -102,17 +102,19 @@
                                 <TextBlock Grid.Row="3" Grid.Column="2" Text="JSONLと時系列表示に保持する最大件数" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
                              </Grid>
                              <controls:PluginResetView Grid.Row="3" />
-                             <TextBlock Grid.Row="4" Text="過去録音" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,7" />
-                             <TextBlock Grid.Row="5" Text="受信中に直前3秒のIQデータを保存します。"
-                                        Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,4,0,10" />
-                             <Grid Grid.Row="6">
+                             <TextBlock Grid.Row="4" Text="過去録音" Style="{DynamicResource PluginSettingsSectionHeaderStyle}" />
+                             <Grid Grid.Row="5" Style="{DynamicResource PluginSettingsActionRowStyle}">
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Button Content="IQ 録音 (直前3秒)" Command="{Binding TriggerCaptureCommand}"
+                                <TextBlock Text="受信中に直前3秒のIQデータを保存します。"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,0,16,0" />
+                                <Button Grid.Column="1" Content="IQ 録音 (直前3秒)" Command="{Binding TriggerCaptureCommand}"
                                         Style="{DynamicResource PluginButtonStyle}" Width="130" Height="22" />
-                                <TextBlock Grid.Column="1" Text="{Binding CaptureStatus}" Style="{DynamicResource PluginSettingsActionStatusStyle}" />
+                                <TextBlock Grid.Column="2" Text="{Binding CaptureStatus}" Style="{DynamicResource PluginSettingsActionStatusStyle}"
+                                           VerticalAlignment="Center" Margin="10,0,0,0" />
                             </Grid>
                         </Grid>
                     </ScrollViewer>
