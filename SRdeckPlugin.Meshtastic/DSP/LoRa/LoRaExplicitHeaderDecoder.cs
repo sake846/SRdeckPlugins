@@ -51,6 +51,31 @@ internal static class LoRaExplicitHeaderDecoder
             if (corrected) correctedCodewords++;
         }
 
+        return BuildHeader(nibbles, correctedCodewords);
+    }
+
+    public static LoRaExplicitHeader DecodeSoft(
+        IReadOnlyList<LoRaSoftSymbol> symbols,
+        int spreadingFactor,
+        float missingCandidatePenalty)
+    {
+        ArgumentNullException.ThrowIfNull(symbols);
+        int headerCodewordCount = spreadingFactor - 2;
+        if (headerCodewordCount < 5) throw new ArgumentOutOfRangeException(nameof(spreadingFactor));
+        LoRaCodewordSoftMetrics[] metrics = LoRaSoftMetricPropagator.Deinterleave(
+            symbols, headerCodewordCount, HeaderSymbolCount, missingCandidatePenalty);
+        Span<byte> nibbles = stackalloc byte[headerCodewordCount];
+        int correctedCodewords = 0;
+        for (int index = 0; index < metrics.Length; index++)
+        {
+            nibbles[index] = DecodeHamming84(metrics[index], out bool corrected);
+            if (corrected) correctedCodewords++;
+        }
+        return BuildHeader(nibbles, correctedCodewords);
+    }
+
+    private static LoRaExplicitHeader BuildHeader(ReadOnlySpan<byte> nibbles, int correctedCodewords)
+    {
         int payloadLength = (nibbles[0] << 4) | nibbles[1];
         int codingRateValue = nibbles[2] >> 1;
         bool hasPayloadCrc = (nibbles[2] & 1) != 0;
@@ -113,6 +138,22 @@ internal static class LoRaExplicitHeaderDecoder
         }
 
         corrected = bestDistance == 1;
+        return ReverseNibble(bestIndex);
+    }
+
+    private static byte DecodeHamming84(LoRaCodewordSoftMetrics metrics, out bool corrected)
+    {
+        int bestIndex = 0;
+        float bestScore = float.PositiveInfinity;
+        for (int index = 0; index < Hamming84Codewords.Length; index++)
+        {
+            float score = metrics.Score(Hamming84Codewords[index]);
+            if (score >= bestScore) continue;
+            bestScore = score;
+            bestIndex = index;
+        }
+
+        corrected = BitOperations.PopCount((uint)(metrics.HardValue ^ Hamming84Codewords[bestIndex])) == 1;
         return ReverseNibble(bestIndex);
     }
 

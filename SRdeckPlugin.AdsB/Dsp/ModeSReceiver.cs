@@ -36,11 +36,18 @@ public sealed partial class ModeSReceiver
     private double signalQualitySum;
     private double lastSignalQuality;
     private double maximumSignalQuality;
+    private bool enableSuccessiveInterferenceCancellation = true;
+    private int timingGradientInterval = 1;
+    private long timingGradientEvaluationCount;
+    private long timingTrackedFrameCount;
+    private double timingAdjustmentSum;
+    private double maximumTimingAdjustment;
 
     public long ValidFrameCount { get; private set; }
     public long RejectedFrameCount { get; private set; }
     public long CorrectedFrameCount { get; private set; }
     public long SicRecoveredFrameCount { get; private set; }
+    public long SicCancellationRunCount { get; private set; }
     public long TimingAdjustedFrameCount { get; private set; }
     public long FastPreambleCandidateCount { get; private set; }
     public long PreambleMatchCount { get; private set; }
@@ -57,7 +64,14 @@ public sealed partial class ModeSReceiver
         double ValidFramesPerSecond,
         long CorrectedFrameCount,
         long FastPreambleCandidateCount = 0,
-        long PreambleMatchCount = 0);
+        long PreambleMatchCount = 0,
+        bool SicEnabled = true,
+        long SicCancellationRunCount = 0,
+        long SicRecoveredFrameCount = 0,
+        int TimingGradientInterval = 1,
+        long TimingGradientEvaluationCount = 0,
+        double AverageTimingAdjustment = 0,
+        double MaximumTimingAdjustment = 0);
 
     public DiagnosticsSnapshot GetDiagnostics() => new(
         inputSampleRate,
@@ -70,9 +84,34 @@ public sealed partial class ModeSReceiver
         processedDurationSeconds <= 0 ? 0 : ValidFrameCount / processedDurationSeconds,
         CorrectedFrameCount,
         FastPreambleCandidateCount,
-        PreambleMatchCount);
+        PreambleMatchCount,
+        enableSuccessiveInterferenceCancellation,
+        SicCancellationRunCount,
+        SicRecoveredFrameCount,
+        timingGradientInterval,
+        timingGradientEvaluationCount,
+        timingTrackedFrameCount == 0 ? 0 : timingAdjustmentSum / timingTrackedFrameCount,
+        maximumTimingAdjustment);
 
     public ModeSReceiver() => workingSampleSink = AddWorkingSample;
+
+    public bool EnableSuccessiveInterferenceCancellation => enableSuccessiveInterferenceCancellation;
+    internal int PendingIqSampleCount => pendingI.Count + pendingQ.Count;
+    internal int TimingGradientInterval => timingGradientInterval;
+
+    public void ConfigureSuccessiveInterferenceCancellation(bool enabled)
+    {
+        if (enableSuccessiveInterferenceCancellation == enabled) return;
+        enableSuccessiveInterferenceCancellation = enabled;
+        ClearPendingSamples();
+    }
+
+    internal void ConfigureTimingGradientInterval(int interval)
+    {
+        if (interval is not (1 or 2 or 4 or 8))
+            throw new ArgumentOutOfRangeException(nameof(interval));
+        timingGradientInterval = interval;
+    }
 
     public IReadOnlyList<ModeSFrame> Process(ReadOnlySpan<Complex32> samples, IqBlockMetadata metadata)
     {
@@ -122,80 +161,115 @@ public sealed partial class ModeSReceiver
         IqBlockMetadata metadata,
         double groupDelayInputSamples)
     {
+        if (pending.Count < LongFrameSamples) return Array.Empty<ModeSFrame>();
         var result = new List<ModeSFrame>();
         var decodedOffsets = new HashSet<int>();
         var cancellationCandidates = new List<(int Offset, byte[] Bytes, double Quality)>();
         ReadOnlySpan<float> pendingPower = CollectionsMarshal.AsSpan(pending);
-        int scan = 0;
-        while (scan + LongFrameSamples <= pending.Count)
+        double[] prefixStorage = ArrayPool<double>.Shared.Rent(pending.Count + 1);
+        try
         {
-            if (!HasFastPreambleCandidate(pendingPower, scan, noiseFloorPower))
-            {
-                scan++;
-                continue;
-            }
-            FastPreambleCandidateCount++;
-            if (!IsPreamble(pendingPower, scan, noiseFloorPower, out double quality, out double timingOffset))
-            {
-                scan++;
-                continue;
-            }
-            if (scan + 1 + LongFrameSamples <= pending.Count &&
-                IsPreamble(pendingPower, scan + 1, noiseFloorPower, out double nextQuality, out _) &&
-                nextQuality > quality)
-            {
-                scan++;
-                continue;
-            }
-            PreambleMatchCount++;
+            Span<double> powerPrefix = prefixStorage.AsSpan(0, pending.Count + 1);
+            powerPrefix[0] = 0;
+            for (int index = 0; index < pendingPower.Length; index++)
+                powerPrefix[index + 1] = powerPrefix[index] + pendingPower[index];
 
-            byte[] bytes = DecodeLongFrame(pendingPower, scan + PreambleSamples + timingOffset, noiseFloorPower,
-                out float[] bitConfidence, out double timingAdjustment);
-            if (ModeSCrc.TryValidateOrCorrectExtendedSquitter(bytes, bitConfidence, out bool corrected))
+            Span<float> integerSlots = stackalloc float[16];
+            Span<byte> decodedBytes = stackalloc byte[14];
+            Span<float> bitConfidence = stackalloc float[112];
+            int cachedPreambleScan = -1;
+            double cachedQuality = 0;
+            double cachedTimingOffset = 0;
+            int scan = 0;
+            while (scan + LongFrameSamples <= pending.Count)
             {
-                long workingPosition = pendingWorkingSampleStart + scan;
-                long sourceOffset = (long)Math.Round(workingPosition * (double)inputSampleRate /
-                    DemodulationSampleRateHz - groupDelayInputSamples);
-                long sourcePosition = streamSampleOrigin + sourceOffset;
-                DateTimeOffset receivedAt = metadata.UtcTimestamp.AddSeconds(
-                    (sourcePosition - metadata.AbsoluteSampleStart) / (double)inputSampleRate);
-                double correctedQuality = corrected ? quality * 0.85 : quality;
-                result.Add(new(bytes, receivedAt, metadata.StreamId, sourcePosition, correctedQuality));
-                RecordSignalQuality(correctedQuality);
-                decodedOffsets.Add(scan);
-                cancellationCandidates.Add((scan, bytes, correctedQuality));
-                ValidFrameCount++;
-                if (corrected) CorrectedFrameCount++;
-                if (Math.Abs(timingOffset) > 0.05 || Math.Abs(timingAdjustment) > 0.05)
-                    TimingAdjustedFrameCount++;
-                // Continue inside the decoded frame. A second transmitter can start
-                // before this frame ends; its independently valid CRC must still be considered.
-                scan += SamplesPerHalfBit;
+                double quality;
+                double timingOffset;
+                if (cachedPreambleScan == scan)
+                {
+                    quality = cachedQuality;
+                    timingOffset = cachedTimingOffset;
+                    cachedPreambleScan = -1;
+                    FastPreambleCandidateCount++;
+                }
+                else
+                {
+                    FillIntegerPreambleSlots(powerPrefix, scan, integerSlots);
+                    if (!HasFastPreambleCandidate(integerSlots, noiseFloorPower))
+                    {
+                        scan++;
+                        continue;
+                    }
+                    FastPreambleCandidateCount++;
+                    if (!IsPreamble(pendingPower, scan, noiseFloorPower, integerSlots,
+                            out quality, out timingOffset))
+                    {
+                        scan++;
+                        continue;
+                    }
+                }
+                if (scan + 1 + LongFrameSamples <= pending.Count)
+                {
+                    FillIntegerPreambleSlots(powerPrefix, scan + 1, integerSlots);
+                    if (IsPreamble(pendingPower, scan + 1, noiseFloorPower, integerSlots,
+                            out double nextQuality, out double nextTimingOffset) && nextQuality > quality)
+                    {
+                        cachedPreambleScan = scan + 1;
+                        cachedQuality = nextQuality;
+                        cachedTimingOffset = nextTimingOffset;
+                        scan++;
+                        continue;
+                    }
+                }
+                PreambleMatchCount++;
+
+                DecodeLongFrame(pendingPower, scan + PreambleSamples + timingOffset, noiseFloorPower,
+                    decodedBytes, bitConfidence, out double timingAdjustment);
+                if (ModeSCrc.TryValidateOrCorrectExtendedSquitter(
+                        decodedBytes, bitConfidence, out bool corrected))
+                {
+                    byte[] acceptedBytes = decodedBytes.ToArray();
+                    long workingPosition = pendingWorkingSampleStart + scan;
+                    long sourceOffset = (long)Math.Round(workingPosition * (double)inputSampleRate /
+                        DemodulationSampleRateHz - groupDelayInputSamples);
+                    long sourcePosition = streamSampleOrigin + sourceOffset;
+                    DateTimeOffset receivedAt = metadata.UtcTimestamp.AddSeconds(
+                        (sourcePosition - metadata.AbsoluteSampleStart) / (double)inputSampleRate);
+                    double correctedQuality = corrected ? quality * 0.85 : quality;
+                    result.Add(new(acceptedBytes, receivedAt, metadata.StreamId, sourcePosition, correctedQuality));
+                    RecordSignalQuality(correctedQuality);
+                    decodedOffsets.Add(scan);
+                    cancellationCandidates.Add((scan, acceptedBytes, correctedQuality));
+                    ValidFrameCount++;
+                    if (corrected) CorrectedFrameCount++;
+                    if (Math.Abs(timingOffset) > 0.05 || Math.Abs(timingAdjustment) > 0.05)
+                        TimingAdjustedFrameCount++;
+                    double absoluteTimingAdjustment = Math.Abs(timingAdjustment);
+                    timingTrackedFrameCount++;
+                    timingAdjustmentSum += absoluteTimingAdjustment;
+                    maximumTimingAdjustment = Math.Max(
+                        maximumTimingAdjustment, absoluteTimingAdjustment);
+                    // Continue inside the decoded frame. A second transmitter can start
+                    // before this frame ends; its independently valid CRC must still be considered.
+                    scan += SamplesPerHalfBit;
+                }
+                else
+                {
+                    RejectedFrameCount++;
+                    scan++;
+                }
             }
-            else
-            {
-                RejectedFrameCount++;
-                scan++;
-            }
+
+            RecoverBySuccessiveInterferenceCancellation(metadata, groupDelayInputSamples, scan,
+                cancellationCandidates, decodedOffsets, result);
+
+            RemovePendingPrefix(scan);
+            if (pending.Count > LongFrameSamples * 2)
+                RemovePendingPrefix(pending.Count - LongFrameSamples);
         }
-
-        RecoverBySuccessiveInterferenceCancellation(metadata, groupDelayInputSamples, scan, cancellationCandidates,
-            decodedOffsets, result);
-
-        if (scan > 0)
+        finally
         {
-            pending.RemoveRange(0, scan);
-            pendingI.RemoveRange(0, scan);
-            pendingQ.RemoveRange(0, scan);
-            pendingWorkingSampleStart += scan;
-        }
-        if (pending.Count > LongFrameSamples * 2)
-        {
-            int remove = pending.Count - LongFrameSamples;
-            pending.RemoveRange(0, remove);
-            pendingI.RemoveRange(0, remove);
-            pendingQ.RemoveRange(0, remove);
-            pendingWorkingSampleStart += remove;
+            ArrayPool<double>.Shared.Return(prefixStorage);
         }
         return result;
     }
@@ -231,11 +305,8 @@ public sealed partial class ModeSReceiver
     {
         if (sampleRateHz < MinimumInputSampleRateHz)
             throw new ArgumentOutOfRangeException(nameof(sampleRateHz));
-        pending.Clear();
-        pendingI.Clear();
-        pendingQ.Clear();
-        pendingWorkingSampleStart = 0;
         producedWorkingSamples = 0;
+        ClearPendingSamples();
         streamSampleOrigin = absoluteSampleStart;
         inputSampleRate = sampleRateHz;
         noiseFloorPower = 0;
@@ -247,9 +318,14 @@ public sealed partial class ModeSReceiver
         RejectedFrameCount = 0;
         CorrectedFrameCount = 0;
         SicRecoveredFrameCount = 0;
+        SicCancellationRunCount = 0;
         TimingAdjustedFrameCount = 0;
         FastPreambleCandidateCount = 0;
         PreambleMatchCount = 0;
+        timingGradientEvaluationCount = 0;
+        timingTrackedFrameCount = 0;
+        timingAdjustmentSum = 0;
+        maximumTimingAdjustment = 0;
         processedDurationSeconds = 0;
         signalQualitySum = 0;
         lastSignalQuality = 0;
@@ -260,8 +336,11 @@ public sealed partial class ModeSReceiver
     {
         float power = i * i + q * q;
         if (pending.Count == 0) pendingWorkingSampleStart = producedWorkingSamples;
-        pendingI.Add(i);
-        pendingQ.Add(q);
+        if (enableSuccessiveInterferenceCancellation)
+        {
+            pendingI.Add(i);
+            pendingQ.Add(q);
+        }
         pending.Add(power);
         producedWorkingSamples++;
 
@@ -273,5 +352,25 @@ public sealed partial class ModeSReceiver
             noiseFloorPower += coefficient * (power - noiseFloorPower);
             noiseFloorPower = Math.Max(noiseFloorPower, 1e-20f);
         }
+    }
+
+    private void ClearPendingSamples()
+    {
+        pending.Clear();
+        pendingI.Clear();
+        pendingQ.Clear();
+        pendingWorkingSampleStart = producedWorkingSamples;
+    }
+
+    private void RemovePendingPrefix(int count)
+    {
+        if (count <= 0) return;
+        pending.RemoveRange(0, count);
+        if (enableSuccessiveInterferenceCancellation)
+        {
+            pendingI.RemoveRange(0, count);
+            pendingQ.RemoveRange(0, count);
+        }
+        pendingWorkingSampleStart += count;
     }
 }

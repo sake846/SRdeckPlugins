@@ -72,11 +72,16 @@ public sealed partial class VdlMode2Receiver
             workingPower += power;
             workingPeak = Math.Max(workingPeak, Math.Sqrt(power));
             workingCount++;
-            if (audioMonitor.TryProcess(filtered, noiseFloorPower, state == ReceiverState.Receiving, IsSquelchEnabled, out float audioSample))
+            if (monitorAudio is not null)
             {
-                if (monitorAudio is not null && monitorCount >= monitorAudio.Length)
-                    throw new ArgumentException("The VDL monitor audio buffer is too small.", nameof(monitorAudio));
-                if (monitorAudio is not null) monitorAudio[monitorCount++] = audioSample;
+                monitorProcessCount++;
+                if (audioMonitor.TryProcess(filtered, noiseFloorPower, state == ReceiverState.Receiving,
+                    IsSquelchEnabled, out float audioSample))
+                {
+                    if (monitorCount >= monitorAudio.Length)
+                        throw new ArgumentException("The VDL monitor audio buffer is too small.", nameof(monitorAudio));
+                    monitorAudio[monitorCount++] = audioSample;
+                }
             }
             ProcessWorkingSample(filtered, metadata, frames);
         }
@@ -135,11 +140,16 @@ public sealed partial class VdlMode2Receiver
             double power = filtered.I * filtered.I + filtered.Q * filtered.Q;
             workingPower += power;
             workingPeak = Math.Max(workingPeak, Math.Sqrt(power));
-            if (audioMonitor.TryProcess(filtered, noiseFloorPower, state == ReceiverState.Receiving, IsSquelchEnabled, out float audioSample))
+            if (monitorAudio is not null)
             {
-                if (monitorAudio is not null && monitorCount >= monitorAudio.Length)
-                    throw new ArgumentException("The VDL monitor audio buffer is too small.", nameof(monitorAudio));
-                if (monitorAudio is not null) monitorAudio[monitorCount++] = audioSample;
+                monitorProcessCount++;
+                if (audioMonitor.TryProcess(filtered, noiseFloorPower, state == ReceiverState.Receiving,
+                    IsSquelchEnabled, out float audioSample))
+                {
+                    if (monitorCount >= monitorAudio.Length)
+                        throw new ArgumentException("The VDL monitor audio buffer is too small.", nameof(monitorAudio));
+                    monitorAudio[monitorCount++] = audioSample;
+                }
             }
             ProcessWorkingSample(filtered, workingMetadata, frames);
         }
@@ -176,6 +186,7 @@ public sealed partial class VdlMode2Receiver
         resampler.Configure(sampleRateHz, coarseDecimationFactor, WorkingSampleRate, 8_400);
         matchedFilter.Reset();
         audioMonitor.Reset();
+        monitorProcessCount = 0;
         syncWriteIndex = 0;
         syncSampleCount = 0;
         Array.Clear(syncBuffer);

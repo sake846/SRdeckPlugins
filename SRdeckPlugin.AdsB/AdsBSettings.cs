@@ -7,7 +7,8 @@ public sealed record AdsBSettings(int MaximumAircraft = 500, int RetentionMinute
     GeoMapState? MapState = null, int MaximumTrailPoints = 300,
     int MaximumHistory = 10_000,
     bool SaveRawModeS = true,
-    string HistoryRecordMode = "both")
+    string HistoryRecordMode = "both",
+    bool EnableSuccessiveInterferenceCancellation = true)
 {
     public AdsBSettings Normalize() => new(
         Math.Clamp(MaximumAircraft, 50, 5000),
@@ -18,5 +19,6 @@ public sealed record AdsBSettings(int MaximumAircraft = 500, int RetentionMinute
         Math.Clamp(MaximumTrailPoints, 10, 1000),
         Math.Clamp(MaximumHistory, 100, 1_000_000),
         true,
-        "both");
+        "both",
+        EnableSuccessiveInterferenceCancellation);
 }

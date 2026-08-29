@@ -8,7 +8,18 @@ internal sealed partial class LoRaPreambleDetector
 {
     private void ProcessSearch(SpectrumPeak peak)
     {
-        if (peak.PeakToAverageDb < UpChirpThresholdDb)
+        bool candidateActive = _consecutiveSymbols > 0;
+        LoRaSearchThresholdDecision decision = _searchThresholdPolicy?.Evaluate(
+            peak.PeakToAverageDb, candidateActive) ??
+            new LoRaSearchThresholdDecision(_fixedSearchThresholdDb,
+                peak.PeakToAverageDb >= _fixedSearchThresholdDb);
+        SearchPeakObserved?.Invoke(new LoRaSearchPeakObservation(
+            peak.PeakToAverageDb,
+            decision.ThresholdDb,
+            decision.Accepted,
+            _searchThresholdPolicy is not null && !candidateActive &&
+            float.IsFinite(peak.PeakToAverageDb)));
+        if (!decision.Accepted)
         {
             RegisterSearchMiss();
             return;
@@ -20,6 +31,8 @@ internal sealed partial class LoRaPreambleDetector
         }
         else
         {
+            if (_metrics is not null && _consecutiveSymbols > 0)
+                _metrics.SearchCandidateRejects++;
             _consecutiveSymbols = 1;
         }
         _lastPeakBin = peak.Bin;
@@ -27,6 +40,7 @@ internal sealed partial class LoRaPreambleDetector
 
         if (_reported || _consecutiveSymbols < RequiredConsecutiveSymbols) return;
         _reported = true;
+        if (_metrics is not null) _metrics.PreambleDetections++;
         PreambleDetected?.Invoke(new LoRaPreambleDetection(
             DateTimeOffset.UtcNow,
             peak.PeakToAverageDb,
@@ -174,6 +188,7 @@ internal sealed partial class LoRaPreambleDetector
             Math.Abs(carrierFrequencyOffsetHz) <= _bandwidthHz * 0.20f &&
             Math.Abs(requestedTimingCorrectionSamples) <= _symbolSamples / 4;
         int timingCorrectionSamples = compensationApplied ? requestedTimingCorrectionSamples : 0;
+        _frameTimingCorrectionSamples = timingCorrectionSamples;
         if (compensationApplied)
         {
             // Coarse acquisition cannot distinguish carrier offset from a cyclic
@@ -184,6 +199,7 @@ internal sealed partial class LoRaPreambleDetector
             _preamblePeakBin = FrequencyToShiftedBin(_expectedCenterOffsetHz);
         }
 
+        if (_metrics is not null) _metrics.FrameSynchronizations++;
         FrameSynchronized?.Invoke(new LoRaFrameSynchronization(
             DateTimeOffset.UtcNow,
             _syncWord,
@@ -235,10 +251,21 @@ internal sealed partial class LoRaPreambleDetector
             (int)MathF.Round((relativeRawSymbol - 1.0f) / 4.0f, MidpointRounding.AwayFromZero),
             _symbolValues / 4);
         int grayMappedSymbol = reducedRateSymbol ^ (reducedRateSymbol >> 1);
-        _headerSymbols[_headerSymbolCount++] = (ushort)grayMappedSymbol;
+        _headerSymbols[_headerSymbolCount] = (ushort)grayMappedSymbol;
+        if (_headerSoftSymbols is not null)
+            _headerSoftSymbols[_headerSymbolCount] = CreateSoftSymbol(peak, reducedRate: true);
+        _headerSymbolCount++;
         if (_headerSymbolCount < _headerSymbols.Length) return;
 
-        LoRaExplicitHeader header = LoRaExplicitHeaderDecoder.Decode(_headerSymbols, _spreadingFactor);
+        LoRaExplicitHeader header = _softOptions is null
+            ? LoRaExplicitHeaderDecoder.Decode(_headerSymbols, _spreadingFactor)
+            : LoRaExplicitHeaderDecoder.DecodeSoft(
+                _headerSoftSymbols!, _spreadingFactor, _softOptions.MissingCandidatePenalty);
+        if (_metrics is not null)
+        {
+            _metrics.HeadersDecoded++;
+            if (header.IsChecksumValid) _metrics.HeaderChecksumsValid++;
+        }
         ExplicitHeaderDecoded?.Invoke(header);
         if (!header.IsChecksumValid)
         {
@@ -264,6 +291,8 @@ internal sealed partial class LoRaPreambleDetector
         int requiredNibbles = (header.PayloadLength * 2) + (header.HasPayloadCrc ? 4 : 0);
         _activeHeader = header;
         _payloadNibbles = new List<byte>(requiredNibbles);
+        if (_softOptions is not null)
+            _payloadSoftSymbols = new List<LoRaSoftSymbol>(header.CodingRateDenominator * 2);
         foreach (byte nibble in header.InitialPayloadNibbles)
         {
             if (_payloadNibbles.Count == requiredNibbles) break;
@@ -307,14 +336,28 @@ internal sealed partial class LoRaPreambleDetector
             (int)MathF.Round(relativeRawSymbol - 1.0f, MidpointRounding.AwayFromZero),
             _symbolValues);
         int grayMappedSymbol = binarySymbol ^ (binarySymbol >> 1);
-        _payloadBlockSymbols[_payloadBlockSymbolCount++] = (ushort)grayMappedSymbol;
+        _payloadBlockSymbols[_payloadBlockSymbolCount] = (ushort)grayMappedSymbol;
+        if (_payloadBlockSoftSymbols is not null)
+        {
+            LoRaSoftSymbol softSymbol = CreateSoftSymbol(peak, reducedRate: false);
+            _payloadBlockSoftSymbols[_payloadBlockSymbolCount] = softSymbol;
+            _payloadSoftSymbols!.Add(softSymbol);
+        }
+        _payloadBlockSymbolCount++;
         if (_payloadBlockSymbolCount < header.CodingRateDenominator) return;
 
-        byte[] nibbles = LoRaPayloadDecoder.DecodeBlock(
-            _payloadBlockSymbols.AsSpan(0, header.CodingRateDenominator).ToArray(),
-            header.CodingRateDenominator,
-            _spreadingFactor,
-            out int correctedCodewords);
+        byte[] nibbles = _softOptions is null
+            ? LoRaPayloadDecoder.DecodeBlock(
+                _payloadBlockSymbols.AsSpan(0, header.CodingRateDenominator).ToArray(),
+                header.CodingRateDenominator,
+                _spreadingFactor,
+                out int correctedCodewords)
+            : LoRaPayloadDecoder.DecodeBlockSoft(
+                _payloadBlockSoftSymbols!.AsSpan(0, header.CodingRateDenominator).ToArray(),
+                header.CodingRateDenominator,
+                _spreadingFactor,
+                _softOptions.MissingCandidatePenalty,
+                out correctedCodewords);
         _payloadCorrectedCodewords += correctedCodewords;
         int requiredNibbles = (header.PayloadLength * 2) + (header.HasPayloadCrc ? 4 : 0);
         foreach (byte nibble in nibbles)
@@ -335,7 +378,49 @@ internal sealed partial class LoRaPreambleDetector
         int requiredNibbles = (header.PayloadLength * 2) + (header.HasPayloadCrc ? 4 : 0);
         if (nibbles.Count < requiredNibbles) return false;
 
-        LoRaPayloadFrame frame = LoRaPayloadDecoder.BuildFrame(header, nibbles, _payloadCorrectedCodewords);
+        LoRaSoftFrameInformation? softInformation = _softOptions is null
+            ? null
+            : new LoRaSoftFrameInformation(
+                _softOptions.DecisionMode,
+                _softOptions.CandidateCount,
+                _headerSoftSymbols!.ToArray(),
+                _payloadSoftSymbols!.ToArray());
+        LoRaPayloadFrame frame = LoRaPayloadDecoder.BuildFrame(
+            header, nibbles, _payloadCorrectedCodewords, softInformation);
+        if (_crcListOptions is not null &&
+            frame.HasPayloadCrc &&
+            frame.IsPayloadCrcValid is false &&
+            softInformation is not null)
+        {
+            LoRaCrcListDecodingResult listResult = LoRaCrcListDecoder.TryRecover(
+                header, softInformation, _crcListOptions);
+            if (_metrics is not null)
+            {
+                _metrics.CrcListEligibleFrames++;
+                _metrics.CrcListRetries += listResult.Retries;
+                _metrics.CrcListTicks += listResult.ElapsedTicks;
+                if (listResult.Recovered) _metrics.CrcListRecoveredFrames++;
+                if (listResult.Ambiguous) _metrics.CrcListAmbiguousFrames++;
+            }
+            CrcListDecodingCompleted?.Invoke(new LoRaCrcListDecodingDiagnostic(
+                DateTimeOffset.UtcNow,
+                listResult.Retries,
+                listResult.MatchingCandidates,
+                listResult.UniqueMatchingFrames,
+                listResult.Recovered,
+                listResult.Ambiguous,
+                listResult.TimeLimitReached,
+                listResult.SelectedMetric,
+                listResult.ElapsedTicks));
+            if (listResult.RecoveredFrame is not null)
+                frame = listResult.RecoveredFrame;
+        }
+        if (_metrics is not null)
+        {
+            _metrics.PayloadsDecoded++;
+            if (frame.IsPayloadCrcValid is true) _metrics.PayloadCrcValid++;
+            else if (frame.IsPayloadCrcValid is false) _metrics.PayloadCrcInvalid++;
+        }
         PayloadDecoded?.Invoke(frame);
         ResetAcquisition();
         return true;

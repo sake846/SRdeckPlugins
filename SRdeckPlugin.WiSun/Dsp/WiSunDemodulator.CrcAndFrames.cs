@@ -1,6 +1,8 @@
 ﻿using SRdeckPlugin.Contracts;
 using SRdeckPlugin.WiSun.Models;
 
+using SRdeckCore.SignalProcessing;
+
 namespace SRdeckPlugin.WiSun.Dsp;
 
 /// <summary>
@@ -131,30 +133,38 @@ public sealed partial class WiSunDemodulator
     private void MeasurePower(int start, int end, out float peakDbfs, out float averageDbfs)
     {
         float peak = 0;
-        double sum = 0;
         for (int index = start; index < end; index++)
-        {
             peak = MathF.Max(peak, power[index]);
-            sum += power[index];
-        }
+        double sum = powerPrefix[end] - powerPrefix[start];
         peakDbfs = 10 * MathF.Log10(MathF.Max(peak, 1e-12f));
         averageDbfs = 10 * MathF.Log10(MathF.Max((float)(sum / Math.Max(1, end - start)), 1e-12f));
     }
 
     private void TrimConsumedSamples()
     {
-        int retain = (MaximumCapturedPreambleBytes * 8 + SfdBitCount + PhrBitCount) *
-            SamplesPerBit;
-        int remove = Math.Max(0, scanSample - retain);
-        if (remove < 32768) return;
-        discriminator.RemoveRange(0, remove);
-        power.RemoveRange(0, remove);
-        discriminatorPrefix.RemoveRange(0, remove);
-        powerPrefix.RemoveRange(0, remove);
+        int remove = Math.Max(0, scanSample - RetainedHistorySamples);
+        if (remove < SampleTrimThreshold) return;
+        discriminator.RemoveFirst(remove);
+        power.RemoveFirst(remove);
+        discriminatorPrefix.RemoveFirst(remove);
+        powerPrefix.RemoveFirst(remove);
+        RebasePrefixIfNeeded(discriminatorPrefix);
+        RebasePrefixIfNeeded(powerPrefix);
         bufferSampleOffset += remove;
         scanSample -= remove;
         if (rfBurstStartSample >= 0)
             rfBurstStartSample = Math.Max(0, rfBurstStartSample - remove);
+    }
+
+    internal static bool RebasePrefixIfNeeded(SlidingSampleBuffer<double> prefix)
+    {
+        if (prefix.Count == 0) return false;
+        double offset = prefix[0];
+        if (Math.Abs(offset) < PrefixRebaseThreshold) return false;
+
+        for (int index = 0; index < prefix.Count; index++)
+            prefix[index] -= offset;
+        return true;
     }
 
     private static WiSunPacketFrame DecodeMacFrame(

@@ -22,9 +22,15 @@ internal sealed class LoRaChannelizer
     internal static int CalculateIntermediateSampleRateHz(int inputSampleRateHz)
     {
         if (inputSampleRateHz <= 0) return 0;
-        int decimation = Math.Max(1, inputSampleRateHz / MaximumIntermediateRateHz);
+        int decimation = CalculateStageOneDecimation(inputSampleRateHz);
         return inputSampleRateHz / decimation;
     }
+
+    internal static int CalculateStageOneDecimation(int inputSampleRateHz) =>
+        inputSampleRateHz <= 0
+            ? 0
+            : checked((int)((inputSampleRateHz + (long)MaximumIntermediateRateHz - 1) /
+                            MaximumIntermediateRateHz));
     private readonly float[] _delayI = new float[TapCount * 2];
     private readonly float[] _delayQ = new float[TapCount * 2];
     private readonly float[] _taps = new float[TapCount];
@@ -35,12 +41,14 @@ internal sealed class LoRaChannelizer
     private int _inputSampleRateHz;
     private double _frequencyOffsetHz;
     private int _bandwidthHz;
+    private int _decoderSampleRateHz = MeshtasticJpLongFastProfile.DecoderSampleRateHz;
     private double _oscillatorI = 1.0;
     private double _oscillatorQ;
     private double _stepI = 1.0;
     private double _stepQ;
     private int _intermediateRateHz;
     private int _stageOneDecimation;
+    private bool _enforceIntermediateRateLimit = true;
     private double _cicOutputScale = 1.0 / 32768.0;
     private int _stageOneCount;
     private long _cicIntegrator1I, _cicIntegrator1Q;
@@ -53,13 +61,42 @@ internal sealed class LoRaChannelizer
     private int _normalizationCounter;
 
     public void Configure(int inputSampleRateHz, double frequencyOffsetHz, int bandwidthHz)
+        => ConfigureCore(inputSampleRateHz, frequencyOffsetHz, bandwidthHz,
+            MeshtasticJpLongFastProfile.DecoderSampleRateHz, enforceIntermediateRateLimit: true);
+
+    internal void ConfigureForTest(
+        int inputSampleRateHz,
+        double frequencyOffsetHz,
+        int bandwidthHz,
+        int decoderSampleRateHz,
+        bool enforceIntermediateRateLimit = true)
+        => ConfigureCore(inputSampleRateHz, frequencyOffsetHz, bandwidthHz,
+            decoderSampleRateHz, enforceIntermediateRateLimit);
+
+    private void ConfigureCore(
+        int inputSampleRateHz,
+        double frequencyOffsetHz,
+        int bandwidthHz,
+        int decoderSampleRateHz,
+        bool enforceIntermediateRateLimit)
     {
-        if (inputSampleRateHz == _inputSampleRateHz && bandwidthHz == _bandwidthHz && Math.Abs(frequencyOffsetHz - _frequencyOffsetHz) < 0.5) return;
+        if (decoderSampleRateHz <= 0 ||
+            decoderSampleRateHz > CalculateIntermediateSampleRateHz(inputSampleRateHz))
+            throw new ArgumentOutOfRangeException(nameof(decoderSampleRateHz));
+        if (inputSampleRateHz == _inputSampleRateHz &&
+            bandwidthHz == _bandwidthHz &&
+            decoderSampleRateHz == _decoderSampleRateHz &&
+            enforceIntermediateRateLimit == _enforceIntermediateRateLimit &&
+            Math.Abs(frequencyOffsetHz - _frequencyOffsetHz) < 0.5) return;
 
         _inputSampleRateHz = inputSampleRateHz;
         _frequencyOffsetHz = frequencyOffsetHz;
         _bandwidthHz = bandwidthHz;
-        _stageOneDecimation = Math.Max(1, inputSampleRateHz / MaximumIntermediateRateHz);
+        _decoderSampleRateHz = decoderSampleRateHz;
+        _enforceIntermediateRateLimit = enforceIntermediateRateLimit;
+        _stageOneDecimation = enforceIntermediateRateLimit
+            ? CalculateStageOneDecimation(inputSampleRateHz)
+            : Math.Max(1, inputSampleRateHz / MaximumIntermediateRateHz);
         _cicOutputScale = 1.0 / (32768.0 * _stageOneDecimation * _stageOneDecimation * _stageOneDecimation);
         _intermediateRateHz = inputSampleRateHz / _stageOneDecimation;
         double step = -2.0 * Math.PI * frequencyOffsetHz / inputSampleRateHz;
@@ -100,7 +137,7 @@ internal sealed class LoRaChannelizer
         int count = Math.Min(inputI.Length, inputQ.Length);
         int outputCount = 0;
         if (detectors is not null)
-            EnsureOutputCapacity((int)Math.Ceiling((double)count * MeshtasticJpLongFastProfile.DecoderSampleRateHz /
+            EnsureOutputCapacity((int)Math.Ceiling((double)count * _decoderSampleRateHz /
                                                    (double)Math.Max(1, _inputSampleRateHz)) + 2);
         for (int n = 0; n < count; n++)
         {
@@ -161,7 +198,7 @@ internal sealed class LoRaChannelizer
             _delayIndex++;
             if (_delayIndex == TapCount) _delayIndex = 0;
 
-            _outputAccumulator += MeshtasticJpLongFastProfile.DecoderSampleRateHz;
+            _outputAccumulator += _decoderSampleRateHz;
             if (_outputAccumulator < _intermediateRateHz) continue;
             _outputAccumulator -= _intermediateRateHz;
 

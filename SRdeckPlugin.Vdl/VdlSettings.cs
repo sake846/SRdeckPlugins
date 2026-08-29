@@ -29,13 +29,16 @@ public sealed record VdlSettings
         MaximumAircraft = Math.Clamp(MaximumAircraft, 50, 5000),
         RetentionMinutes = Math.Clamp(RetentionMinutes, 1, 240),
         MaximumTrailPoints = Math.Clamp(MaximumTrailPoints, 10, 1000),
-        SaveDecodedFrames = true,
-        SaveUnparsedFrames = true,
-        SaveRawFrames = true,
-        SaveAcarsText = true,
-        ProtocolFilter = "all",
+        ProtocolFilter = ProtocolFilter switch
+        {
+            "all" or "avlc" or "acars" or "x25" or "other" => ProtocolFilter,
+            _ => "all"
+        },
         MonitorAudioVolume = Math.Clamp(MonitorAudioVolume, 0, 100),
-        PreambleVerificationSymbols = 16,
-        AdaptiveEqualizerEnabled = true
+        PreambleVerificationSymbols = PreambleVerificationSymbols switch
+        {
+            16 or 12 or 8 or 4 => PreambleVerificationSymbols,
+            _ => 16
+        }
     };
 }

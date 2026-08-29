@@ -7,6 +7,11 @@ namespace SRdeckPlugin.Hfdl.Dsp;
 
 public sealed partial class HfdlReceiver
 {
+    private const int SparseDifferentialStride = 8;
+    // Squared form of the established conservative 0.40 coarse gate. This
+    // preserves its decision boundary without a square root per scan point.
+    private const double SparsePreambleCorrelationThresholdSquared = 0.16;
+
     private List<HfdlFrame> DecodeAvailable(IqBlockMetadata metadata)
     {
         var output = new List<HfdlFrame>();
@@ -39,9 +44,9 @@ public sealed partial class HfdlReceiver
                 Complex32[] symbols = SliceTrackedSymbols(trial, requiredSymbols);
                 CorrectCarrier(symbols, trial.CarrierStep, trial.Channel);
                 ReadOnlySpan<Complex32> data = symbols.AsSpan(HfdlPhysicalLayer.PreambleSymbols);
-                bool[] shiftedM1 = HfdlPhysicalLayer.ShiftedM1(trial.Mode.M1Shift);
+                ReadOnlySpan<bool> shiftedM1 = HfdlPhysicalLayer.ShiftedM1(trial.Mode.M1Shift);
                 bool[] decoded = HfdlPhysicalLayer.DecodeDataSymbols(data, trial.Mode,
-                    shiftedM1.AsSpan(0, HfdlPhysicalLayer.ProbeSymbolsPerFrame), out double trialQuality);
+                    shiftedM1[..HfdlPhysicalLayer.ProbeSymbolsPerFrame], out double trialQuality);
                 if (!HfdlPhysicalLayer.TryExtractMpdu(decoded, out byte[] trialMpdu)) continue;
                 acceptedCandidate = trial;
                 dataQuality = trialQuality;
@@ -72,71 +77,167 @@ public sealed partial class HfdlReceiver
 
     private BurstCandidate? FindPreamble()
     {
+        long searchStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         preambleSearchPassCount++;
         BurstCandidate? best = null;
         double scanBestCorrelation = 0;
+        int sparsePointCount = SparseDifferentialPointCount(HfdlPhysicalLayer.A.Length);
+        PrepareIntegerSymbols();
         for (int timing = 0; timing < SamplesPerSymbol; timing++)
         {
-            Complex32[] symbols = SliceSymbols(timing, (working.Count - timing) / SamplesPerSymbol);
+            Span<Complex32> symbols = SliceIntegerSymbols(
+                timing, (working.Count - timing) / SamplesPerSymbol);
+            Span<double> magnitudes = PrepareSymbolMetrics(symbols);
+            ReadOnlySpan<double> differentialEnergyPrefix =
+                differentialEnergyPrefixScratch.AsSpan(0, symbols.Length);
+            preambleMagnitudeCalculationCount += symbols.Length;
             int maximumStart = symbols.Length - HfdlPhysicalLayer.PreambleSymbols;
-            for (int start = 0; start <= maximumStart; start++)
+            int minimumStart = Math.Max(0, (preambleSearchSampleOffset - timing + SamplesPerSymbol - 1) /
+                SamplesPerSymbol);
+            if (minimumStart > maximumStart) continue;
+
+            preambleCorrelationEvaluationCount++;
+            double currentSparseSquared = SparseDifferentialCorrelationSquared(
+                symbols, magnitudes, minimumStart, HfdlPhysicalLayer.A,
+                out double currentReal, out double currentImaginary);
+            preambleSparseCorrelationPointCount += sparsePointCount;
+            if (currentSparseSquared >= SparsePreambleCorrelationThresholdSquared)
+                preambleSparseGateCandidateCount++;
+            double leftSparseSquared = double.NegativeInfinity;
+            int currentStart = minimumStart;
+            // A sentinel right neighbor lets the final start use the same hot
+            // loop as every interior three-point local-maximum decision.
+            for (int nextStart = minimumStart + 1; nextStart <= maximumStart + 1; nextStart++)
             {
-                // Reject noise with a sparse differential probe before paying
-                // for the complete 127-symbol correlation. Genuine A sequences
-                // remain well above this deliberately conservative gate.
-                if (SparseDifferentialCorrelation(symbols, start, HfdlPhysicalLayer.A) < 0.40) continue;
-                double first = DifferentialCorrelation(symbols, start, HfdlPhysicalLayer.A);
+                double nextSparseSquared = double.NegativeInfinity;
+                double nextReal = 0;
+                double nextImaginary = 0;
+                if (nextStart <= maximumStart)
+                {
+                    preambleCorrelationEvaluationCount++;
+                    nextSparseSquared = SparseDifferentialCorrelationSquared(
+                        symbols, magnitudes, nextStart, HfdlPhysicalLayer.A,
+                        out nextReal, out nextImaginary);
+                    preambleSparseCorrelationPointCount += sparsePointCount;
+                    if (nextSparseSquared >= SparsePreambleCorrelationThresholdSquared)
+                        preambleSparseGateCandidateCount++;
+                }
+
+                int candidateStart = currentStart;
+                double candidateReal = currentReal;
+                double candidateImaginary = currentImaginary;
+                bool isCoarsePeak = currentSparseSquared >= SparsePreambleCorrelationThresholdSquared &&
+                    currentSparseSquared >= leftSparseSquared &&
+                    currentSparseSquared >= nextSparseSquared;
+                leftSparseSquared = currentSparseSquared;
+                currentSparseSquared = nextSparseSquared;
+                currentReal = nextReal;
+                currentImaginary = nextImaginary;
+                currentStart = nextStart;
+                if (!isCoarsePeak) continue;
+
+                preambleCoarsePeakCandidateCount++;
+                double first = CompleteDifferentialCorrelation(
+                    symbols, differentialEnergyPrefix, candidateStart, HfdlPhysicalLayer.A,
+                    candidateReal, candidateImaginary, out double carrierStep);
+                preambleFullCorrelationEvaluationCount++;
+                preambleFullCorrelationPointCount += HfdlPhysicalLayer.A.Length - 1 - sparsePointCount;
+                preambleReusedCorrelationPointCount += sparsePointCount;
                 scanBestCorrelation = Math.Max(scanBestCorrelation, first);
                 if (first < MinimumPreambleCorrelation) continue;
                 preambleCandidateCount++;
-                double second = DifferentialCorrelation(symbols, start + 127, HfdlPhysicalLayer.A);
+                double second = DifferentialCorrelation(
+                    symbols, differentialEnergyPrefix, candidateStart + 127, HfdlPhysicalLayer.A, out _);
+                preambleFullCorrelationEvaluationCount++;
+                preambleFullCorrelationPointCount += HfdlPhysicalLayer.A.Length - 1;
                 double correlation = (first + second) * 0.5;
-                if (second < MinimumPreambleCorrelation || (best is not null && correlation <= best.Value.Correlation)) continue;
+                if (second < MinimumPreambleCorrelation ||
+                    (best is not null && correlation <= best.Value.Correlation)) continue;
 
-                double carrierStep = EstimateCarrierStep(symbols, start, HfdlPhysicalLayer.A);
-                Complex32 channel = EstimateChannel(symbols, start, HfdlPhysicalLayer.A, carrierStep);
-                HfdlPhysicalMode? mode = IdentifyMode(symbols, start + 254, carrierStep, channel, out double modeCorrelation);
+                Complex32 channel = EstimateChannel(
+                    symbols, candidateStart, HfdlPhysicalLayer.A, carrierStep);
+                HfdlPhysicalMode? mode = IdentifyMode(symbols, magnitudes, candidateStart + 254,
+                    carrierStep, channel, out double modeCorrelation);
                 if (mode is null || modeCorrelation < MinimumPreambleCorrelation) continue;
-                bool[] shiftedM1 = HfdlPhysicalLayer.ShiftedM1(mode.Value.M1Shift);
-                double m2Correlation = AbsoluteCorrelation(symbols, start + 381,
-                    shiftedM1.AsSpan(0, HfdlPhysicalLayer.ProbeSymbolsPerFrame), carrierStep, channel);
-                double tailCorrelation = AbsoluteCorrelation(symbols, start + 396,
+                ReadOnlySpan<bool> shiftedM1 = HfdlPhysicalLayer.ShiftedM1(mode.Value.M1Shift);
+                double m2Correlation = AbsoluteCorrelation(symbols, magnitudes, candidateStart + 381,
+                    shiftedM1[..HfdlPhysicalLayer.ProbeSymbolsPerFrame], carrierStep, channel);
+                double tailCorrelation = AbsoluteCorrelation(symbols, magnitudes, candidateStart + 396,
                     HfdlPhysicalLayer.T, carrierStep, channel);
-                if (m2Correlation < MinimumPreambleCorrelation || tailCorrelation < MinimumPreambleCorrelation) continue;
-                Complex32 burstRelativeChannel = Rotate(channel, carrierStep * start);
-                best = new(timing + start * SamplesPerSymbol, carrierStep, burstRelativeChannel, mode.Value,
+                if (m2Correlation < MinimumPreambleCorrelation ||
+                    tailCorrelation < MinimumPreambleCorrelation) continue;
+                Complex32 burstRelativeChannel = Rotate(channel, carrierStep * candidateStart);
+                best = new(timing + candidateStart * SamplesPerSymbol, carrierStep,
+                    burstRelativeChannel, mode.Value,
                     (correlation + modeCorrelation + m2Correlation + tailCorrelation) * 0.25);
             }
         }
         lastSearchBestCorrelation = scanBestCorrelation;
+        if (best is null)
+        {
+            // Starts up to working.Count - preamble length were fully tested.
+            // Keep the first incomplete sample position so the next block only
+            // evaluates newly completed preambles.
+            preambleSearchSampleOffset = Math.Max(0,
+                working.Count - HfdlPhysicalLayer.PreambleSymbols * SamplesPerSymbol + 1);
+        }
         if (best is not null)
         {
             best = RefineCandidate(best.Value);
             synchronizationCount++;
         }
+        preambleSearchCpuTicks += System.Diagnostics.Stopwatch.GetTimestamp() - searchStarted;
         return best;
+    }
+
+    internal static PreambleSearchProbe EvaluatePreambleSearch(
+        ReadOnlySpan<Complex32> workingSamples)
+    {
+        var receiver = new HfdlReceiver();
+        receiver.working.EnsureCapacity(workingSamples.Length);
+        foreach (Complex32 sample in workingSamples) receiver.working.Add(sample);
+        BurstCandidate? candidate = receiver.FindPreamble();
+        DiagnosticsSnapshot diagnostics = receiver.GetDiagnostics();
+        return new(candidate is not null,
+            candidate?.SampleOffset ?? double.NaN,
+            candidate?.Correlation ?? 0,
+            diagnostics.PreambleSparseGateCandidateCount,
+            diagnostics.PreambleCoarsePeakCandidateCount,
+            diagnostics.PreambleFullCorrelationEvaluationCount,
+            diagnostics.PreambleRefinementCount);
     }
 
     private BurstCandidate RefineCandidate(BurstCandidate initial)
     {
+        preambleRefinementCount++;
         BurstCandidate best = initial;
         for (int quarter = -3; quarter <= 3; quarter++)
         {
             double sampleOffset = initial.SampleOffset + quarter * 0.25;
             if (sampleOffset < 0 || sampleOffset + HfdlPhysicalLayer.PreambleSymbols * SamplesPerSymbol + 1 >= working.Count)
                 continue;
-            Complex32[] symbols = SliceSymbols(sampleOffset, HfdlPhysicalLayer.PreambleSymbols);
-            double first = DifferentialCorrelation(symbols, 0, HfdlPhysicalLayer.A);
-            double second = DifferentialCorrelation(symbols, 127, HfdlPhysicalLayer.A);
+            Complex32[] symbols = SliceFractionalSymbols(
+                sampleOffset, HfdlPhysicalLayer.PreambleSymbols);
+            Span<double> magnitudes = PrepareSymbolMetrics(symbols);
+            ReadOnlySpan<double> differentialEnergyPrefix =
+                differentialEnergyPrefixScratch.AsSpan(0, symbols.Length);
+            preambleMagnitudeCalculationCount += symbols.Length;
+            double first = DifferentialCorrelation(
+                symbols, differentialEnergyPrefix, 0, HfdlPhysicalLayer.A, out double carrierStep);
+            double second = DifferentialCorrelation(
+                symbols, differentialEnergyPrefix, 127, HfdlPhysicalLayer.A, out _);
+            preambleFullCorrelationEvaluationCount += 2;
+            preambleFullCorrelationPointCount += 2L * (HfdlPhysicalLayer.A.Length - 1);
             if (first < MinimumPreambleCorrelation || second < MinimumPreambleCorrelation) continue;
-            double carrierStep = EstimateCarrierStep(symbols, 0, HfdlPhysicalLayer.A);
             Complex32 channel = EstimateChannel(symbols, 0, HfdlPhysicalLayer.A, carrierStep);
-            HfdlPhysicalMode? mode = IdentifyMode(symbols, 254, carrierStep, channel, out double modeCorrelation);
+            HfdlPhysicalMode? mode = IdentifyMode(symbols, magnitudes, 254,
+                carrierStep, channel, out double modeCorrelation);
             if (mode is null) continue;
-            bool[] shiftedM1 = HfdlPhysicalLayer.ShiftedM1(mode.Value.M1Shift);
-            double m2 = AbsoluteCorrelation(symbols, 381,
-                shiftedM1.AsSpan(0, HfdlPhysicalLayer.ProbeSymbolsPerFrame), carrierStep, channel);
-            double tail = AbsoluteCorrelation(symbols, 396, HfdlPhysicalLayer.T, carrierStep, channel);
+            ReadOnlySpan<bool> shiftedM1 = HfdlPhysicalLayer.ShiftedM1(mode.Value.M1Shift);
+            double m2 = AbsoluteCorrelation(symbols, magnitudes, 381,
+                shiftedM1[..HfdlPhysicalLayer.ProbeSymbolsPerFrame], carrierStep, channel);
+            double tail = AbsoluteCorrelation(symbols, magnitudes, 396,
+                HfdlPhysicalLayer.T, carrierStep, channel);
             double score = ((first + second) * 0.5 + modeCorrelation + m2 + tail) * 0.25;
             if (score <= best.Correlation) continue;
             best = new(sampleOffset, carrierStep, channel, mode.Value, score);
@@ -144,23 +245,32 @@ public sealed partial class HfdlReceiver
         return best;
     }
 
-    private static HfdlPhysicalMode? IdentifyMode(ReadOnlySpan<Complex32> symbols, int offset,
-        double carrierStep, Complex32 channel, out double bestCorrelation)
+    private static HfdlPhysicalMode? IdentifyMode(ReadOnlySpan<Complex32> symbols,
+        ReadOnlySpan<double> magnitudes, int offset, double carrierStep,
+        Complex32 channel, out double bestCorrelation)
     {
         HfdlPhysicalMode? best = null;
         bestCorrelation = 0;
         double inverse = 1.0 / Math.Max(channel.I * channel.I + channel.Q * channel.Q, 1e-12f);
+        double inverseMagnitude = Math.Sqrt(inverse);
+        Span<Complex32> corrected = stackalloc Complex32[127];
+        var rotator = new HfdlPhysicalLayer.LinearPhaseRotator(
+            -carrierStep * offset, -carrierStep);
+        double energy = 0;
+        for (int index = 0; index < corrected.Length; index++)
+        {
+            corrected[index] = Equalize(rotator.RotateNext(symbols[offset + index]), channel, inverse);
+            energy += magnitudes[offset + index] * inverseMagnitude;
+        }
         foreach (HfdlPhysicalMode mode in HfdlPhysicalMode.All)
         {
-            bool[] sequence = HfdlPhysicalLayer.ShiftedM1(mode.M1Shift);
-            double real = 0, imaginary = 0, energy = 0;
+            ReadOnlySpan<bool> sequence = HfdlPhysicalLayer.ShiftedM1(mode.M1Shift);
+            double real = 0, imaginary = 0;
             for (int index = 0; index < sequence.Length; index++)
             {
-                Complex32 value = Rotate(symbols[offset + index], -carrierStep * (offset + index));
-                value = Equalize(value, channel, inverse);
+                Complex32 value = corrected[index];
                 float sign = sequence[index] ? -1 : 1;
                 real += value.I * sign; imaginary += value.Q * sign;
-                energy += Math.Sqrt(value.I * value.I + value.Q * value.Q);
             }
             double correlation = Math.Sqrt(real * real + imaginary * imaginary) / Math.Max(energy, 1e-12);
             if (correlation <= bestCorrelation) continue;
@@ -186,51 +296,135 @@ public sealed partial class HfdlReceiver
         return Math.Sqrt(real * real + imaginary * imaginary) / Math.Max(energy, 1e-12);
     }
 
-    private static double SparseDifferentialCorrelation(ReadOnlySpan<Complex32> symbols, int offset,
-        ReadOnlySpan<bool> expected)
+    private static double ReferenceSparseDifferentialCorrelation(
+        ReadOnlySpan<Complex32> symbols, int offset, ReadOnlySpan<bool> expected)
     {
         if (offset < 0 || offset + expected.Length > symbols.Length) return 0;
         double real = 0, imaginary = 0, energy = 0;
-        const int stride = 8;
-        for (int index = 1; index < expected.Length; index += stride)
+        for (int index = 1; index < expected.Length; index += SparseDifferentialStride)
         {
-            Complex32 previous = symbols[offset + index - 1], current = symbols[offset + index];
-            double i = previous.I * current.I + previous.Q * current.Q;
-            double q = previous.I * current.Q - previous.Q * current.I;
+            Complex32 previous = symbols[offset + index - 1];
+            Complex32 current = symbols[offset + index];
             double sign = expected[index - 1] == expected[index] ? 1 : -1;
-            real += i * sign;
-            imaginary += q * sign;
+            real += (previous.I * current.I + previous.Q * current.Q) * sign;
+            imaginary += (previous.I * current.Q - previous.Q * current.I) * sign;
             energy += Math.Sqrt((previous.I * previous.I + previous.Q * previous.Q) *
                                 (current.I * current.I + current.Q * current.Q));
         }
         return Math.Sqrt(real * real + imaginary * imaginary) / Math.Max(energy, 1e-12);
     }
 
-    private static double EstimateCarrierStep(ReadOnlySpan<Complex32> symbols, int offset, ReadOnlySpan<bool> expected)
+    private static double DifferentialCorrelation(ReadOnlySpan<Complex32> symbols,
+        ReadOnlySpan<double> differentialEnergyPrefix, int offset, ReadOnlySpan<bool> expected,
+        out double phase)
     {
+        phase = 0;
+        if (offset < 0 || offset + expected.Length > symbols.Length) return 0;
         double real = 0, imaginary = 0;
         for (int index = 1; index < expected.Length; index++)
         {
-            Complex32 previous = symbols[offset + index - 1], current = symbols[offset + index];
+            Complex32 previous = symbols[offset + index - 1];
+            Complex32 current = symbols[offset + index];
             double sign = expected[index - 1] == expected[index] ? 1 : -1;
             real += (previous.I * current.I + previous.Q * current.Q) * sign;
             imaginary += (previous.I * current.Q - previous.Q * current.I) * sign;
         }
-        return Math.Atan2(imaginary, real);
+        double energy = differentialEnergyPrefix[offset + expected.Length - 1] -
+                        differentialEnergyPrefix[offset];
+        phase = Math.Atan2(imaginary, real);
+        return CorrelationValue(real, imaginary, energy);
     }
 
-    private static double AbsoluteCorrelation(ReadOnlySpan<Complex32> symbols, int offset,
-        ReadOnlySpan<bool> expected, double carrierStep, Complex32 channel)
+    private static double SparseDifferentialCorrelationSquared(ReadOnlySpan<Complex32> symbols,
+        ReadOnlySpan<double> magnitudes, int offset, ReadOnlySpan<bool> expected,
+        out double real, out double imaginary)
+    {
+        real = 0;
+        imaginary = 0;
+        if (offset < 0 || offset + expected.Length > symbols.Length) return 0;
+        double energy = 0;
+        for (int index = 1; index < expected.Length; index += SparseDifferentialStride)
+        {
+            Complex32 previous = symbols[offset + index - 1];
+            Complex32 current = symbols[offset + index];
+            double sign = expected[index - 1] == expected[index] ? 1 : -1;
+            real += (previous.I * current.I + previous.Q * current.Q) * sign;
+            imaginary += (previous.I * current.Q - previous.Q * current.I) * sign;
+            energy += magnitudes[offset + index - 1] * magnitudes[offset + index];
+        }
+        double denominator = Math.Max(energy, 1e-12);
+        return (real * real + imaginary * imaginary) / (denominator * denominator);
+    }
+
+    private static double CompleteDifferentialCorrelation(ReadOnlySpan<Complex32> symbols,
+        ReadOnlySpan<double> differentialEnergyPrefix, int offset, ReadOnlySpan<bool> expected,
+        double sparseReal, double sparseImaginary, out double phase)
+    {
+        phase = 0;
+        if (offset < 0 || offset + expected.Length > symbols.Length) return 0;
+        double real = sparseReal;
+        double imaginary = sparseImaginary;
+        int nextSparsePoint = 1;
+        for (int index = 1; index < expected.Length; index++)
+        {
+            if (index == nextSparsePoint)
+            {
+                nextSparsePoint += SparseDifferentialStride;
+                continue;
+            }
+            Complex32 previous = symbols[offset + index - 1];
+            Complex32 current = symbols[offset + index];
+            double sign = expected[index - 1] == expected[index] ? 1 : -1;
+            real += (previous.I * current.I + previous.Q * current.Q) * sign;
+            imaginary += (previous.I * current.Q - previous.Q * current.I) * sign;
+        }
+        double energy = differentialEnergyPrefix[offset + expected.Length - 1] -
+                        differentialEnergyPrefix[offset];
+        phase = Math.Atan2(imaginary, real);
+        return CorrelationValue(real, imaginary, energy);
+    }
+
+    private static double CorrelationValue(double real, double imaginary, double energy) =>
+        Math.Sqrt(real * real + imaginary * imaginary) / Math.Max(energy, 1e-12);
+
+    private static int SparseDifferentialPointCount(int expectedLength) =>
+        expectedLength <= 1 ? 0 : (expectedLength - 2) / SparseDifferentialStride + 1;
+
+    internal static DifferentialCorrelationProbe EvaluateDifferentialCorrelation(
+        ReadOnlySpan<Complex32> symbols, int offset, ReadOnlySpan<bool> expected)
+    {
+        if (expected.Length < 2) throw new ArgumentException("At least two expected symbols are required.", nameof(expected));
+        var magnitudes = new double[symbols.Length];
+        var differentialEnergyPrefix = new double[symbols.Length];
+        CalculateSymbolMetrics(symbols, magnitudes, differentialEnergyPrefix);
+        int sparsePointCount = SparseDifferentialPointCount(expected.Length);
+        double sparseSquared = SparseDifferentialCorrelationSquared(
+            symbols, magnitudes, offset, expected, out double sparseReal, out double sparseImaginary);
+        double complete = CompleteDifferentialCorrelation(
+            symbols, differentialEnergyPrefix, offset, expected,
+            sparseReal, sparseImaginary, out _);
+        double sparseReference = ReferenceSparseDifferentialCorrelation(symbols, offset, expected);
+        double reference = DifferentialCorrelation(symbols, offset, expected);
+        return new(Math.Sqrt(sparseSquared), sparseReference, complete, reference,
+            sparsePointCount, expected.Length - 1 - sparsePointCount,
+            sparseSquared >= SparsePreambleCorrelationThresholdSquared);
+    }
+
+    private static double AbsoluteCorrelation(ReadOnlySpan<Complex32> symbols,
+        ReadOnlySpan<double> magnitudes, int offset, ReadOnlySpan<bool> expected,
+        double carrierStep, Complex32 channel)
     {
         double inverse = 1.0 / Math.Max(channel.I * channel.I + channel.Q * channel.Q, 1e-12f);
+        double inverseMagnitude = Math.Sqrt(inverse);
         double real = 0, imaginary = 0, energy = 0;
+        var rotator = new HfdlPhysicalLayer.LinearPhaseRotator(
+            -carrierStep * offset, -carrierStep);
         for (int index = 0; index < expected.Length; index++)
         {
-            Complex32 value = Equalize(Rotate(symbols[offset + index],
-                -carrierStep * (offset + index)), channel, inverse);
+            Complex32 value = Equalize(rotator.RotateNext(symbols[offset + index]), channel, inverse);
             double sign = expected[index] ? -1 : 1;
             real += value.I * sign; imaginary += value.Q * sign;
-            energy += Math.Sqrt(value.I * value.I + value.Q * value.Q);
+            energy += magnitudes[offset + index] * inverseMagnitude;
         }
         return Math.Sqrt(real * real + imaginary * imaginary) / Math.Max(energy, 1e-12);
     }
@@ -239,9 +433,11 @@ public sealed partial class HfdlReceiver
         ReadOnlySpan<bool> expected, double carrierStep)
     {
         double i = 0, q = 0;
+        var rotator = new HfdlPhysicalLayer.LinearPhaseRotator(
+            -carrierStep * offset, -carrierStep);
         for (int index = 0; index < expected.Length; index++)
         {
-            Complex32 value = Rotate(symbols[offset + index], -carrierStep * (offset + index));
+            Complex32 value = rotator.RotateNext(symbols[offset + index]);
             double sign = expected[index] ? -1 : 1;
             i += value.I * sign; q += value.Q * sign;
         }
@@ -251,11 +447,112 @@ public sealed partial class HfdlReceiver
     private static void CorrectCarrier(Span<Complex32> symbols, double carrierStep, Complex32 channel)
     {
         double inverse = 1.0 / Math.Max(channel.I * channel.I + channel.Q * channel.Q, 1e-12f);
+        var rotator = new HfdlPhysicalLayer.LinearPhaseRotator(0, -carrierStep);
         for (int index = 0; index < symbols.Length; index++)
-            symbols[index] = Equalize(Rotate(symbols[index], -carrierStep * index), channel, inverse);
+            symbols[index] = Equalize(rotator.RotateNext(symbols[index]), channel, inverse);
     }
 
-    private Complex32[] SliceSymbols(double sampleOffset, int count)
+    private Span<double> PrepareSymbolMetrics(ReadOnlySpan<Complex32> symbols)
+    {
+        if (symbolMagnitudeScratch.Length < symbols.Length)
+            Array.Resize(ref symbolMagnitudeScratch,
+                Math.Max(symbols.Length, symbolMagnitudeScratch.Length * 2));
+        if (differentialEnergyPrefixScratch.Length < symbols.Length)
+            Array.Resize(ref differentialEnergyPrefixScratch,
+                Math.Max(symbols.Length, differentialEnergyPrefixScratch.Length * 2));
+        Span<double> magnitudes = symbolMagnitudeScratch.AsSpan(0, symbols.Length);
+        CalculateSymbolMetrics(symbols, magnitudes,
+            differentialEnergyPrefixScratch.AsSpan(0, symbols.Length));
+        return magnitudes;
+    }
+
+    private static void CalculateSymbolMetrics(ReadOnlySpan<Complex32> symbols, Span<double> magnitudes,
+        Span<double> differentialEnergyPrefix)
+    {
+        if (magnitudes.Length < symbols.Length)
+            throw new ArgumentException("The magnitude buffer is too small.", nameof(magnitudes));
+        if (differentialEnergyPrefix.Length < symbols.Length)
+            throw new ArgumentException("The differential energy buffer is too small.", nameof(differentialEnergyPrefix));
+        for (int index = 0; index < symbols.Length; index++)
+        {
+            Complex32 symbol = symbols[index];
+            magnitudes[index] = Math.Sqrt(symbol.I * symbol.I + symbol.Q * symbol.Q);
+        }
+        if (symbols.Length == 0) return;
+        differentialEnergyPrefix[0] = 0;
+        for (int index = 1; index < symbols.Length; index++)
+            differentialEnergyPrefix[index] = differentialEnergyPrefix[index - 1] +
+                magnitudes[index - 1] * magnitudes[index];
+    }
+
+    private void PrepareIntegerSymbols()
+    {
+        integerSymbolStride = working.Count / SamplesPerSymbol;
+        int requiredLength = integerSymbolStride * SamplesPerSymbol;
+        if (workingSampleScratch.Length < working.Count)
+            Array.Resize(ref workingSampleScratch,
+                Math.Max(working.Count, workingSampleScratch.Length * 2));
+        if (integerSymbolScratch.Length < requiredLength)
+            Array.Resize(ref integerSymbolScratch,
+                Math.Max(requiredLength, integerSymbolScratch.Length * 2));
+        if (integerSymbolStride == 0) return;
+        // Linearize the circular history once, then store every rolling
+        // 8-sample average in phase-major order for contiguous correlation.
+        Span<Complex32> source = workingSampleScratch.AsSpan(0, working.Count);
+        working.CopyTo(source);
+        FillIntegerSymbolPhases(source,
+            integerSymbolScratch.AsSpan(0, requiredLength), integerSymbolStride);
+    }
+
+    private Span<Complex32> SliceIntegerSymbols(int timing, int count)
+    {
+        if ((uint)timing >= SamplesPerSymbol)
+            throw new ArgumentOutOfRangeException(nameof(timing));
+        if (count < 0 || timing + (long)count * SamplesPerSymbol > working.Count)
+            throw new ArgumentOutOfRangeException(nameof(count));
+        return integerSymbolScratch.AsSpan(timing * integerSymbolStride, count);
+    }
+
+    internal static Complex32[] EvaluateIntegerSymbolSlicing(
+        ReadOnlySpan<Complex32> samples, int timing)
+    {
+        if ((uint)timing >= SamplesPerSymbol)
+            throw new ArgumentOutOfRangeException(nameof(timing));
+        int count = (samples.Length - timing) / SamplesPerSymbol;
+        if (count <= 0) return [];
+        int stride = samples.Length / SamplesPerSymbol;
+        var phases = new Complex32[stride * SamplesPerSymbol];
+        FillIntegerSymbolPhases(samples, phases, stride);
+        var output = new Complex32[count];
+        phases.AsSpan(timing * stride, count).CopyTo(output);
+        return output;
+    }
+
+    private static void FillIntegerSymbolPhases(ReadOnlySpan<Complex32> samples,
+        Span<Complex32> phases, int stride)
+    {
+        double sumI = 0;
+        double sumQ = 0;
+        for (int sample = 0; sample < SamplesPerSymbol; sample++)
+        {
+            sumI += samples[sample].I;
+            sumQ += samples[sample].Q;
+        }
+        const double scale = 1.0 / SamplesPerSymbol;
+        int lastStart = samples.Length - SamplesPerSymbol;
+        for (int start = 0; start <= lastStart; start++)
+        {
+            int phase = start % SamplesPerSymbol;
+            int symbol = start / SamplesPerSymbol;
+            phases[phase * stride + symbol] =
+                new((float)(sumI * scale), (float)(sumQ * scale));
+            if (start == lastStart) break;
+            sumI += samples[start + SamplesPerSymbol].I - samples[start].I;
+            sumQ += samples[start + SamplesPerSymbol].Q - samples[start].Q;
+        }
+    }
+
+    private Complex32[] SliceFractionalSymbols(double sampleOffset, int count)
     {
         var output = new Complex32[count];
         for (int symbol = 0; symbol < count; symbol++)
@@ -280,29 +577,30 @@ public sealed partial class HfdlReceiver
     private Complex32[] SliceTrackedSymbols(BurstCandidate candidate, int count)
     {
         var output = new Complex32[count];
-        Complex32[] preamble = SliceSymbols(candidate.SampleOffset, HfdlPhysicalLayer.PreambleSymbols);
+        Complex32[] preamble = SliceFractionalSymbols(
+            candidate.SampleOffset, HfdlPhysicalLayer.PreambleSymbols);
         preamble.CopyTo(output, 0);
-        bool[] probe = HfdlPhysicalLayer.ShiftedM1(candidate.Mode.M1Shift);
+        ReadOnlySpan<bool> probe = HfdlPhysicalLayer.ShiftedM1(candidate.Mode.M1Shift);
         double timingAdjustment = 0;
         for (int frame = 0; frame < candidate.Mode.FrameCount; frame++)
         {
             int symbolOffset = HfdlPhysicalLayer.PreambleSymbols + frame * HfdlPhysicalLayer.SymbolsPerFrame;
             double frameSampleOffset = candidate.SampleOffset + symbolOffset * SamplesPerSymbol;
             double bestAdjustment = timingAdjustment;
-            Complex32[] currentProbe = SliceSymbols(frameSampleOffset +
+            Complex32[] currentProbe = SliceFractionalSymbols(frameSampleOffset +
                 HfdlPhysicalLayer.DataSymbolsPerFrame * SamplesPerSymbol + timingAdjustment,
                 HfdlPhysicalLayer.ProbeSymbolsPerFrame);
             double bestScore = DifferentialCorrelation(currentProbe, 0,
-                probe.AsSpan(0, HfdlPhysicalLayer.ProbeSymbolsPerFrame));
+                probe[..HfdlPhysicalLayer.ProbeSymbolsPerFrame]);
             for (int quarter = -2; quarter <= 2; quarter++)
             {
                 if (quarter == 0) continue;
                 double adjustment = timingAdjustment + quarter * 0.25;
-                Complex32[] receivedProbe = SliceSymbols(frameSampleOffset +
+                Complex32[] receivedProbe = SliceFractionalSymbols(frameSampleOffset +
                     HfdlPhysicalLayer.DataSymbolsPerFrame * SamplesPerSymbol + adjustment,
                     HfdlPhysicalLayer.ProbeSymbolsPerFrame);
                 double score = DifferentialCorrelation(receivedProbe, 0,
-                    probe.AsSpan(0, HfdlPhysicalLayer.ProbeSymbolsPerFrame));
+                    probe[..HfdlPhysicalLayer.ProbeSymbolsPerFrame]);
                 // Hysteresis prevents a flat correlation plateau from causing a
                 // random timing walk while still following a real clock drift.
                 if (score <= bestScore + 0.003) continue;
@@ -310,7 +608,7 @@ public sealed partial class HfdlReceiver
                 bestAdjustment = adjustment;
             }
             timingAdjustment = Math.Clamp(bestAdjustment, -4, 4);
-            Complex32[] symbols = SliceSymbols(frameSampleOffset + timingAdjustment,
+            Complex32[] symbols = SliceFractionalSymbols(frameSampleOffset + timingAdjustment,
                 HfdlPhysicalLayer.SymbolsPerFrame);
             symbols.CopyTo(output, symbolOffset);
         }
@@ -320,7 +618,8 @@ public sealed partial class HfdlReceiver
     private void RemoveWorking(int count)
     {
         if (count <= 0) return;
-        working.RemoveRange(0, count);
+        working.RemoveFirst(count);
+        preambleSearchSampleOffset = Math.Max(0, preambleSearchSampleOffset - count);
         workingSampleStart += (long)Math.Round(count * (double)inputSampleRate / WorkingSampleRate);
     }
 
@@ -398,6 +697,24 @@ public sealed partial class HfdlReceiver
             signalPower = 0;
         }
     }
+
+    internal readonly record struct DifferentialCorrelationProbe(
+        double Sparse,
+        double SparseReference,
+        double Complete,
+        double Reference,
+        int SparsePointCount,
+        int CompleteEvaluatedPointCount,
+        bool SparseGatePassed);
+
+    internal readonly record struct PreambleSearchProbe(
+        bool Found,
+        double SampleOffset,
+        double Correlation,
+        long SparseGateCandidateCount,
+        long CoarsePeakCandidateCount,
+        long FullCorrelationEvaluationCount,
+        long RefinementCount);
 
     private readonly record struct BurstCandidate(double SampleOffset, double CarrierStep, Complex32 Channel,
         HfdlPhysicalMode Mode, double Correlation);

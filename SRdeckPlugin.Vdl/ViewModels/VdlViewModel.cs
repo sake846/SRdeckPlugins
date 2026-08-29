@@ -250,7 +250,7 @@ public sealed partial class VdlViewModel : ObservableObject
         get => preambleVerificationSymbols;
         set
         {
-            int normalized = value switch { 16 => 16, 12 => 12, 4 => 4, _ => 16 };
+            int normalized = value switch { 16 => 16, 12 => 12, 8 => 8, 4 => 4, _ => 16 };
             if (preambleVerificationSymbols == normalized) return;
             preambleVerificationSymbols = normalized;
             PreambleVerificationSymbolsChanged?.Invoke(normalized);
@@ -334,7 +334,7 @@ public sealed partial class VdlViewModel : ObservableObject
         retentionMinutes = retentionMins;
         this.maximumTrailPoints = Math.Clamp(maximumTrailPoints, 10, 1000);
         saveRawFrames = saveRaw;
-        preambleVerificationSymbols = verificationSymbols switch { 16 => 16, 12 => 12, 4 => 4, _ => 16 };
+        preambleVerificationSymbols = verificationSymbols switch { 16 => 16, 12 => 12, 8 => 8, 4 => 4, _ => 16 };
         OnPropertyChanged(nameof(SelectedProfileId));
         OnPropertyChanged(nameof(SelectedChannelName));
         OnPropertyChanged(nameof(IsAudioMonitorEnabled));

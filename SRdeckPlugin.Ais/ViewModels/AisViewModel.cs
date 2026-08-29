@@ -16,8 +16,8 @@ public sealed partial class AisViewModel : ObservableObject
     private static readonly TimeSpan DiagnosticWindow = TimeSpan.FromSeconds(60);
     private readonly Dictionary<uint, List<GeoMapPoint>> trails = [];
     private readonly Queue<(DateTimeOffset At, long AValid, long ARejected, long BValid, long BRejected,
-        long AFlags, long ACandidates, long AHypothesisValid,
-        long BFlags, long BCandidates, long BHypothesisValid)> diagnosticHistory = new();
+        long AFlags, long ACandidates, long AHypothesisValid, long AHypothesisRejected,
+        long BFlags, long BCandidates, long BHypothesisValid, long BHypothesisRejected)> diagnosticHistory = new();
     private long recentAValid;
     private long recentARejected;
     private long recentBValid;
@@ -25,9 +25,11 @@ public sealed partial class AisViewModel : ObservableObject
     private long recentAFlags;
     private long recentACandidates;
     private long recentAHypothesisValid;
+    private long recentAHypothesisRejected;
     private long recentBFlags;
     private long recentBCandidates;
     private long recentBHypothesisValid;
+    private long recentBHypothesisRejected;
     private bool bothChannelsInPassband;
     [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private string _status = "待機中";
@@ -51,6 +53,18 @@ public sealed partial class AisViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(AcceptanceRateText))]
     private long _rejectedFrames;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TotalFrames))]
+    [NotifyPropertyChangedFor(nameof(AcceptanceRate))]
+    [NotifyPropertyChangedFor(nameof(AcceptanceRateText))]
+    private long _hypothesisValidFrames;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TotalFrames))]
+    [NotifyPropertyChangedFor(nameof(AcceptanceRate))]
+    [NotifyPropertyChangedFor(nameof(AcceptanceRateText))]
+    private long _hypothesisRejectedFrames;
+
     private int maximumTargets = 500;
     private int retentionMinutes = 30;
     private int historyMaximum = 10_000;
@@ -61,6 +75,7 @@ public sealed partial class AisViewModel : ObservableObject
     private int monitorAudioVolume = 100;
     private bool squelchEnabled = true;
     private float squelchThresholdDbm = -125f;
+    private bool demodulationGateEnabled;
     [ObservableProperty] private int _inputSampleRateHz;
     [ObservableProperty] private long _centerFrequencyHz;
     [ObservableProperty] private string _monitoredChannelsText = "2 ch (AIS 1 / AIS 2)";
@@ -78,7 +93,7 @@ public sealed partial class AisViewModel : ObservableObject
     [ObservableProperty] private string _channelBDiagnosticText = "AIS 2: 入力待機中";
     [ObservableProperty] private string _channelADetectionText = "AIS 1: フラグ同期 — / フレーム候補 — / 仮説FCS合格 —";
     [ObservableProperty] private string _channelBDetectionText = "AIS 2: フラグ同期 — / フレーム候補 — / 仮説FCS合格 —";
-    [ObservableProperty] private string _recentValidationText = "直近60秒: 有効 — / fallback FCS不一致 — / 検証合格率 —";
+    [ObservableProperty] private string _recentValidationText = "直近60秒: AIS 仮説FCS合格 — / 仮説FCS不一致 — / 検証合格率 —";
     [ObservableProperty] private string _passbandStatusText = "AIS 1/2 / 入力待機中";
     [ObservableProperty] private AisTargetRow? _selectedTarget;
     [ObservableProperty] private AisMessageRow? _selectedTimelineMessage;
@@ -95,7 +110,8 @@ public sealed partial class AisViewModel : ObservableObject
     public ObservableCollection<AisMessageRow> FilteredMessages { get; } = [];
     public ObservableCollection<GeoMapMarker> MapMarkers { get; } = [];
 
-    internal Action<int, int, int, int, bool, int, bool, float, bool, string>? SettingsChanged { get; set; }
+    internal Action<int, int, int, int, bool, int, bool, float, bool, string, bool>?
+        SettingsChanged { get; set; }
     internal Action? ClearRequested { get; set; }
 
     partial void OnSearchTextChanged(string value)
@@ -124,14 +140,14 @@ public sealed partial class AisViewModel : ObservableObject
     public int FilteredCount => FilteredMessages.Count;
     public int PositionedTargetCount => MapMarkers.Count;
 
-    public long TotalFrames => ValidFrames + RejectedFrames;
-    public double AcceptanceRate => TotalFrames == 0 ? 0 : ValidFrames * 100.0 / TotalFrames;
+    public long TotalFrames => HypothesisValidFrames + HypothesisRejectedFrames;
+    public double AcceptanceRate => TotalFrames == 0 ? 0 : HypothesisValidFrames * 100.0 / TotalFrames;
     public string AcceptanceRateText => TotalFrames == 0 ? "—" : $"{AcceptanceRate:F1} %";
     public string InputSampleRateText => InputSampleRateHz <= 0 ? "—" :
         InputSampleRateHz >= 1_000_000 ? $"{InputSampleRateHz / 1_000_000.0:F2} MS/s" : $"{InputSampleRateHz / 1_000.0:F1} kS/s";
     public string CenterFrequencyText => CenterFrequencyHz <= 0 ? "—" : $"{CenterFrequencyHz / 1_000_000.0:F3} MHz";
     public string DemodulationMethodText => "複素整合相関 + coherent Viterbi MLSE";
-    public string SettingStatus => $"AIS 1 / AIS 2 / SQ {(SquelchEnabled ? $"{SquelchThresholdDbm:F0} dBm" : "OFF")} / {MaximumTargets:N0}局 / {RetentionMinutes}分";
+    public string SettingStatus => $"AIS 1 / AIS 2 / SQ {(SquelchEnabled ? $"{SquelchThresholdDbm:F0} dBm" : "OFF")} / GATE {(DemodulationGateEnabled ? "ON" : "OFF")} / {MaximumTargets:N0}局 / {RetentionMinutes}分";
 
     public int MaximumTargets
     {
@@ -200,6 +216,12 @@ public sealed partial class AisViewModel : ObservableObject
         set { if (SetProperty(ref squelchEnabled, value)) SettingsUpdated(); }
     }
 
+    public bool DemodulationGateEnabled
+    {
+        get => demodulationGateEnabled;
+        set { if (SetProperty(ref demodulationGateEnabled, value)) SettingsUpdated(); }
+    }
+
     public float SquelchThresholdDbm
     {
         get => squelchThresholdDbm;
@@ -225,7 +247,8 @@ public sealed partial class AisViewModel : ObservableObject
         bool audioEnabled, int audioVolume, bool isSquelchEnabled = true,
         float squelchThreshold = -125f,
         bool saveRaw = true,
-        string channelFilterValue = "both")
+        string channelFilterValue = "both",
+        bool isDemodulationGateEnabled = false)
     {
         maximumTargets = targetLimit;
         retentionMinutes = retention;
@@ -237,6 +260,7 @@ public sealed partial class AisViewModel : ObservableObject
         monitorAudioVolume = audioVolume;
         squelchEnabled = isSquelchEnabled;
         squelchThresholdDbm = Math.Clamp(squelchThreshold, -160f, 0f);
+        demodulationGateEnabled = isDemodulationGateEnabled;
         OnPropertyChanged(nameof(MaximumTargets));
         OnPropertyChanged(nameof(RetentionMinutes));
         OnPropertyChanged(nameof(HistoryMaximum));
@@ -247,6 +271,7 @@ public sealed partial class AisViewModel : ObservableObject
         OnPropertyChanged(nameof(SquelchEnabled));
         OnPropertyChanged(nameof(SquelchThresholdDbm));
         OnPropertyChanged(nameof(SquelchThresholdDbfs));
+        OnPropertyChanged(nameof(DemodulationGateEnabled));
         OnPropertyChanged(nameof(SettingStatus));
     }
 
@@ -307,7 +332,7 @@ public sealed partial class AisViewModel : ObservableObject
         OnPropertyChanged(nameof(SettingStatus));
         SettingsChanged?.Invoke(MaximumTargets, RetentionMinutes, HistoryMaximum,
             MaximumTrailPoints, MonitorAudioEnabled, MonitorAudioVolume, SquelchEnabled, SquelchThresholdDbm,
-            SaveRawFrames, ChannelFilter);
+            SaveRawFrames, ChannelFilter, DemodulationGateEnabled);
     }
 
     private void NotifyTotals()

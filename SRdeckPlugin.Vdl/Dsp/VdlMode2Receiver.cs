@@ -29,6 +29,7 @@ public sealed partial class VdlMode2Receiver
         {
             16 => 16,
             12 => 12,
+            8 => 8,
             4 => 4,
             _ => 16
         };
@@ -107,7 +108,9 @@ public sealed partial class VdlMode2Receiver
     private readonly ComplexFrequencyTranslator downconverter = new();
     private readonly RootRaisedCosineFilter matchedFilter = new();
     private readonly AudioMonitor audioMonitor = new();
+    private long monitorProcessCount;
     public bool IsSquelchEnabled { get; set; } = true;
+    internal long MonitorProcessCount => monitorProcessCount;
     private ReceiverState state;
     private double previousPhase;
     private double phaseDriftPerSymbol;

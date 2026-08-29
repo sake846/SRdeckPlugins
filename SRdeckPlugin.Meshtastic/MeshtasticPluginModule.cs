@@ -8,6 +8,8 @@ using SRdeckPlugin.Sdk;
 using System.Windows;
 using System.Text.Json;
 using System.IO;
+using System.Buffers;
+using System.Buffers.Binary;
 
 // Plugin entry point exported by SRdeckPlugin.Meshtastic.
 namespace SRdeckPlugin.Meshtastic;
@@ -40,8 +42,14 @@ public sealed class MeshtasticPluginModule(
         };
     private readonly PackedIqHistoryBuffer pretriggerBuffer = new(CaptureDurationSeconds);
     private readonly object captureGate = new();
+    private readonly object fmMonitorGate = new();
+    private readonly MeshtasticFmMonitor fmMonitor = new();
     private IqBlockMetadata? lastCaptureMetadata;
     private int captureSaveInProgress;
+    private bool fmMonitorActive;
+    private Guid fmMonitorStreamId;
+    private long fmMonitorGeneration = -1;
+    private long fmAudioSequence;
 
     public MeshtasticPluginModule()
         : this(new MeshtasticReceiveService())
@@ -62,7 +70,8 @@ public sealed class MeshtasticPluginModule(
         new Version(1, 0),
         new Version(1, 0),
         PluginCapabilities.IqConsumer | PluginCapabilities.MainView |
-        PluginCapabilities.SettingsView | PluginCapabilities.FrequencyOverlay,
+        PluginCapabilities.SettingsView | PluginCapabilities.FrequencyOverlay |
+        PluginCapabilities.AudioProducer,
         "SRdeck",
         "GPL-3.0",
         IsEnabledByDefault: true);
@@ -71,7 +80,7 @@ public sealed class MeshtasticPluginModule(
         "LoRaチャンネル抽出・復調・Meshtastic解析",
         PluginComputeDevice.Cpu,
         ".NET CPU",
-        "周波数探索、チャープ復調、FEC/CRC検証、Meshtasticパケット解析");
+        "周波数探索、チャープ復調、FEC/CRC検証、Meshtasticパケット解析、条件指定時のFM音声モニター");
     public PluginIqPreferences IqPreferences { get; } = new(4);
     public IReadOnlyList<PluginProfileDescriptor> Profiles { get; } = ProfilePresets
         .Select(item => new PluginProfileDescriptor(
@@ -135,6 +144,11 @@ public sealed class MeshtasticPluginModule(
     {
         lock (captureGate)
             lastCaptureMetadata = null;
+        lock (fmMonitorGate)
+        {
+            fmAudioSequence = 0;
+            ResetFmMonitor(resetAudioSink: true);
+        }
         receiver.StartStream();
         viewModel?.StartStream();
         if (viewModel is not null)
@@ -147,6 +161,8 @@ public sealed class MeshtasticPluginModule(
         await receiver.StopStreamAsync(cancellationToken).ConfigureAwait(false);
         lock (captureGate)
             lastCaptureMetadata = null;
+        lock (fmMonitorGate)
+            ResetFmMonitor(resetAudioSink: true);
         viewModel?.StopStream();
         if (viewModel is not null)
             viewModel.CaptureStatus = "IQ録音: 待機";
@@ -156,6 +172,8 @@ public sealed class MeshtasticPluginModule(
     {
         lock (captureGate)
             lastCaptureMetadata = null;
+        lock (fmMonitorGate)
+            ResetFmMonitor(resetAudioSink: true);
         viewModel?.Deactivate();
         if (viewModel is not null)
             viewModel.CaptureStatus = "IQ録音: 待機";
@@ -182,7 +200,82 @@ public sealed class MeshtasticPluginModule(
             checked((int)metadata.CenterFrequencyHz),
             metadata.Sequence,
             metadata.AbsoluteSampleStart);
+        ProcessFmMonitor(block.Samples.Span, metadata);
         return ValueTask.CompletedTask;
+    }
+
+    private void ProcessFmMonitor(ReadOnlySpan<Complex32> samples, IqBlockMetadata metadata)
+    {
+        IPluginHostContext? context = HostContext;
+        if (context is null || viewModel is null ||
+            !viewModel.TryGetMeshtasticFmMonitorTarget(out int frequencyHz, out int bandwidthHz) ||
+            Math.Abs(frequencyHz - metadata.CenterFrequencyHz) + bandwidthHz / 2.0 > metadata.SampleRateHz * 0.475)
+        {
+            lock (fmMonitorGate)
+            {
+                if (fmMonitorActive) ResetFmMonitor(resetAudioSink: true);
+            }
+            return;
+        }
+
+        lock (fmMonitorGate)
+        {
+            bool streamChanged = fmMonitorStreamId != metadata.StreamId ||
+                                 fmMonitorGeneration != metadata.Generation ||
+                                 metadata.Discontinuity != IqDiscontinuity.None;
+            if (streamChanged) fmMonitor.Reset();
+
+            int capacity = checked((int)Math.Ceiling(
+                samples.Length * (double)MeshtasticFmMonitor.OutputSampleRateHz /
+                metadata.SampleRateHz) + 8);
+            float[] audio = ArrayPool<float>.Shared.Rent(capacity);
+            try
+            {
+                int outputCount = fmMonitor.Process(
+                    samples,
+                    audio,
+                    metadata.SampleRateHz,
+                    bandwidthHz,
+                    frequencyHz - metadata.CenterFrequencyHz,
+                    out bool configurationChanged);
+                bool isDiscontinuous = streamChanged || configurationChanged || !fmMonitorActive;
+                fmMonitorActive = true;
+                fmMonitorStreamId = metadata.StreamId;
+                fmMonitorGeneration = metadata.Generation;
+                if (outputCount <= 0) return;
+
+                byte[] pcm = new byte[outputCount * sizeof(short)];
+                for (int index = 0; index < outputCount; index++)
+                {
+                    short value = (short)MathF.Round(audio[index] * short.MaxValue);
+                    BinaryPrimitives.WriteInt16LittleEndian(
+                        pcm.AsSpan(index * sizeof(short), sizeof(short)),
+                        value);
+                }
+                context.Audio.TrySubmit(new PcmAudioFrame(
+                    context.PluginId,
+                    metadata.StreamId,
+                    Interlocked.Increment(ref fmAudioSequence),
+                    MeshtasticFmMonitor.OutputSampleRateHz,
+                    1,
+                    PcmSampleFormat.Signed16LittleEndian,
+                    pcm,
+                    isDiscontinuous));
+            }
+            finally
+            {
+                ArrayPool<float>.Shared.Return(audio);
+            }
+        }
+    }
+
+    private void ResetFmMonitor(bool resetAudioSink)
+    {
+        fmMonitor.Reset();
+        fmMonitorActive = false;
+        fmMonitorStreamId = Guid.Empty;
+        fmMonitorGeneration = -1;
+        if (resetAudioSink) HostContext?.Audio.Reset();
     }
 
     private void StartIqCapture()

@@ -1,4 +1,4 @@
-﻿using System.Numerics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using SRdeckPlugin.Acars.Models;
 using SRdeckPlugin.Acars.Protocols;
@@ -80,7 +80,9 @@ public sealed partial class AcarsReceiver
 
             if (!finalResampler.TryProcess(fineI, fineQ, out float resampledI, out float resampledQ))
                 continue;
-            ProcessBasebandSample(resampledI, resampledQ, demodulatedAudio,
+            iqChannelLowPass.Process(resampledI, resampledQ,
+                out float filteredI, out float filteredQ);
+            ProcessBasebandSample(filteredI, filteredQ, demodulatedAudio,
                 captureAudio, ref audioSampleCount);
         }
         IReadOnlyList<AcarsFrame> frames = Array.Empty<AcarsFrame>();
@@ -89,14 +91,7 @@ public sealed partial class AcarsReceiver
             samplesSinceDecode %= DecodeIntervalSamples;
             frames = Decode(metadata);
         }
-        int retain = DemodulationSampleRateHz;
-        if (audioCount > retain)
-        {
-            int remove = audioCount - retain;
-            Array.Copy(audioBuffer, remove, audioBuffer, 0, retain);
-            audioCount = retain;
-            audioSampleStart += (long)Math.Round(remove * (double)inputSampleRate / DemodulationSampleRateHz);
-        }
+        RetainRecentAudio();
         return frames;
     }
 
@@ -118,23 +113,46 @@ public sealed partial class AcarsReceiver
         targetFrequencyHz = applied.ChannelCenterFrequencyHz;
         audioSampleCount = 0;
         foreach (Complex32 sample in samples)
-            ProcessBasebandSample(sample.I, sample.Q, demodulatedAudio, true, ref audioSampleCount);
+        {
+            iqChannelLowPass.Process(sample.I, sample.Q,
+                out float filteredI, out float filteredQ);
+            ProcessBasebandSample(filteredI, filteredQ, demodulatedAudio,
+                true, ref audioSampleCount);
+        }
         IReadOnlyList<AcarsFrame> frames = Array.Empty<AcarsFrame>();
         if (samplesSinceDecode >= DecodeIntervalSamples)
         {
             samplesSinceDecode %= DecodeIntervalSamples;
             frames = Decode(source);
         }
-        int retain = DemodulationSampleRateHz;
-        if (audioCount > retain)
-        {
-            int remove = audioCount - retain;
-            Array.Copy(audioBuffer, remove, audioBuffer, 0, retain);
-            audioCount = retain;
-            audioSampleStart += (long)Math.Round(remove * (double)inputSampleRate /
-                DemodulationSampleRateHz);
-        }
+        RetainRecentAudio();
         return frames;
+    }
+
+    private void RetainRecentAudio()
+    {
+        const int retain = DemodulationSampleRateHz;
+        if (audioCount <= retain) return;
+
+        int remove = audioCount - retain;
+        Array.Copy(audioBuffer, remove, audioBuffer, 0, retain);
+        audioCount = retain;
+
+        // Cached window offsets move by exactly the same amount as the audio.
+        int retainedCorrelationCount = Math.Max(0, correlationCacheCount - remove);
+        if (retainedCorrelationCount > 0)
+        {
+            Array.Copy(lowCorrelationCache, remove, lowCorrelationCache, 0,
+                retainedCorrelationCount);
+            Array.Copy(highCorrelationCache, remove, highCorrelationCache, 0,
+                retainedCorrelationCount);
+            Array.Copy(confidenceCache, remove, confidenceCache, 0,
+                retainedCorrelationCount);
+        }
+        correlationCacheCount = retainedCorrelationCount;
+
+        audioSampleStart += (long)Math.Round(remove * (double)inputSampleRate /
+            DemodulationSampleRateHz);
     }
 
     private void ProcessBasebandSample(
@@ -175,7 +193,8 @@ public sealed partial class AcarsReceiver
         coarseDecimator.Configure(currentRatePlan.CoarseFactor, 3);
         fineDecimator.Configure(currentRatePlan.FineFactor, 3);
         finalResampler.Configure(sampleRateHz, intermediateDecimationFactor,
-            DemodulationSampleRateHz, 5_000);
+            DemodulationSampleRateHz, RateConversionCutoffHz);
+        iqChannelLowPass.Reset();
         channelAgc.Reset();
         demodulatedAudioLowPass.Reset();
         dc = 0;
@@ -200,10 +219,29 @@ public sealed partial class AcarsReceiver
         fastMskMetricSum = 0;
         decodePassCount = 0;
         processedAudioSampleCount = 0;
+        hypothesisEvaluationCount = 0;
+        syncCandidateCount = 0;
+        hypothesisScanCount = 0;
+        hypothesisPrunedCount = 0;
+        hypothesisEarlyExitCount = 0;
+        hypothesisFallbackCount = 0;
+        correlationCacheCount = 0;
+        lastDecodeScanStartPosition = 0;
+        lastDecodeScanEndPosition = 0;
+        lastDecodeScannedAudioSampleCount = 0;
+        lastDecodeToneCorrelationCount = 0;
+        lastDecodeReusedToneCorrelationCount = 0;
+        totalToneCorrelationCount = 0;
+        lastDecodeCpuMilliseconds = 0;
+        lastAcquisitionCandidatePhaseCount = 0;
+        lastFullDecodePhaseCount = 0;
+        acquisitionFallbackCount = 0;
+        totalFullDecodePhaseCount = 0;
         samplesSinceDecode = 0;
         audioSampleStart = absoluteSampleStart;
         lastFramePosition = long.MinValue;
         lastCandidatePosition = long.MinValue;
+        lastRejectedCorrectionStatus = CorrectionStatus.None;
     }
 
     internal readonly record struct RateConversionPlan(

@@ -204,7 +204,7 @@
                                     <ColumnDefinition Width="260" />
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="28" /><RowDefinition Height="28" />
+                                    <RowDefinition Height="30" /><RowDefinition Height="30" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="表示件数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                                 <TextBox Grid.Column="1" Text="{Binding MeshtasticHistoryDisplayLimit}"

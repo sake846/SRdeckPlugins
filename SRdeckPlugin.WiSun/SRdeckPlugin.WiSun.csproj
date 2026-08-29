@@ -12,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="..\SRdeckPlugin.Contracts\SRdeckPlugin.Contracts.csproj" />
     <ProjectReference Include="..\SRdeckPlugin.Sdk\SRdeckPlugin.Sdk.csproj" />
+    <ProjectReference Include="..\SRdeckCore.SignalProcessing\SRdeckCore.SignalProcessing.csproj" />
     <ProjectReference Include="..\SRdeckPlugin.Wpf\SRdeckPlugin.Wpf.csproj" />
   </ItemGroup>
   <ItemGroup>

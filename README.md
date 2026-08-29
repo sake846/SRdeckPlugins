@@ -1,5 +1,9 @@
 # SRdeckPlugins
 
+[![Wiki](https://img.shields.io/badge/docs-SRdeck_Wiki-blue.svg)](https://github.com/sake846/SRdeck/wiki)
+[![Plugins Overview](https://img.shields.io/badge/plugins-Plugins_Overview-orange.svg)](https://github.com/sake846/SRdeck/wiki/Plugins-Overview)
+[![Developer Guide](https://img.shields.io/badge/docs-Developer_Guide-purple.svg)](https://github.com/sake846/SRdeck/wiki/Developer-Overview)
+
 This repository contains the official SRdeck plugins as a versioned release
 snapshot.
 
@@ -11,10 +15,18 @@ plugins or binaries.
 Do not commit product changes directly to this repository.  Use the project's
 normal development and review process for product changes.
 
+## 📖 Documentation & Wiki
+
+For detailed plugin specifications, reception procedures, and development guides, visit the [SRdeck Official Wiki](https://github.com/sake846/SRdeck/wiki):
+
+- 🔌 **Using Plugins**: [Official Plugins Overview](https://github.com/sake846/SRdeck/wiki/Plugins-Overview) / [Plugin Management](https://github.com/sake846/SRdeck/wiki/Plugin-Management)
+- 💻 **Plugin Development**: [Developer Overview](https://github.com/sake846/SRdeck/wiki/Developer-Overview) / [Development Environment](https://github.com/sake846/SRdeck/wiki/Development-Environment) / [Creating First Plugin](https://github.com/sake846/SRdeck/wiki/Creating-First-Plugin) / [Right Pane UI Design](https://github.com/sake846/SRdeck/wiki/Right-Pane-UI-Design)
+- ❓ **Support & FAQ**: [FAQ](https://github.com/sake846/SRdeck/wiki/FAQ) / [Troubleshooting](https://github.com/sake846/SRdeck/wiki/Troubleshooting)
+
 ## Release metadata
 
-- Release version: `1.0.1`
-- Required SRdeck platform package version: `1.0.1`
+- Release version: `1.0.2`
+- Required SRdeck platform package version: `1.0.2`
 
 ## Building
 
@@ -24,7 +36,7 @@ normal development and review process for product changes.
 - .NET 10 SDK (`dotnet --info` should show an installed 10.x SDK)
 - Git
 - The four SRdeck platform NuGet packages with the same version as
-  `1.0.1`
+  `1.0.2`
 
 The plugin projects consume `SRdeckPlugin.Contracts`, `SRdeckPlugin.Sdk`,
 `SRdeckPlugin.Wpf`, and `SRdeckCore.SignalProcessing` as NuGet packages. The
@@ -34,8 +46,8 @@ mix packages from different SRdeck releases.
 ### 1. Clone the matching source snapshot
 
 ```powershell
-$releaseVersion = "1.0.1"
-$platformVersion = "1.0.1"
+$releaseVersion = "1.0.2"
+$platformVersion = "1.0.2"
 
 git clone --branch "v$releaseVersion" --depth 1 https://github.com/sake846/SRdeckPlugins.git
 Set-Location .\SRdeckPlugins
@@ -46,10 +58,10 @@ Set-Location .\SRdeckPlugins
 Create a local package directory and download these four files from the
 matching [SRdeck release](https://github.com/sake846/SRdeck/releases):
 
-- `SRdeckCore.SignalProcessing.1.0.1.nupkg`
-- `SRdeckPlugin.Contracts.1.0.1.nupkg`
-- `SRdeckPlugin.Sdk.1.0.1.nupkg`
-- `SRdeckPlugin.Wpf.1.0.1.nupkg`
+- `SRdeckCore.SignalProcessing.1.0.2.nupkg`
+- `SRdeckPlugin.Contracts.1.0.2.nupkg`
+- `SRdeckPlugin.Sdk.1.0.2.nupkg`
+- `SRdeckPlugin.Wpf.1.0.2.nupkg`
 
 If GitHub CLI is installed, the files can be downloaded automatically:
 

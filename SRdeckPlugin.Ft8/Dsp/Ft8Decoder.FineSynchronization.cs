@@ -59,15 +59,18 @@ public sealed partial class Ft8Decoder
         int start, double basebandFrequency)
     {
         double score = 0;
+        Span<double> adjacentPowers = stackalloc double[3];
         for (int group = 0; group < 3; group++)
         for (int index = 0; index < Costas.Length; index++)
         {
             int symbol = group * 36 + index;
             double frequency = basebandFrequency + Costas[index] * 6.25;
             int symbolStart = start + symbol * SymbolSamples;
-            double expected = TonePower(samples, symbolStart, frequency, 2);
-            double lower = TonePower(samples, symbolStart, frequency - 6.25, 2);
-            double upper = TonePower(samples, symbolStart, frequency + 6.25, 2);
+            TonePowerBank.Measure(samples, fineWindow, symbolStart, SymbolSamples, 2,
+                SampleRateHz, frequency - 6.25, 6.25, adjacentPowers);
+            double lower = adjacentPowers[0];
+            double expected = adjacentPowers[1];
+            double upper = adjacentPowers[2];
             score += Math.Log(Math.Max(expected, 1e-20)) -
                      0.5 * (Math.Log(Math.Max(lower, 1e-20)) +
                             Math.Log(Math.Max(upper, 1e-20)));
@@ -80,6 +83,7 @@ public sealed partial class Ft8Decoder
     {
         Span<float> mapped = stackalloc float[8];
         Span<float> toneDb = stackalloc float[8];
+        Span<double> tonePowers = stackalloc double[8];
         for (int symbol = 0; symbol < 58; symbol++)
         {
             int channelSymbol = symbol + (symbol < 29 ? 7 : 14);
@@ -90,12 +94,10 @@ public sealed partial class Ft8Decoder
                 likelihood.Slice(bit, 3).Clear();
                 continue;
             }
+            TonePowerBank.Measure(samples, fineWindow, symbolStart, SymbolSamples, 1,
+                SampleRateHz, basebandFrequency, 6.25, tonePowers);
             for (int tone = 0; tone < 8; tone++)
-            {
-                double power = TonePower(samples, symbolStart,
-                    basebandFrequency + tone * 6.25, 1);
-                toneDb[tone] = (float)(10 * Math.Log10(Math.Max(power, 1e-20)));
-            }
+                toneDb[tone] = (float)(10 * Math.Log10(Math.Max(tonePowers[tone], 1e-20)));
             for (int value = 0; value < 8; value++) mapped[value] = toneDb[Gray[value]];
             likelihood[bit] = Max4(mapped[4], mapped[5], mapped[6], mapped[7]) -
                               Max4(mapped[0], mapped[1], mapped[2], mapped[3]);
@@ -175,6 +177,7 @@ public sealed partial class Ft8Decoder
 
     private WsjtNoiseBaseline CreateWsjtNoiseBaseline(ReadOnlySpan<Complex32> samples)
     {
+        SnrBaselineGenerationCount++;
         const int minimumBin = AudioMinimumHz - AudioCenterHz;
         const int maximumBin = AudioMaximumHz - AudioCenterHz;
         int firstBin = (int)Math.Ceiling(minimumBin / SnrBaselineBinWidthHz);

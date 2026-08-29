@@ -43,7 +43,8 @@ public sealed partial class AisPluginModule : PluginModuleBase, IPluginChannelBl
     public AisPluginModule()
     {
         viewModel.SettingsChanged = (maximum, retention, historyMaximum, trailPoints,
-            audioEnabled, audioVolume, squelchEnabled, squelchThreshold, saveRaw, channelFilter) =>
+            audioEnabled, audioVolume, squelchEnabled, squelchThreshold, saveRaw, channelFilter,
+            demodulationGateEnabled) =>
         {
             bool wasAudioEnabled = settings.MonitorAudioEnabled;
             bool squelchChanged = settings.SquelchEnabled != squelchEnabled ||
@@ -54,7 +55,8 @@ public sealed partial class AisPluginModule : PluginModuleBase, IPluginChannelBl
                 MonitorAudioVolume = audioVolume, MaximumTrailPoints = trailPoints,
                 SquelchEnabled = squelchEnabled, SquelchThresholdDbm = squelchThreshold,
                 MaximumHistory = historyMaximum,
-                SaveRawFrames = true, ChannelFilter = "both"
+                SaveRawFrames = true, ChannelFilter = "both",
+                DemodulationGateEnabled = demodulationGateEnabled
             };
             settings = settings.Normalize();
             ApplyReceiverSettings();
@@ -88,7 +90,7 @@ public sealed partial class AisPluginModule : PluginModuleBase, IPluginChannelBl
             settings.MaximumHistory, settings.MaximumTrailPoints,
             settings.MonitorAudioEnabled, settings.MonitorAudioVolume, settings.SquelchEnabled,
             settings.SquelchThresholdDbm, settings.SaveRawFrames,
-            settings.ChannelFilter);
+            settings.ChannelFilter, settings.DemodulationGateEnabled);
     }
 
     public override PluginDescriptor Descriptor { get; } = new(
@@ -113,9 +115,15 @@ public sealed partial class AisPluginModule : PluginModuleBase, IPluginChannelBl
     public IReadOnlyList<PluginChannelRequest> ChannelRequests { get; } =
     [
         new("ais-1", Ais1FrequencyHz, AisReceiver.ChannelBandwidthHz,
-            AisReceiver.DemodulationSampleRateHz, 384_000, 192_000, 33, 2, 8, false),
+            AisReceiver.DemodulationSampleRateHz, 384_000, 192_000, 33, 2, 8, false)
+        {
+            StopbandBandwidthHz = 50_000
+        },
         new("ais-2", Ais2FrequencyHz, AisReceiver.ChannelBandwidthHz,
             AisReceiver.DemodulationSampleRateHz, 384_000, 192_000, 33, 2, 8, false)
+        {
+            StopbandBandwidthHz = 50_000
+        }
     ];
     public IReadOnlyList<FrequencyOverlayItem> FrequencyOverlays { get; } =
     [
@@ -163,7 +171,8 @@ public sealed partial class AisPluginModule : PluginModuleBase, IPluginChannelBl
             settings.MaximumHistory, settings.MaximumTrailPoints,
             settings.MonitorAudioEnabled, settings.MonitorAudioVolume,
             settings.SquelchEnabled, settings.SquelchThresholdDbm,
-            settings.SaveRawFrames, settings.ChannelFilter);
+            settings.SaveRawFrames, settings.ChannelFilter,
+            settings.DemodulationGateEnabled);
         ApplyReceiverSettings();
         historyWriter = CreateHistoryWriter(hostContext);
         LoadHistory();
@@ -313,6 +322,7 @@ public sealed partial class AisPluginModule : PluginModuleBase, IPluginChannelBl
             {
                 receiver.IsSquelchEnabled = settings.SquelchEnabled;
                 receiver.SquelchThresholdDbfs = thresholdDbfs;
+                receiver.IsDemodulationGateEnabled = settings.DemodulationGateEnabled;
             }
         }
     }

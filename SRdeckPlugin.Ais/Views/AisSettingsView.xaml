@@ -22,9 +22,10 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
-                                 <RowDefinition Height="28" />
-                                 <RowDefinition Height="28" />
-                                 <RowDefinition Height="28" />
+                                 <RowDefinition Height="30" />
+                                 <RowDefinition Height="30" />
+                                 <RowDefinition Height="30" />
+                                 <RowDefinition Height="30" />
                             </Grid.RowDefinitions>
                             <TextBlock Text="受信周波数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                             <TextBlock Grid.Column="1" Grid.ColumnSpan="5"
@@ -63,6 +64,19 @@
                                            Width="64" TextAlignment="Right" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimaryBrush}"/>
                             </StackPanel>
+                            <TextBlock Grid.Row="3" Text="復調CPU" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <StackPanel Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="5"
+                                        Orientation="Horizontal" VerticalAlignment="Center">
+                                <ToggleButton x:Name="DemodulationGateToggleButton"
+                                              Content="バーストゲート"
+                                              IsChecked="{Binding DemodulationGateEnabled, Mode=TwoWay}"
+                                              Style="{DynamicResource PluginToggleButtonStyle}"
+                                              Width="90" Margin="0,0,10,0"
+                                              ToolTip="短時間電力検出と8 msプリロールで、無信号時の復調器を停止します（既定OFF）" />
+                                <TextBlock Text="実験機能・スケルチしきい値を検出に使用"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
                         </Grid>
                     </ScrollViewer>
                 </TabItem>
@@ -88,8 +102,8 @@
                                     <ColumnDefinition Width="300" />
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="28" /><RowDefinition Height="28" /><RowDefinition Height="28" />
-                                    <RowDefinition Height="28" />
+                                    <RowDefinition Height="30" /><RowDefinition Height="30" /><RowDefinition Height="30" />
+                                    <RowDefinition Height="30" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="最大表示局数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                                 <TextBox Grid.Column="1" Text="{Binding MaximumTargets, UpdateSourceTrigger=LostFocus}"

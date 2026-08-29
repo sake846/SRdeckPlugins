@@ -61,6 +61,11 @@ public sealed partial class Ft8PluginModule : PluginModuleBase, IIqBlockConsumer
         receiver.MessagesDecoded += OnMessagesDecoded;
         viewModel.BandSelectionRequested = SelectBandFromView;
         viewModel.NearbyBandSelectionChanged = ApplyNearbyBandSelection;
+        viewModel.BuzzerEnabledChanged = value =>
+        {
+            settings = settings with { BuzzerEnabled = value };
+            PersistSettings();
+        };
         viewModel.DecoderSettingsChanged = (maximumHistory, minimumScore, maximumCandidates,
             iterations, monitorAudioEnabled, monitorAudioVolume) =>
         {

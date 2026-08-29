@@ -461,13 +461,19 @@
                                         <TextBlock Text="復調・同期" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,9"/>
                                         <Grid>
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="22"/><RowDefinition Height="22"/></Grid.RowDefinitions>
+                                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="22"/><RowDefinition Height="22"/><RowDefinition Height="22"/></Grid.RowDefinitions>
                                             <TextBlock Text="検出到達数" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center"/>
                                             <TextBlock Grid.Column="1" Text="{Binding RecentDetectionText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" TextWrapping="Wrap" VerticalAlignment="Center"/>
                                             <TextBlock Grid.Row="1" Text="timing成立・補正（累積）" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center"/>
                                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TimingAdjustedFrames, StringFormat=N0}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" VerticalAlignment="Center"/>
-                                            <TextBlock Grid.Row="2" Text="SIC回収（累積）" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center"/>
-                                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SicRecoveredFrames, StringFormat=N0}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Row="2" Text="SIC状態" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Row="2" Grid.Column="1" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" VerticalAlignment="Center">
+                                                <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="無効"/><Style.Triggers><DataTrigger Binding="{Binding SicEnabled}" Value="True"><Setter Property="Text" Value="有効"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Grid.Row="3" Text="SIC発火 / 回収（累積）" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Row="3" Grid.Column="1" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" VerticalAlignment="Center">
+                                                <Run Text="{Binding SicCancellationRuns, Mode=OneWay, StringFormat=N0}"/><Run Text=" / "/><Run Text="{Binding SicRecoveredFrames, Mode=OneWay, StringFormat=N0}"/>
+                                            </TextBlock>
                                         </Grid>
                                     </StackPanel>
                                 </Border>

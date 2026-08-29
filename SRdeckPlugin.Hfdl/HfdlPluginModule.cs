@@ -184,6 +184,9 @@ public sealed partial class HfdlPluginModule : PluginModuleBase, IIqBlockConsume
                 new($"hfdl-{channel.Id}", channel.FrequencyHz + SignalOffsetHz, 4_800,
                     HfdlReceiver.MonitorAudioSampleRateHz, 72_000, 56_000,
                     64, 3, 8, true, 240_000, 400_000, 8)
+                {
+                    StopbandBandwidthHz = 6_000
+                }
             ];
         }
     }

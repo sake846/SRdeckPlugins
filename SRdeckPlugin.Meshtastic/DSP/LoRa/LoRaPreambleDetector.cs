@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using SRdeck.DSP;
 
 // Owned by the standalone Meshtastic plugin assembly.
@@ -40,6 +41,13 @@ internal sealed partial class LoRaPreambleDetector
     private readonly Complex[] _ring;
     private readonly Complex[] _downChirp;
     private readonly FastFourierTransform _fft;
+    private readonly LoRaDetectorMetricsAccumulator? _metrics;
+    private readonly LoRaSoftDecodingOptions? _softOptions;
+    private readonly LoRaCrcListDecodingOptions? _crcListOptions;
+    private readonly LoRaSearchThresholdPolicy? _searchThresholdPolicy;
+    private readonly LoRaSearchEnergyGate _searchEnergyGate;
+    private readonly float _fixedSearchThresholdDb = UpChirpThresholdDb;
+    private double _ringPower;
     private int _writeIndex;
     private int _sampleCount;
     private int _samplesSinceAnalysis;
@@ -50,21 +58,28 @@ internal sealed partial class LoRaPreambleDetector
     private int _syncDirection;
     private int _sfdSymbols;
     private readonly ushort[] _headerSymbols = new ushort[8];
+    private readonly LoRaSoftSymbol[]? _headerSoftSymbols;
     private int _headerSymbolCount;
     private readonly ushort[] _payloadBlockSymbols = new ushort[8];
+    private readonly LoRaSoftSymbol[]? _payloadBlockSoftSymbols;
     private int _payloadBlockSymbolCount;
     private List<byte>? _payloadNibbles;
+    private List<LoRaSoftSymbol>? _payloadSoftSymbols;
     private LoRaExplicitHeader? _activeHeader;
     private int _payloadCorrectedCodewords;
     private float _lastDownPeakHz;
     private float _sfdDownPeakHzSum;
     private float _carrierFrequencyCorrectionHz;
+    private int _frameTimingCorrectionSamples;
     private int _consecutiveLowSnrSymbols;
     private bool _reported;
     private AcquisitionState _state;
 
     public LoRaPreambleDetector(int sampleRateHz, int bandwidthHz, int spreadingFactor,
-        byte syncWord = MeshtasticJpLongFastProfile.SyncWord, float expectedCenterOffsetHz = 0)
+        byte syncWord = MeshtasticJpLongFastProfile.SyncWord, float expectedCenterOffsetHz = 0,
+        bool enableMetrics = false, LoRaSoftDecodingOptions? softDecoding = null,
+        LoRaCrcListDecodingOptions? crcListDecoding = null, LoRaSearchThresholdOptions? searchThresholdOptions = null,
+        LoRaSearchEnergyGateOptions? searchEnergyGateOptions = null)
     {
         _sampleRateHz = sampleRateHz;
         _bandwidthHz = bandwidthHz;
@@ -88,6 +103,26 @@ internal sealed partial class LoRaPreambleDetector
         _ring = new Complex[_symbolSamples * 2];
         _downChirp = CreateDownChirp(_symbolSamples, sampleRateHz, bandwidthHz);
         _fft = new FastFourierTransform(_symbolSamples);
+        if (enableMetrics) _metrics = new LoRaDetectorMetricsAccumulator();
+        if (softDecoding?.DecisionMode == LoRaFecDecisionMode.MaxLog)
+        {
+            _softOptions = softDecoding;
+            _headerSoftSymbols = new LoRaSoftSymbol[8];
+            _payloadBlockSoftSymbols = new LoRaSoftSymbol[8];
+        }
+        if (crcListDecoding is not null && _softOptions is null)
+            throw new ArgumentException("CRC-aided list decoding requires max-log soft decoding.", nameof(crcListDecoding));
+        _crcListOptions = crcListDecoding;
+        _searchEnergyGate = new LoRaSearchEnergyGate(
+            searchEnergyGateOptions ?? LoRaSearchEnergyGateOptions.Default);
+        if (searchThresholdOptions is not null)
+        {
+            if (!float.IsFinite(searchThresholdOptions.FixedThresholdDb))
+                throw new ArgumentOutOfRangeException(nameof(searchThresholdOptions));
+            _fixedSearchThresholdDb = searchThresholdOptions.FixedThresholdDb;
+            if (searchThresholdOptions.Mode == LoRaSearchThresholdMode.AdaptiveTemporalQuantile)
+                _searchThresholdPolicy = new LoRaSearchThresholdPolicy(searchThresholdOptions);
+        }
     }
 
     public event Action<LoRaPreambleDetection>? PreambleDetected;
@@ -95,6 +130,8 @@ internal sealed partial class LoRaPreambleDetector
     public event Action<LoRaExplicitHeader>? ExplicitHeaderDecoded;
     public event Action<LoRaPayloadFrame>? PayloadDecoded;
     public event Action<LoRaAcquisitionDiagnostic>? AcquisitionDiagnostic;
+    public event Action<LoRaCrcListDecodingDiagnostic>? CrcListDecodingCompleted;
+    internal event Action<LoRaSearchPeakObservation>? SearchPeakObserved;
 
     public void Reset()
     {
@@ -102,23 +139,44 @@ internal sealed partial class LoRaPreambleDetector
         _writeIndex = 0;
         _sampleCount = 0;
         _samplesSinceAnalysis = 0;
+        _ringPower = 0;
+        _searchEnergyGate.Reset();
+        _searchThresholdPolicy?.Reset();
         ResetAcquisition();
     }
 
     public void Push(float i, float q)
     {
+        if (_metrics is not null) _metrics.InputSamples++;
         PushCore(i, q);
     }
 
     public void PushBlock(ReadOnlySpan<float> samplesI, ReadOnlySpan<float> samplesQ)
     {
         int count = Math.Min(samplesI.Length, samplesQ.Length);
+        if (_metrics is not null) _metrics.InputSamples += count;
         for (int index = 0; index < count; index++)
             PushCore(samplesI[index], samplesQ[index]);
     }
 
+    internal LoRaDetectorMetricsSnapshot GetMetricsSnapshot() =>
+        _metrics?.Snapshot() ?? LoRaDetectorMetricsSnapshot.Disabled;
+
+    internal void ResetMetrics() => _metrics?.Reset();
+
+    internal void ResetAcquisitionForTest() => ResetAcquisition();
+
+    internal float CurrentSearchThresholdDb =>
+        _searchThresholdPolicy?.CurrentThresholdDb ?? _fixedSearchThresholdDb;
+
     private void PushCore(float i, float q)
     {
+        if (_searchEnergyGate.Enabled)
+        {
+            Complex previous = _ring[_writeIndex];
+            _ringPower += ((double)i * i) + ((double)q * q) -
+                          ((double)previous.X * previous.X) - ((double)previous.Y * previous.Y);
+        }
         _ring[_writeIndex] = new Complex { X = i, Y = q };
         _ring[_writeIndex + _symbolSamples] = new Complex { X = i, Y = q };
         _writeIndex++;
@@ -133,11 +191,36 @@ internal sealed partial class LoRaPreambleDetector
 
     private void AnalyzeSymbol()
     {
+        if (_metrics is null)
+        {
+            AnalyzeSymbolCore();
+            return;
+        }
+
+        AcquisitionState measuredState = _state;
+        long started = Stopwatch.GetTimestamp();
+        AnalyzeSymbolCore();
+        _metrics.RecordAnalysis((int)measuredState, Stopwatch.GetTimestamp() - started);
+    }
+
+    private void AnalyzeSymbolCore()
+    {
+        if (_state == AcquisitionState.Search && ShouldSkipSearchFft())
+        {
+            if (_metrics is not null) _metrics.FftSkips++;
+            ProcessSearch(new SpectrumPeak(0, 0.0f, float.NegativeInfinity, 0.0f));
+            ObserveSearchNoisePower();
+            return;
+        }
+
         SpectrumPeak upPeak = CalculatePeak(dechirpUpChirp: true);
         switch (_state)
         {
             case AcquisitionState.Search:
+                bool candidateWasActive = _consecutiveSymbols > 0;
                 ProcessSearch(upPeak);
+                if (!candidateWasActive && _consecutiveSymbols == 0)
+                    ObserveSearchNoisePower();
                 break;
             case AcquisitionState.Aligning:
                 ProcessAlignedPreamble(upPeak);
@@ -158,6 +241,18 @@ internal sealed partial class LoRaPreambleDetector
                 ProcessPayload(upPeak);
                 break;
         }
+    }
+
+    private bool ShouldSkipSearchFft()
+    {
+        double averagePower = Math.Max(0, _ringPower) / _symbolSamples;
+        return _searchEnergyGate.ShouldSkip(averagePower, _consecutiveSymbols > 0);
+    }
+
+    private void ObserveSearchNoisePower()
+    {
+        double averagePower = Math.Max(0, _ringPower) / _symbolSamples;
+        _searchEnergyGate.ObserveNoise(averagePower);
     }
 
 
@@ -202,8 +297,13 @@ internal sealed partial class LoRaPreambleDetector
             }
         }
 
-        if (totalPower < 1e-10) return new SpectrumPeak(0, 0.0f, float.NegativeInfinity, 0.0f);
+        if (totalPower < 1e-10)
+        {
+            if (_metrics is not null) _metrics.FftSkips++;
+            return new SpectrumPeak(0, 0.0f, float.NegativeInfinity, 0.0f);
+        }
 
+        if (_metrics is not null) _metrics.FftExecutions++;
         _fft.ExecutePower(System.Numerics.BitOperations.Log2((uint)_symbolSamples));
         float[] spectrum = _fft.OutputData;
         int peakBin = 0;
@@ -250,13 +350,116 @@ internal sealed partial class LoRaPreambleDetector
         float interpolatedBin = peakBin + delta;
         float interpolatedFreqHz = (interpolatedBin - (len / 2.0f)) * (_sampleRateHz / (float)len);
 
-        return new SpectrumPeak(peakBin, interpolatedBin, peakToAverageDb, interpolatedFreqHz);
+        SpectrumCandidate[]? candidates = _softOptions is not null &&
+                                          _state is AcquisitionState.Header or AcquisitionState.Payload
+            ? FindSpectrumCandidates(spectrum, peakBin)
+            : null;
+        return new SpectrumPeak(peakBin, interpolatedBin, peakToAverageDb, interpolatedFreqHz, candidates);
+    }
+
+    private SpectrumCandidate[] FindSpectrumCandidates(float[] spectrum, int peakBin)
+    {
+        int candidateCount = Math.Min(_softOptions!.CandidateCount, spectrum.Length);
+        var candidates = new SpectrumCandidate[candidateCount];
+        int selectedCount = 0;
+        for (int candidateIndex = 0; candidateIndex < candidateCount; candidateIndex++)
+        {
+            int selectedBin = candidateIndex == 0 ? peakBin : -1;
+            float selectedPower = candidateIndex == 0 ? spectrum[peakBin] : float.NegativeInfinity;
+            if (candidateIndex > 0)
+            {
+                for (int bin = 0; bin < spectrum.Length; bin++)
+                {
+                    bool tooClose = false;
+                    for (int prior = 0; prior < selectedCount; prior++)
+                    {
+                        if (CircularBinDistance(bin, candidates[prior].Bin, spectrum.Length) < _samplesPerChip)
+                        {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+                    if (tooClose || spectrum[bin] <= selectedPower) continue;
+                    selectedBin = bin;
+                    selectedPower = spectrum[bin];
+                }
+            }
+            if (selectedBin < 0) break;
+
+            float interpolatedBin = InterpolateBin(spectrum, selectedBin);
+            float logLikelihood = 10.0f * MathF.Log10(Math.Max(1e-30f, selectedPower));
+            float bestLogLikelihood = selectedCount == 0
+                ? logLikelihood
+                : candidates[0].LogLikelihood;
+            candidates[selectedCount++] = new SpectrumCandidate(
+                selectedBin,
+                interpolatedBin,
+                selectedPower,
+                logLikelihood,
+                Math.Max(0, bestLogLikelihood - logLikelihood));
+        }
+        return selectedCount == candidates.Length ? candidates : candidates[..selectedCount];
+    }
+
+    private static float InterpolateBin(float[] spectrum, int bin)
+    {
+        int leftBin = (bin - 1 + spectrum.Length) % spectrum.Length;
+        int rightBin = (bin + 1) % spectrum.Length;
+        float y0 = spectrum[leftBin];
+        float y1 = spectrum[bin];
+        float y2 = spectrum[rightBin];
+        float denominator = y0 - (2.0f * y1) + y2;
+        float delta = Math.Abs(denominator) > 1e-12f
+            ? 0.5f * (y0 - y2) / denominator
+            : 0;
+        return bin + Math.Clamp(delta, -0.5f, 0.5f);
+    }
+
+    private LoRaSoftSymbol CreateSoftSymbol(SpectrumPeak peak, bool reducedRate)
+    {
+        SpectrumCandidate[] candidates = peak.Candidates
+            ?? throw new InvalidOperationException("Soft FFT candidates were not retained.");
+        var mapped = new List<LoRaSymbolCandidate>(candidates.Length);
+        foreach (SpectrumCandidate candidate in candidates)
+        {
+            float relativeRawSymbol = Mod(
+                ToSignedBin(candidate.InterpolatedBin) - ToSignedBin(_preamblePeakBin),
+                _symbolValues);
+            int binarySymbol = reducedRate
+                ? Mod((int)MathF.Round((relativeRawSymbol - 1.0f) / 4.0f,
+                    MidpointRounding.AwayFromZero), _symbolValues / 4)
+                : Mod((int)MathF.Round(relativeRawSymbol - 1.0f,
+                    MidpointRounding.AwayFromZero), _symbolValues);
+            ushort graySymbol = (ushort)(binarySymbol ^ (binarySymbol >> 1));
+            bool duplicate = false;
+            for (int index = 0; index < mapped.Count; index++)
+            {
+                if (mapped[index].Symbol != graySymbol) continue;
+                duplicate = true;
+                break;
+            }
+            if (duplicate) continue;
+            mapped.Add(new LoRaSymbolCandidate(
+                graySymbol,
+                candidate.Power,
+                candidate.LogLikelihood,
+                candidate.RelativeCost));
+        }
+
+        return new LoRaSoftSymbol(
+            mapped.ToArray(),
+            peak.InterpolatedBin,
+            _carrierFrequencyCorrectionHz,
+            _frameTimingCorrectionSamples,
+            WasClipped: false);
     }
 
     private void RegisterSearchMiss()
     {
         _missedSymbols++;
         if (_missedSymbols < 3) return;
+        if (_metrics is not null && _consecutiveSymbols > 0 && !_reported)
+            _metrics.SearchCandidateRejects++;
         ResetAcquisition();
     }
 
@@ -302,11 +505,13 @@ internal sealed partial class LoRaPreambleDetector
         _headerSymbolCount = 0;
         _payloadBlockSymbolCount = 0;
         _payloadNibbles = null;
+        _payloadSoftSymbols = null;
         _activeHeader = null;
         _payloadCorrectedCodewords = 0;
         _lastDownPeakHz = 0;
         _sfdDownPeakHzSum = 0;
         _carrierFrequencyCorrectionHz = 0;
+        _frameTimingCorrectionSamples = 0;
         _consecutiveLowSnrSymbols = 0;
         _reported = false;
     }
@@ -372,5 +577,13 @@ internal sealed partial class LoRaPreambleDetector
         int Bin,
         float InterpolatedBin,
         float PeakToAverageDb,
-        float FrequencyHz);
+        float FrequencyHz,
+        SpectrumCandidate[]? Candidates = null);
+
+    private readonly record struct SpectrumCandidate(
+        int Bin,
+        float InterpolatedBin,
+        float Power,
+        float LogLikelihood,
+        float RelativeCost);
 }

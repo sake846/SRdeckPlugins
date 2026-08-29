@@ -42,6 +42,20 @@ public sealed partial class WiSunDemodulator
                 $"Wi-SUN requires a supported channel stream rate (got {sampleRateHz:N0} samples/s).");
         if (inputSamples.IsEmpty) return Array.Empty<WiSunPacketFrame>();
 
+        int requiredSamples = checked(discriminator.Count + inputSamples.Length);
+        discriminator.EnsureCapacity(requiredSamples);
+        power.EnsureCapacity(requiredSamples);
+        discriminatorPrefix.EnsureCapacity(requiredSamples + 1);
+        powerPrefix.EnsureCapacity(requiredSamples + 1);
+
+        if (!iqFilterConfigured || iqFilterSampleRateHz != sampleRateHz)
+        {
+            demodulationIqLowPass.Configure(sampleRateHz,
+                sampleRateHz * DemodulationIqCutoffRatio);
+            iqFilterSampleRateHz = sampleRateHz;
+            iqFilterConfigured = true;
+        }
+
         float rfBurstThresholdPower = MathF.Pow(10, squelchThresholdDbfs / 10);
         double inputPower = 0;
         foreach (Complex32 sample in inputSamples)
@@ -51,14 +65,17 @@ public sealed partial class WiSunDemodulator
             if (magnitudeSquared < rfBurstThresholdPower)
                 UpdateNoiseFloor(magnitudeSquared);
             TrackRfBurst(magnitudeSquared, sampleRateHz, rfBurstThresholdPower);
+            demodulationIqLowPass.Process(sample.I, sample.Q,
+                out float filteredI, out float filteredQ);
+            Complex32 filtered = new(filteredI, filteredQ);
             float phaseDifference = 0;
             if (hasPreviousSample)
             {
-                float dot = sample.I * previousSample.I + sample.Q * previousSample.Q;
-                float cross = sample.Q * previousSample.I - sample.I * previousSample.Q;
+                float dot = filtered.I * previousSample.I + filtered.Q * previousSample.Q;
+                float cross = filtered.Q * previousSample.I - filtered.I * previousSample.Q;
                 phaseDifference = FastAtan2(cross, dot);
             }
-            previousSample = sample;
+            previousSample = filtered;
             hasPreviousSample = true;
             discriminator.Add(phaseDifference);
             power.Add(magnitudeSquared);
@@ -163,9 +180,14 @@ public sealed partial class WiSunDemodulator
         float squelchPower = MathF.Pow(10, squelchThresholdDbfs / 10);
         while (scanSample + fixedHeaderSamples <= discriminator.Count)
         {
-            if (!TrySynchronize(scanSample, squelchPower, timestamp,
+            if (!IsLikelySynchronizationCandidate(scanSample, squelchPower))
+            {
+                scanSample++;
+                continue;
+            }
+            if (!TrySynchronize(scanSample, timestamp,
                     out int polarity, out float discriminatorBias,
-                    out int sfdErrors, out ushort matchedSfd, out bool newSfd))
+                    out ushort matchedSfd, out bool newSfd))
             {
                 scanSample++;
                 continue;

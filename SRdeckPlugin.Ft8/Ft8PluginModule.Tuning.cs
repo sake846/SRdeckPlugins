@@ -90,7 +90,10 @@ public sealed partial class Ft8PluginModule
         CreateChannelRequestId(band), band.ChannelCenterFrequencyHz,
         Ft8Receiver.OccupiedPassbandHz, Ft8Receiver.OutputSampleRateHz,
         102_400, 51_200, 65, 3, 4, false,
-        102_400, 409_600, 16);
+        102_400, 409_600, 16)
+    {
+        StopbandBandwidthHz = 6_400
+    };
 
     private static void ValidateTuningResult(PluginTuningResult result)
     {

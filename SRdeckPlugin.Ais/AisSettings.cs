@@ -13,7 +13,8 @@ public sealed record AisSettings(
     int MaximumTrailPoints = 100,
     int MaximumHistory = 10_000,
     bool SaveRawFrames = true,
-    string ChannelFilter = "both")
+    string ChannelFilter = "both",
+    bool DemodulationGateEnabled = false)
 {
     public float SquelchThresholdDbfs
     {
@@ -31,5 +32,6 @@ public sealed record AisSettings(
         Math.Clamp(MaximumTrailPoints, 10, 1000),
         Math.Clamp(MaximumHistory, 100, 1_000_000),
         true,
-        "both");
+        "both",
+        DemodulationGateEnabled);
 }

@@ -85,7 +85,7 @@
                                     <ColumnDefinition Width="220" />
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="28" /><RowDefinition Height="28" /><RowDefinition Height="28" /><RowDefinition Height="28" />
+                                    <RowDefinition Height="30" /><RowDefinition Height="30" /><RowDefinition Height="30" /><RowDefinition Height="30" />
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Text="最大表示機数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />

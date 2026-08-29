@@ -37,6 +37,7 @@ public sealed partial class VdlPluginModule : PluginModuleBase, IIqBlockConsumer
     private readonly VdlMode2Receiver receiver = new();
     private readonly VdlUpperLayerDecoder upperLayerDecoder = new();
     private readonly object processingGate = new();
+    private readonly object upperLayerGate = new();
     private readonly object historyGate = new();
     private readonly List<VdlDecodedFrame> history = [];
     private PluginJsonLinesHistoryWriter<VdlDecodedFrame>? historyWriter;
@@ -178,6 +179,9 @@ public sealed partial class VdlPluginModule : PluginModuleBase, IIqBlockConsumer
                 new($"vdl-{channel.Id}", channel.FrequencyHz, 16_800,
                     VdlMode2Receiver.WorkingSampleRate, 240_000,
                     VdlMode2Receiver.WorkingSampleRate, 32, 3, 8, true)
+                {
+                    StopbandBandwidthHz = 25_000
+                }
             ];
         }
     }
@@ -254,7 +258,7 @@ public sealed partial class VdlPluginModule : PluginModuleBase, IIqBlockConsumer
             if (State == PluginLifecycleState.Streaming)
             {
                 receiver.Reset();
-                upperLayerDecoder.Reset();
+                lock (upperLayerGate) upperLayerDecoder.Reset();
                 pretriggerBuffer.Reset();
                 audioGeneration.Reset();
                 host?.Audio.Reset();
@@ -288,7 +292,7 @@ public sealed partial class VdlPluginModule : PluginModuleBase, IIqBlockConsumer
         lock (processingGate)
         {
             receiver.Reset();
-            upperLayerDecoder.Reset();
+            lock (upperLayerGate) upperLayerDecoder.Reset();
             audioSequence = 0;
         }
         viewModel.CaptureStatus = "IQ録音: 直前3秒を常時保持中";
@@ -301,7 +305,7 @@ public sealed partial class VdlPluginModule : PluginModuleBase, IIqBlockConsumer
         lock (processingGate)
         {
             receiver.Reset();
-            upperLayerDecoder.Reset();
+            lock (upperLayerGate) upperLayerDecoder.Reset();
         }
         viewModel.CaptureStatus = "IQ録音: 待機";
         SetStatus("待機中");

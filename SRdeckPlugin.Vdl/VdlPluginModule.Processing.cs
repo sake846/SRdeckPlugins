@@ -27,17 +27,23 @@ public sealed partial class VdlPluginModule
         ThrowIfDisposed();
         if (State != PluginLifecycleState.Streaming) return ValueTask.CompletedTask;
 
+        IqBlockMetadata metadata = block.Metadata;
+        IReadOnlyList<VdlFrame> receivedFrames;
+        TimeSpan receiverElapsed;
+        TimeSpan audioElapsed;
+        TimeSpan pretriggerElapsed;
+        TimeSpan lockedProcessingElapsed;
+        bool audioSubmitted;
+        bool discontinuous;
+        ReceiverPublishSnapshot receiverSnapshot;
         lock (processingGate)
         {
             if (State != PluginLifecycleState.Streaming) return ValueTask.CompletedTask;
             long targetFrequencyHz = Channels.First(channel => channel.Id == selectedProfileId).FrequencyHz;
-            IqBlockMetadata metadata = block.Metadata;
             lastCaptureMetadata = metadata;
             long processingStarted = Stopwatch.GetTimestamp();
             float[]? monitorBuffer = null;
             Complex32[]? channelBuffer = null;
-            VdlDecodedFrame[] decodedFrames;
-            VdlPipelineDiagnosticsSnapshot pipeline;
             try
             {
                 int capacity = checked((int)Math.Ceiling(block.Samples.Length *
@@ -45,39 +51,41 @@ public sealed partial class VdlPluginModule
                 if (settings.MonitorAudioEnabled)
                     monitorBuffer = ArrayPool<float>.Shared.Rent(capacity / 5 + 4);
                 channelBuffer = ArrayPool<Complex32>.Shared.Rent(capacity);
-                IReadOnlyList<VdlFrame> receivedFrames = receiver.Process(block.Samples.Span, metadata, targetFrequencyHz,
+                receivedFrames = receiver.Process(block.Samples.Span, metadata, targetFrequencyHz,
                     monitorBuffer, out int audioSampleCount, channelBuffer, out int channelSampleCount);
-                TimeSpan receiverElapsed = Stopwatch.GetElapsedTime(processingStarted);
+                receiverElapsed = Stopwatch.GetElapsedTime(processingStarted);
                 long audioStarted = Stopwatch.GetTimestamp();
-                bool audioSubmitted = true;
-                bool discontinuous = metadata.Discontinuity != IqDiscontinuity.None;
+                audioSubmitted = true;
+                discontinuous = metadata.Discontinuity != IqDiscontinuity.None;
                 if (settings.MonitorAudioEnabled && monitorBuffer is not null)
                 {
                     bool resetAudio = audioGeneration.Observe(metadata.Generation, discontinuous);
                     if (resetAudio) host?.Audio.Reset();
                     audioSubmitted = SubmitMonitorAudio(monitorBuffer.AsSpan(0, audioSampleCount), metadata, resetAudio);
                 }
-                TimeSpan audioElapsed = Stopwatch.GetElapsedTime(audioStarted);
+                audioElapsed = Stopwatch.GetElapsedTime(audioStarted);
                 long pretriggerStarted = Stopwatch.GetTimestamp();
                 if (channelBuffer is not null)
                     pretriggerBuffer.Write(block.Samples.Span, metadata.SampleRateHz,
                         channelBuffer.AsSpan(0, channelSampleCount), VdlMode2Receiver.WorkingSampleRate);
-                TimeSpan pretriggerElapsed = Stopwatch.GetElapsedTime(pretriggerStarted);
-                long protocolStarted = Stopwatch.GetTimestamp();
-                decodedFrames = receivedFrames.Select(upperLayerDecoder.Decode).ToArray();
-                TimeSpan protocolElapsed = Stopwatch.GetElapsedTime(protocolStarted);
-                pipeline = pipelineDiagnostics.Record(metadata, methodStarted, Stopwatch.GetElapsedTime(methodStarted),
-                    Stopwatch.GetElapsedTime(processingStarted), receiverElapsed, audioElapsed,
-                    pretriggerElapsed, protocolElapsed, audioSubmitted, discontinuous);
+                pretriggerElapsed = Stopwatch.GetElapsedTime(pretriggerStarted);
+                receiverSnapshot = CaptureReceiverPublishSnapshot();
             }
             finally
             {
                 if (monitorBuffer is not null) ArrayPool<float>.Shared.Return(monitorBuffer);
                 if (channelBuffer is not null) ArrayPool<Complex32>.Shared.Return(channelBuffer);
             }
-
-            PublishDecodedFrames(decodedFrames, pipeline);
+            lockedProcessingElapsed = Stopwatch.GetElapsedTime(processingStarted);
         }
+        long protocolStarted = Stopwatch.GetTimestamp();
+        VdlDecodedFrame[] decodedFrames = DecodeUpperLayers(receivedFrames);
+        TimeSpan protocolElapsed = Stopwatch.GetElapsedTime(protocolStarted);
+        VdlPipelineDiagnosticsSnapshot pipeline = pipelineDiagnostics.Record(
+            metadata, methodStarted, Stopwatch.GetElapsedTime(methodStarted),
+            lockedProcessingElapsed + protocolElapsed, receiverElapsed, audioElapsed,
+            pretriggerElapsed, protocolElapsed, audioSubmitted, discontinuous);
+        PublishDecodedFrames(decodedFrames, pipeline, receiverSnapshot);
         return ValueTask.CompletedTask;
     }
 
@@ -93,52 +101,60 @@ public sealed partial class VdlPluginModule
         ThrowIfDisposed();
         if (State != PluginLifecycleState.Streaming) return ValueTask.CompletedTask;
 
+        ChannelIqBlockMetadata channelMetadata = block.Metadata;
+        IqBlockMetadata metadata = channelMetadata.Source;
+        IReadOnlyList<VdlFrame> receivedFrames;
+        TimeSpan receiverElapsed;
+        TimeSpan audioElapsed;
+        TimeSpan pretriggerElapsed;
+        TimeSpan lockedProcessingElapsed;
+        bool audioSubmitted;
+        bool discontinuous;
+        ReceiverPublishSnapshot receiverSnapshot;
         lock (processingGate)
         {
             if (State != PluginLifecycleState.Streaming) return ValueTask.CompletedTask;
-            ChannelIqBlockMetadata channelMetadata = block.Metadata;
-            IqBlockMetadata metadata = channelMetadata.Source;
             lastCaptureMetadata = metadata;
             long processingStarted = Stopwatch.GetTimestamp();
             float[]? monitorBuffer = null;
-            VdlDecodedFrame[] decodedFrames;
-            VdlPipelineDiagnosticsSnapshot pipeline;
             try
             {
                 if (settings.MonitorAudioEnabled)
                     monitorBuffer = ArrayPool<float>.Shared.Rent(block.Samples.Length / 5 + 4);
-                IReadOnlyList<VdlFrame> receivedFrames = receiver.ProcessChannel(
+                receivedFrames = receiver.ProcessChannel(
                     block.Samples.Span, channelMetadata, monitorBuffer, out int audioSampleCount);
-                TimeSpan receiverElapsed = Stopwatch.GetElapsedTime(processingStarted);
+                receiverElapsed = Stopwatch.GetElapsedTime(processingStarted);
                 long audioStarted = Stopwatch.GetTimestamp();
-                bool audioSubmitted = true;
-                bool discontinuous = metadata.Discontinuity != IqDiscontinuity.None;
+                audioSubmitted = true;
+                discontinuous = metadata.Discontinuity != IqDiscontinuity.None;
                 if (settings.MonitorAudioEnabled && monitorBuffer is not null)
                 {
                     bool resetAudio = audioGeneration.Observe(metadata.Generation, discontinuous);
                     if (resetAudio) host?.Audio.Reset();
                     audioSubmitted = SubmitMonitorAudio(monitorBuffer.AsSpan(0, audioSampleCount), metadata, resetAudio);
                 }
-                TimeSpan audioElapsed = Stopwatch.GetElapsedTime(audioStarted);
+                audioElapsed = Stopwatch.GetElapsedTime(audioStarted);
                 long pretriggerStarted = Stopwatch.GetTimestamp();
                 pretriggerBuffer.Write(
                     block.Samples.Span, channelMetadata.Configuration.OutputSampleRateHz,
                     block.Samples.Span, channelMetadata.Configuration.OutputSampleRateHz);
-                TimeSpan pretriggerElapsed = Stopwatch.GetElapsedTime(pretriggerStarted);
-                long protocolStarted = Stopwatch.GetTimestamp();
-                decodedFrames = receivedFrames.Select(upperLayerDecoder.Decode).ToArray();
-                TimeSpan protocolElapsed = Stopwatch.GetElapsedTime(protocolStarted);
-                pipeline = pipelineDiagnostics.Record(metadata, methodStarted,
-                    Stopwatch.GetElapsedTime(methodStarted), Stopwatch.GetElapsedTime(processingStarted),
-                    receiverElapsed, audioElapsed, pretriggerElapsed, protocolElapsed,
-                    audioSubmitted, discontinuous);
+                pretriggerElapsed = Stopwatch.GetElapsedTime(pretriggerStarted);
+                receiverSnapshot = CaptureReceiverPublishSnapshot();
             }
             finally
             {
                 if (monitorBuffer is not null) ArrayPool<float>.Shared.Return(monitorBuffer);
             }
-            PublishDecodedFrames(decodedFrames, pipeline);
+            lockedProcessingElapsed = Stopwatch.GetElapsedTime(processingStarted);
         }
+        long protocolStarted = Stopwatch.GetTimestamp();
+        VdlDecodedFrame[] decodedFrames = DecodeUpperLayers(receivedFrames);
+        TimeSpan protocolElapsed = Stopwatch.GetElapsedTime(protocolStarted);
+        VdlPipelineDiagnosticsSnapshot pipeline = pipelineDiagnostics.Record(
+            metadata, methodStarted, Stopwatch.GetElapsedTime(methodStarted),
+            lockedProcessingElapsed + protocolElapsed, receiverElapsed, audioElapsed,
+            pretriggerElapsed, protocolElapsed, audioSubmitted, discontinuous);
+        PublishDecodedFrames(decodedFrames, pipeline, receiverSnapshot);
         return ValueTask.CompletedTask;
     }
 
@@ -163,16 +179,34 @@ public sealed partial class VdlPluginModule
                 lock (processingGate)
                 {
                     receiver.Reset();
-                    upperLayerDecoder.Reset();
+                    lock (upperLayerGate) upperLayerDecoder.Reset();
                 }
             },
             cancellationToken);
     }
 
-    private void PublishDecodedFrames(IReadOnlyList<VdlDecodedFrame> decodedFrames,
-        VdlPipelineDiagnosticsSnapshot pipeline)
+    private VdlDecodedFrame[] DecodeUpperLayers(IReadOnlyList<VdlFrame> receivedFrames)
     {
-        VdlMode2Receiver.DiagnosticsSnapshot diag = receiver.GetDiagnostics();
+        if (receivedFrames.Count == 0) return [];
+        var decodedFrames = new VdlDecodedFrame[receivedFrames.Count];
+        lock (upperLayerGate)
+            for (int index = 0; index < receivedFrames.Count; index++)
+                decodedFrames[index] = upperLayerDecoder.Decode(receivedFrames[index]);
+        return decodedFrames;
+    }
+
+    private ReceiverPublishSnapshot CaptureReceiverPublishSnapshot() => new(
+        receiver.GetDiagnostics(),
+        receiver.ValidFrameCount,
+        receiver.RejectedFrameCount,
+        receiver.SynchronizationCount,
+        receiver.FrequencyOffsetHz);
+
+    private void PublishDecodedFrames(IReadOnlyList<VdlDecodedFrame> decodedFrames,
+        VdlPipelineDiagnosticsSnapshot pipeline,
+        ReceiverPublishSnapshot receiverSnapshot)
+    {
+        VdlMode2Receiver.DiagnosticsSnapshot diag = receiverSnapshot.Diagnostics;
         var enrichedFrames = new List<VdlDecodedFrame>(decodedFrames.Count);
         foreach (VdlDecodedFrame decoded in decodedFrames)
         {
@@ -188,25 +222,30 @@ public sealed partial class VdlPluginModule
             enrichedFrames.Add(enriched);
             Publish(enriched);
         }
-        long validCount = receiver.ValidFrameCount;
-        long rejectedCount = receiver.RejectedFrameCount;
-        long syncCount = receiver.SynchronizationCount;
-        long offsetHz = receiver.FrequencyOffsetHz;
         float? signalLevelDbm = host?.ReceiverTelemetry?.SignalLevelDbm;
         float? noiseFloorDbm = host?.ReceiverTelemetry?.NoiseFloorDbm;
         host?.Dispatcher.Post(() =>
         {
             foreach (VdlDecodedFrame decoded in enrichedFrames) viewModel.AddFrame(decoded);
-            viewModel.UpdateDiagnostics(diag, validCount, rejectedCount, syncCount, offsetHz, pipeline, signalLevelDbm, noiseFloorDbm);
+            viewModel.UpdateDiagnostics(diag, receiverSnapshot.ValidFrameCount,
+                receiverSnapshot.RejectedFrameCount, receiverSnapshot.SynchronizationCount,
+                receiverSnapshot.FrequencyOffsetHz, pipeline, signalLevelDbm, noiseFloorDbm);
         });
     }
+
+    private readonly record struct ReceiverPublishSnapshot(
+        VdlMode2Receiver.DiagnosticsSnapshot Diagnostics,
+        long ValidFrameCount,
+        long RejectedFrameCount,
+        long SynchronizationCount,
+        long FrequencyOffsetHz);
 
     protected override async ValueTask OnDisposeAsync(IPluginHostContext? hostContext)
     {
         lock (processingGate)
         {
             receiver.Reset();
-            upperLayerDecoder.Reset();
+            lock (upperLayerGate) upperLayerDecoder.Reset();
         }
         if (historyWriter is not null)
         {

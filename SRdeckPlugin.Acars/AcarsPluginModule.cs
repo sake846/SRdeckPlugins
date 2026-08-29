@@ -187,9 +187,12 @@ public sealed partial class AcarsPluginModule : PluginModuleBase, IIqBlockConsum
         {
             lock (receiverGate)
                 return MonitoredChannels().Select(channel => new PluginChannelRequest(
-                    $"acars-{channel.Id}", channel.FrequencyHz, 10_000,
+                    $"acars-{channel.Id}", channel.FrequencyHz, AcarsReceiver.ChannelBandwidthHz,
                     AcarsReceiver.DemodulationSampleRateHz, 72_000, 56_000,
-                    32, 3, 8, true, 240_000, 400_000, 8)).ToArray();
+                    32, 3, 8, true, 240_000, 400_000, 8)
+                {
+                    StopbandBandwidthHz = AcarsReceiver.ChannelStopbandBandwidthHz
+                }).ToArray();
         }
     }
     public IReadOnlyList<PluginProfileDescriptor> Profiles { get; } = Channels.Select((item, index) =>

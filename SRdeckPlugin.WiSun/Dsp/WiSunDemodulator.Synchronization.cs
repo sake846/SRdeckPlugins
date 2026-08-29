@@ -9,32 +9,56 @@ namespace SRdeckPlugin.WiSun.Dsp;
 /// </summary>
 public sealed partial class WiSunDemodulator
 {
+    private bool IsLikelySynchronizationCandidate(int start, float squelchPower)
+    {
+        int requiredPreambleSamples = RequiredPreambleBits * SamplesPerBit;
+        if (start < requiredPreambleSamples) return false;
+
+        int totalSfdSamples = SfdBitCount * SamplesPerBit;
+        if (start + totalSfdSamples >= powerPrefix.Count) return false;
+        double sfdPower = (powerPrefix[start + totalSfdSamples] - powerPrefix[start]) /
+            totalSfdSamples;
+        if (sfdPower < squelchPower) return false;
+
+        // A preamble accepted by the full test must order every alternating
+        // symbol pair in the same direction around its common bias. Checking
+        // four pairs is therefore a cheap necessary condition, not an
+        // additional signal-strength threshold that could discard weak frames.
+        const int pairCount = 4;
+        int preambleStart = start - requiredPreambleSamples;
+        int firstBit = RequiredPreambleBits - pairCount * 2;
+        float firstDifference = SymbolMetric(preambleStart + (firstBit + 1) * SamplesPerBit) -
+            SymbolMetric(preambleStart + firstBit * SamplesPerBit);
+        if (!float.IsFinite(firstDifference) || firstDifference == 0) return false;
+        bool rising = firstDifference > 0;
+        for (int pair = 1; pair < pairCount; pair++)
+        {
+            int bit = firstBit + pair * 2;
+            float difference = SymbolMetric(preambleStart + (bit + 1) * SamplesPerBit) -
+                SymbolMetric(preambleStart + bit * SamplesPerBit);
+            if (!float.IsFinite(difference) || difference == 0) return false;
+            if ((difference > 0) != rising) return false;
+        }
+        return true;
+    }
+
     private bool TrySynchronize(
         int start,
-        float squelchPower,
         DateTimeOffset timestamp,
         out int polarity,
         out float discriminatorBias,
-        out int sfdErrors,
         out ushort matchedSfd,
         out bool newSfd)
     {
         TotalSyncAttempts++;
         polarity = 1;
         discriminatorBias = 0;
-        sfdErrors = int.MaxValue;
+        int sfdErrors = int.MaxValue;
         matchedSfd = 0;
         newSfd = false;
 
-        int requiredPreambleSamples = RequiredPreambleBits * SamplesPerBit;
-        if (start < requiredPreambleSamples) return false;
-
-        int totalSfdSamples = SfdBitCount * SamplesPerBit;
-        if (start + totalSfdSamples >= powerPrefix.Count) return false;
-        double sfdPower = (powerPrefix[start + totalSfdSamples] - powerPrefix[start]) / totalSfdSamples;
-        if (sfdPower < squelchPower) return false;
-
         // 1. Preamble Lock: Verify preceding 2-byte alternating preamble before evaluating SFD candidate
+        int requiredPreambleSamples = RequiredPreambleBits * SamplesPerBit;
         int requiredPreambleStart = start - requiredPreambleSamples;
         Span<float> preambleMetrics = stackalloc float[RequiredPreambleBits];
         float preambleSum = 0;
@@ -45,7 +69,7 @@ public sealed partial class WiSunDemodulator
         }
         float candidateBias = preambleSum / RequiredPreambleBits;
         int candidatePolarity = preambleMetrics[^1] >= candidateBias ? 1 : -1;
-        if (AlternatingSuffixLength(requiredPreambleStart, RequiredPreambleBits, candidatePolarity, candidateBias) < RequiredPreambleBits)
+        if (AlternatingSuffixLength(preambleMetrics, candidatePolarity, candidateBias) < RequiredPreambleBits)
             return false;
 
         // 2. Synchronized SFD Search: Preamble locked! Test SFD match using locked timing parameters.
@@ -376,12 +400,6 @@ public sealed partial class WiSunDemodulator
             discriminatorPrefix[start]) / SamplesPerBit);
     }
 
-    private float SymbolPower(int start)
-    {
-        return (float)((powerPrefix[start + SamplesPerBit] -
-            powerPrefix[start]) / SamplesPerBit);
-    }
-
     private static int CountWordErrorsMsbFirst(
         ReadOnlySpan<float> metrics,
         ushort expected,
@@ -432,16 +450,15 @@ public sealed partial class WiSunDemodulator
         return new string(result);
     }
 
-    private int AlternatingSuffixLength(int start, int bitCount, int polarity, float bias)
+    private static int AlternatingSuffixLength(
+        ReadOnlySpan<float> metrics, int polarity, float bias)
     {
-        if (bitCount == 0) return 0;
-        bool previous = polarity *
-            (SymbolMetric(start + (bitCount - 1) * SamplesPerBit) - bias) >= 0;
+        if (metrics.IsEmpty) return 0;
+        bool previous = polarity * (metrics[^1] - bias) >= 0;
         int length = 1;
-        for (int bit = bitCount - 2; bit >= 0; bit--)
+        for (int bit = metrics.Length - 2; bit >= 0; bit--)
         {
-            bool current = polarity *
-                (SymbolMetric(start + bit * SamplesPerBit) - bias) >= 0;
+            bool current = polarity * (metrics[bit] - bias) >= 0;
             if (current == previous) break;
             previous = current;
             length++;
@@ -449,13 +466,4 @@ public sealed partial class WiSunDemodulator
         return length;
     }
 
-    private byte[] ReadBytesLsbFirst(int start, int count, int polarity, float bias)
-    {
-        var result = new byte[count];
-        for (int byteIndex = 0; byteIndex < count; byteIndex++)
-            for (int bit = 0; bit < 8; bit++)
-                if (polarity * (SymbolMetric(start + (byteIndex * 8 + bit) * SamplesPerBit) - bias) >= 0)
-                    result[byteIndex] |= (byte)(1 << bit);
-        return result;
-    }
 }

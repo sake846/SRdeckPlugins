@@ -18,6 +18,7 @@ public sealed class Ft8Receiver
     private readonly Jt65Decoder jt65Decoder = new();
     private readonly ComplexFrequencyTranslator translator = new();
     private readonly PolyphaseRationalResampler resampler = new(40, 320, true);
+    private Complex32[] convertedBuffer = [];
     private Complex32[] slot = new Complex32[Ft8Decoder.SlotSamples];
     private WeakSignalMode activeMode = WeakSignalMode.FT8;
     private DateTimeOffset? slotStart;
@@ -102,12 +103,6 @@ public sealed class Ft8Receiver
     {
         if (metadata.SampleRateHz < OutputSampleRateHz)
             throw new InvalidOperationException("Weak-signal reception requires at least 12.8 kS/s.");
-        // Cast before multiplication: at common SDR block sizes a 6 MS/s stream
-        // overflows a 32-bit intermediate (for example 262,144 * 12,800).
-        // List then receives a negative capacity and faults the entire plugin.
-        int convertedCapacity = checked((int)Math.Ceiling(samples.Length *
-            (double)OutputSampleRateHz / metadata.SampleRateHz) + 4);
-        var converted = new List<Complex32>(convertedCapacity);
         lock (gate)
         {
             inputSampleRate = metadata.SampleRateHz;
@@ -120,18 +115,23 @@ public sealed class Ft8Receiver
                 ResetSlotState();
             }
             translator.Configure(targetCenterHz - metadata.CenterFrequencyHz, metadata.SampleRateHz);
+            int convertedCapacity = resampler.GetOutputCount(samples.Length);
+            if (convertedBuffer.Length < convertedCapacity)
+                Array.Resize(ref convertedBuffer, convertedCapacity);
+            int convertedCount = 0;
             foreach (Complex32 sample in samples)
             {
                 translator.Mix(sample.I, sample.Q, out float mixedI, out float mixedQ);
-                resampler.Process(mixedI, mixedQ,
-                    (i, q) => converted.Add(new Complex32(i, q)));
+                convertedCount += resampler.Process(mixedI, mixedQ,
+                    MemoryMarshal.Cast<Complex32, float>(
+                        convertedBuffer.AsSpan(convertedCount)));
             }
             DateTimeOffset timestamp = metadata.UtcTimestamp == default
                 ? DateTimeOffset.UtcNow : metadata.UtcTimestamp;
-            Feed(CollectionsMarshal.AsSpan(converted), timestamp, metadata.StreamId,
+            ReadOnlySpan<Complex32> converted = convertedBuffer.AsSpan(0, convertedCount);
+            Feed(converted, timestamp, metadata.StreamId,
                 targetCenterHz, settings);
-            monitorAudioSampleCount = RenderMonitorAudio(
-                CollectionsMarshal.AsSpan(converted), monitorAudio);
+            monitorAudioSampleCount = RenderMonitorAudio(converted, monitorAudio);
             UpdateDiagnosticsSnapshot();
         }
     }

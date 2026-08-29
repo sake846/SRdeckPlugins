@@ -3,7 +3,9 @@
 internal sealed class AisHdlcDecoder
 {
     private const int MaximumRawBits = 2048;
-    private readonly List<bool> rawBits = new(MaximumRawBits);
+    private readonly ulong[] rawBits = new ulong[(MaximumRawBits + 1 + 63) / 64];
+    private readonly byte[] decodedBytes = new byte[(MaximumRawBits + 7) / 8];
+    private int rawBitCount;
     private bool hasPreviousLevel;
     private bool previousLevel;
     private byte shiftRegister;
@@ -21,16 +23,21 @@ internal sealed class AisHdlcDecoder
 
     public void Reset()
     {
-        rawBits.Clear();
+        ResetState();
+        rejectedFrames = 0;
+        flagCount = 0;
+        frameCandidateCount = 0;
+        validFrames = 0;
+    }
+
+    public void ResetState()
+    {
+        rawBitCount = 0;
         hasPreviousLevel = false;
         previousLevel = false;
         shiftRegister = 0;
         shiftCount = 0;
         inFrame = false;
-        rejectedFrames = 0;
-        flagCount = 0;
-        frameCandidateCount = 0;
-        validFrames = 0;
     }
 
     public byte[]? FeedLevel(bool level)
@@ -46,47 +53,63 @@ internal sealed class AisHdlcDecoder
         previousLevel = level;
         shiftRegister = (byte)((shiftRegister << 1) | (bit ? 1 : 0));
         if (shiftCount < 8) shiftCount++;
-        if (inFrame) rawBits.Add(bit);
+        if (inFrame) AppendRawBit(bit);
 
         if (shiftCount >= 8 && shiftRegister == 0x7E)
         {
             flagCount++;
             byte[]? completed = null;
-            if (inFrame && rawBits.Count > 8)
+            if (inFrame && rawBitCount > 8)
             {
-                rawBits.RemoveRange(rawBits.Count - 8, 8);
-                completed = DecodeFrame(rawBits);
-                if (rawBits.Count >= 24)
+                int frameBitCount = rawBitCount - 8;
+                completed = DecodeFrame(frameBitCount);
+                if (frameBitCount >= 24)
                 {
                     frameCandidateCount++;
                     if (completed is null) rejectedFrames++;
                     else validFrames++;
                 }
             }
-            rawBits.Clear();
+            rawBitCount = 0;
             inFrame = true;
             return completed;
         }
 
-        if (rawBits.Count > MaximumRawBits)
+        if (rawBitCount > MaximumRawBits)
         {
-            rawBits.Clear();
+            rawBitCount = 0;
             inFrame = false;
         }
         return null;
     }
 
-    private static byte[]? DecodeFrame(IReadOnlyList<bool> bits)
+    private void AppendRawBit(bool bit)
     {
-        var unstuffed = new List<bool>(bits.Count);
+        int index = rawBitCount++;
+        ref ulong word = ref rawBits[index >> 6];
+        ulong mask = 1UL << (index & 63);
+        if (bit) word |= mask;
+        else word &= ~mask;
+    }
+
+    private bool GetRawBit(int index) =>
+        (rawBits[index >> 6] & (1UL << (index & 63))) != 0;
+
+    private byte[]? DecodeFrame(int bitCount)
+    {
+        decodedBytes.AsSpan(0, (bitCount + 7) / 8).Clear();
         int ones = 0;
-        foreach (bool bit in bits)
+        int outputBitCount = 0;
+        for (int index = 0; index < bitCount; index++)
         {
+            bool bit = GetRawBit(index);
             if (bit)
             {
                 ones++;
                 if (ones > 5) return null;
-                unstuffed.Add(true);
+                decodedBytes[outputBitCount >> 3] |=
+                    (byte)(1 << (outputBitCount & 7));
+                outputBitCount++;
             }
             else
             {
@@ -96,14 +119,13 @@ internal sealed class AisHdlcDecoder
                     continue;
                 }
                 ones = 0;
-                unstuffed.Add(false);
+                outputBitCount++;
             }
         }
 
-        if (unstuffed.Count < 24 || unstuffed.Count % 8 != 0) return null;
-        var bytes = new byte[unstuffed.Count / 8];
-        for (int index = 0; index < unstuffed.Count; index++)
-            if (unstuffed[index]) bytes[index / 8] |= (byte)(1 << (index % 8));
-        return AisCrc.IsValid(bytes) ? bytes[..^2] : null;
+        if (outputBitCount < 24 || outputBitCount % 8 != 0) return null;
+        int byteCount = outputBitCount / 8;
+        ReadOnlySpan<byte> frame = decodedBytes.AsSpan(0, byteCount);
+        return AisCrc.IsValid(frame) ? frame[..^2].ToArray() : null;
     }
 }

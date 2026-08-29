@@ -14,7 +14,9 @@ ShortFast, ShortSlow, and automatic spreading-factor presets for 250 kHz,
 ## Features
 
 Performs LoRa channel extraction, chirp demodulation, FEC/CRC validation, and
-Meshtastic packet parsing. The WPF workspace provides profile settings and
+Meshtastic packet parsing. In specified mode, the first selected slot is also
+FM-demodulated to 48 kHz mono PCM for audio monitoring. The FM monitor is not
+processed in discovery mode. The WPF workspace provides profile settings and
 frequency overlays.
 
 ## Build

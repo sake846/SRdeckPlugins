@@ -58,6 +58,8 @@ public sealed partial class AisViewModel
 
         ValidFrames = channelA.ValidFrames + channelB.ValidFrames;
         RejectedFrames = channelA.RejectedFrames + channelB.RejectedFrames;
+        HypothesisValidFrames = channelA.HypothesisValidFrameCount + channelB.HypothesisValidFrameCount;
+        HypothesisRejectedFrames = channelA.HypothesisRejectedFrameCount + channelB.HypothesisRejectedFrameCount;
         UpdateDiagnosticWindow(channelA, channelB);
         InputSampleRateHz = Math.Max(channelA.InputSampleRateHz, channelB.InputSampleRateHz);
         CenterFrequencyHz = channelA.InputCenterFrequencyHz != 0
@@ -77,12 +79,12 @@ public sealed partial class AisViewModel
             recentAFlags, recentACandidates, recentAHypothesisValid);
         ChannelBDetectionText = FormatChannelDetection(channelB.Channel,
             recentBFlags, recentBCandidates, recentBHypothesisValid);
-        long recentValid = recentAValid + recentBValid;
-        long recentRejected = recentARejected + recentBRejected;
-        long recentTotal = recentValid + recentRejected;
-        string rate = recentTotal == 0 ? "—" : $"{recentValid * 100.0 / recentTotal:F1} %";
-        RecentValidationText = $"直近60秒: AIS 1 有効/fallback不一致 {recentAValid:N0}/{recentARejected:N0}, " +
-            $"AIS 2 有効/fallback不一致 {recentBValid:N0}/{recentBRejected:N0}, 検証合格率 {rate}";
+        long recentHypothesisValid = recentAHypothesisValid + recentBHypothesisValid;
+        long recentHypothesisRejected = recentAHypothesisRejected + recentBHypothesisRejected;
+        long recentTotal = recentHypothesisValid + recentHypothesisRejected;
+        string rate = recentTotal == 0 ? "—" : $"{recentHypothesisValid * 100.0 / recentTotal:F1} %";
+        RecentValidationText = $"直近60秒: AIS 1 仮説FCS合格/不一致 {recentAHypothesisValid:N0}/{recentAHypothesisRejected:N0}, " +
+            $"AIS 2 仮説FCS合格/不一致 {recentBHypothesisValid:N0}/{recentBHypothesisRejected:N0}, 検証合格率 {rate}";
         UpdateInputDiagnostics(channelA, channelB);
         UpdateOverallStatus();
     }
@@ -239,15 +241,19 @@ public sealed partial class AisViewModel
                 channelA.HypothesisFlagCount < previous.AFlags ||
                 channelA.HypothesisFrameCandidateCount < previous.ACandidates ||
                 channelA.HypothesisValidFrameCount < previous.AHypothesisValid ||
+                channelA.HypothesisRejectedFrameCount < previous.AHypothesisRejected ||
                 channelB.HypothesisFlagCount < previous.BFlags ||
                 channelB.HypothesisFrameCandidateCount < previous.BCandidates ||
-                channelB.HypothesisValidFrameCount < previous.BHypothesisValid)
+                channelB.HypothesisValidFrameCount < previous.BHypothesisValid ||
+                channelB.HypothesisRejectedFrameCount < previous.BHypothesisRejected)
                 diagnosticHistory.Clear();
         }
         diagnosticHistory.Enqueue((measuredAt, channelA.ValidFrames, channelA.RejectedFrames,
             channelB.ValidFrames, channelB.RejectedFrames,
-            channelA.HypothesisFlagCount, channelA.HypothesisFrameCandidateCount, channelA.HypothesisValidFrameCount,
-            channelB.HypothesisFlagCount, channelB.HypothesisFrameCandidateCount, channelB.HypothesisValidFrameCount));
+            channelA.HypothesisFlagCount, channelA.HypothesisFrameCandidateCount,
+            channelA.HypothesisValidFrameCount, channelA.HypothesisRejectedFrameCount,
+            channelB.HypothesisFlagCount, channelB.HypothesisFrameCandidateCount,
+            channelB.HypothesisValidFrameCount, channelB.HypothesisRejectedFrameCount));
         while (diagnosticHistory.Count > 1 && measuredAt - diagnosticHistory.Peek().At > DiagnosticWindow)
             diagnosticHistory.Dequeue();
         var baseline = diagnosticHistory.Peek();
@@ -258,9 +264,11 @@ public sealed partial class AisViewModel
         recentAFlags = Math.Max(0, channelA.HypothesisFlagCount - baseline.AFlags);
         recentACandidates = Math.Max(0, channelA.HypothesisFrameCandidateCount - baseline.ACandidates);
         recentAHypothesisValid = Math.Max(0, channelA.HypothesisValidFrameCount - baseline.AHypothesisValid);
+        recentAHypothesisRejected = Math.Max(0, channelA.HypothesisRejectedFrameCount - baseline.AHypothesisRejected);
         recentBFlags = Math.Max(0, channelB.HypothesisFlagCount - baseline.BFlags);
         recentBCandidates = Math.Max(0, channelB.HypothesisFrameCandidateCount - baseline.BCandidates);
         recentBHypothesisValid = Math.Max(0, channelB.HypothesisValidFrameCount - baseline.BHypothesisValid);
+        recentBHypothesisRejected = Math.Max(0, channelB.HypothesisRejectedFrameCount - baseline.BHypothesisRejected);
     }
 
     private static string FormatChannelDetection(string channel, long flags, long candidates, long valid) =>
@@ -275,6 +283,12 @@ public sealed partial class AisViewModel
         string squelch = value.IsSquelchEnabled
             ? $"SQ {(value.IsSquelchOpen ? "OPEN" : "CLOSED")} ({value.SquelchThresholdDbfs:F0} dBm)"
             : "SQ OFF";
-        return $"{value.Channel}: {level} / {squelch} / 品質 {value.LastSignalQuality:F2} / 周波数補正 {-value.LastFrequencyCorrectionHz:+0;-0;0} Hz / {last}";
+        string demodulationGate = value.IsDemodulationGateEnabled
+            ? $"GATE {(value.IsDemodulationGateOpen ? "OPEN" : "CLOSED")} " +
+              $"(pre {value.DemodulationGatePreRollSamples} / " +
+              $"delay {value.LastDemodulationDetectionDelaySamples} / " +
+              $"replay {value.LastDemodulationReplaySampleCount})"
+            : "GATE OFF";
+        return $"{value.Channel}: {level} / {squelch} / {demodulationGate} / 品質 {value.LastSignalQuality:F2} / 周波数補正 {-value.LastFrequencyCorrectionHz:+0;-0;0} Hz / {last}";
     }
 }

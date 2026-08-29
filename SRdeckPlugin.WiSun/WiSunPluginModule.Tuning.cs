@@ -110,6 +110,12 @@ public sealed partial class WiSunPluginModule
                     "wisun-custom-01", frequencyHz,
                     bw, rate, 800_000, 400_000,
                     64, 3, 16, false, 1_000_000, 2_000_000, 8)
+                {
+                    StopbandBandwidthHz = WiSunDemodulator.ChannelStopbandBandwidthHz(
+                        profile, settings.CustomBitRateBps),
+                    // Let startup calibration select the fastest available host path.
+                    AccelerationPreference = PluginChannelAccelerationPreference.Auto
+                }
             ];
         }
 
@@ -123,7 +129,14 @@ public sealed partial class WiSunPluginModule
                 ChannelRequestId(profile, channel), frequencyHz,
                 WiSunDemodulator.ChannelBandwidthHz(profile, settings.CustomBitRateBps),
                 WiSunDemodulator.WorkingSampleRateHz(profile, settings.CustomBitRateBps), 800_000, 400_000,
-                64, 3, 16, false, 1_000_000, 2_000_000, 8);
+                64, 3, 16, false, 1_000_000, 2_000_000, 8)
+            {
+                StopbandBandwidthHz = WiSunDemodulator.ChannelStopbandBandwidthHz(
+                    profile, settings.CustomBitRateBps),
+                // Homogeneous Wi-SUN channels use the packed GPU path when its
+                // startup calibration beats concurrent CPU channelization.
+                AccelerationPreference = PluginChannelAccelerationPreference.Auto
+            };
         }).ToArray();
     }
 

@@ -56,7 +56,11 @@ public partial class MeshtasticViewModel
         string slotText = FormatMeshtasticBandwidthSlots(bandwidthSlots);
         int detectorCount = bandwidthSlots.Sum(selection => selection.RadioChannels.Count *
             MeshtasticJpLongFastProfile.GetDetectionProfiles(SelectedMeshtasticModemPreset).Count(candidate => candidate.BandwidthHz == selection.BandwidthHz));
-        MeshtasticChannelSettingStatus = $"設定を適用しました: {profile.Name} / {slotText}（{detectorCount}検出器）";
+        string monitorText = IsMeshtasticDiscoveryMode
+            ? string.Empty
+            : $" / FMモニター slot {MeshtasticRadioChannel}";
+        MeshtasticChannelSettingStatus =
+            $"設定を適用しました: {profile.Name} / {slotText}（{detectorCount}検出器）{monitorText}";
         SetMeshtasticReceiverStatus(
             $"受信 {MeshtasticMessages.Count}件 / Node {MeshtasticNodes.Count}",
             OverallStatusKind.Running);
@@ -83,6 +87,33 @@ public partial class MeshtasticViewModel
 
     private static string FormatMeshtasticBandwidthSlots(IEnumerable<MeshtasticBandwidthSlots> selections) =>
         string.Join(" / ", selections.Select(value => $"{value.BandwidthHz / 1000}kHz slot {string.Join(',', value.RadioChannels)}"));
+
+    internal bool TryGetMeshtasticFmMonitorTarget(out int frequencyHz, out int bandwidthHz)
+    {
+        frequencyHz = 0;
+        bandwidthHz = 0;
+        if (IsMeshtasticDiscoveryMode ||
+            MeshtasticJpLongFastProfile.IsAutoSf(SelectedMeshtasticModemPreset))
+        {
+            return false;
+        }
+
+        MeshtasticLoRaProfile profile =
+            MeshtasticJpLongFastProfile.GetProfile(SelectedMeshtasticModemPreset);
+        MeshtasticRegionProfile region =
+            MeshtasticJpLongFastProfile.GetRegion(SelectedMeshtasticRegion);
+        if (MeshtasticRadioChannel < 1 ||
+            MeshtasticRadioChannel > region.GetMaximumChannel(profile.BandwidthHz))
+        {
+            return false;
+        }
+
+        bandwidthHz = profile.BandwidthHz;
+        frequencyHz = region.CalculateChannelFrequencyHz(
+            MeshtasticRadioChannel,
+            bandwidthHz);
+        return true;
+    }
 
     private void RebuildMeshtasticSlotSelections()
     {

@@ -1,4 +1,4 @@
-﻿using System.Numerics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using SRdeckPlugin.Acars.Models;
 using SRdeckPlugin.Acars.Protocols;
@@ -12,28 +12,43 @@ public sealed partial class AcarsReceiver
 {
     private IReadOnlyList<AcarsFrame> Decode(IqBlockMetadata metadata)
     {
+        long startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         var result = new List<AcarsFrame>();
         float bestRecentMeanConfidence = 0;
         float bestRecentSquelchMetric = 0;
         ReadOnlySpan<float> audioSpan = audioBuffer.AsSpan(0, audioCount);
+        int newCorrelationWindows = PopulateCorrelationCache(audioSpan);
+        int correlationWindows = 0;
+        int phaseStride = audioCount / SamplesPerBit;
+        EnsureCapacity(phaseStride);
+        Span<PhaseAcquisitionCandidate> phaseCandidates =
+            stackalloc PhaseAcquisitionCandidate[SamplesPerBit];
+        int phaseCandidateCount = 0;
         for (int phase = 0; phase < SamplesPerBit; phase++)
         {
             int symbolCount = (audioCount - phase) / SamplesPerBit;
             if (symbolCount < 8 * 18) continue;
-            EnsureCapacity(symbolCount);
+            Span<ToneCorrelation> phaseLow = lowCorrelations.AsSpan(
+                phase * phaseStride, symbolCount);
+            Span<ToneCorrelation> phaseHigh = highCorrelations.AsSpan(
+                phase * phaseStride, symbolCount);
+            Span<float> phaseConfidence = confidenceBuffer.AsSpan(
+                phase * phaseStride, symbolCount);
             for (int symbol = 0; symbol < symbolCount; symbol++)
             {
-                MeasureTones(audioSpan, phase + symbol * SamplesPerBit,
-                    out lowCorrelations[symbol], out highCorrelations[symbol],
-                    out confidenceBuffer[symbol]);
+                int cacheIndex = phase + symbol * SamplesPerBit;
+                phaseLow[symbol] = lowCorrelationCache[cacheIndex];
+                phaseHigh[symbol] = highCorrelationCache[cacheIndex];
+                phaseConfidence[symbol] = confidenceCache[cacheIndex];
             }
+            correlationWindows += symbolCount;
             int recentSymbolCount = Math.Min(symbolCount,
                 DecodeIntervalSamples / SamplesPerBit);
             double recentConfidenceSum = 0;
             for (int index = symbolCount - recentSymbolCount;
                  index < symbolCount; index++)
             {
-                recentConfidenceSum += confidenceBuffer[index];
+                recentConfidenceSum += phaseConfidence[index];
             }
             float recentMeanConfidence = recentSymbolCount == 0 ? 0 :
                 (float)(recentConfidenceSum / recentSymbolCount);
@@ -48,11 +63,11 @@ public sealed partial class AcarsReceiver
                 recentSquelchSum += MeasureSquelchMetric(
                     audioSpan,
                     phase + index * SamplesPerBit,
-                    lowCorrelations[index].Power,
-                    highCorrelations[index].Power,
-                    confidenceBuffer[index]);
-                recentLowPower += lowCorrelations[index].Power;
-                recentHighPower += highCorrelations[index].Power;
+                    phaseLow[index].Power,
+                    phaseHigh[index].Power,
+                    phaseConfidence[index]);
+                recentLowPower += phaseLow[index].Power;
+                recentHighPower += phaseHigh[index].Power;
             }
             float recentMeanSquelchMetric = recentSymbolCount == 0 ? 0 :
                 (float)(recentSquelchSum / recentSymbolCount);
@@ -63,32 +78,86 @@ public sealed partial class AcarsReceiver
             bestRecentSquelchMetric = MathF.Max(
                 bestRecentSquelchMetric, recentMeanSquelchMetric);
 
-            // Use a soft sequence detector which rewards both tone energy and
-            // the continuous MSK phase trajectory.
-            ReadOnlySpan<bool> coherentTones = DecodeCoherentToneSequence(
-                lowCorrelations.AsSpan(0, symbolCount),
-                highCorrelations.AsSpan(0, symbolCount),
-                predecessorsBuffer, tonesBuffer);
-            DecodeToneSequence(coherentTones, confidenceBuffer.AsSpan(0, symbolCount), phase, metadata, result);
+            phaseCandidates[phaseCandidateCount++] = MeasurePhaseAcquisition(
+                phaseLow, phaseHigh, phaseConfidence, phase, bitsBuffer);
+        }
+
+        Span<PhaseAcquisitionCandidate> rankedCandidates =
+            stackalloc PhaseAcquisitionCandidate[SamplesPerBit];
+        phaseCandidates[..phaseCandidateCount].CopyTo(rankedCandidates);
+        SortPhaseAcquisitionCandidates(rankedCandidates[..phaseCandidateCount]);
+        int selectedCount = 0;
+        while (selectedCount < phaseCandidateCount &&
+               selectedCount < MaximumAcquisitionCandidatePhases &&
+               rankedCandidates[selectedCount].ExactSyncCount > 0)
+            selectedCount++;
+        lastAcquisitionCandidatePhaseCount = selectedCount;
+        lastFullDecodePhaseCount = 0;
+
+        Span<bool> selectedPhases = stackalloc bool[SamplesPerBit];
+        bool selectedPhaseDecoded = false;
+        for (int index = 0; index < selectedCount; index++)
+        {
+            PhaseAcquisitionCandidate candidate = rankedCandidates[index];
+            selectedPhases[candidate.Phase] = true;
+            selectedPhaseDecoded |= DecodePhase(candidate, phaseStride, metadata, result);
+        }
+
+        // An exact hard-decision synchronization word is a protocol-defined
+        // acquisition gate, not a tuned signal threshold. If acquisition does
+        // not produce a BCS-valid frame, retain the exhaustive decoder as the
+        // low-confidence fallback and evaluate every remaining phase.
+        if (selectedCount == 0 || !selectedPhaseDecoded)
+        {
+            acquisitionFallbackCount++;
+            for (int index = 0; index < phaseCandidateCount; index++)
+            {
+                PhaseAcquisitionCandidate candidate = phaseCandidates[index];
+                if (!selectedPhases[candidate.Phase])
+                    DecodePhase(candidate, phaseStride, metadata, result);
+            }
         }
         lastToneConfidence = bestRecentMeanConfidence;
         lastMskSquelchMetric = bestRecentSquelchMetric;
         UpdateMskSquelch(bestRecentSquelchMetric);
         decodePassCount++;
+        lastDecodeScanStartPosition = audioSampleStart;
+        lastDecodeScanEndPosition = audioSampleStart + (long)Math.Round(
+            audioCount * (double)inputSampleRate / DemodulationSampleRateHz);
+        lastDecodeScannedAudioSampleCount = audioCount;
+        lastDecodeToneCorrelationCount = newCorrelationWindows * 2L;
+        lastDecodeReusedToneCorrelationCount =
+            Math.Max(0, correlationWindows - newCorrelationWindows) * 2L;
+        totalToneCorrelationCount += lastDecodeToneCorrelationCount;
+        lastDecodeCpuMilliseconds =
+            System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
         return result;
     }
 
-    private void EnsureCapacity(int symbolCount)
+    private int PopulateCorrelationCache(ReadOnlySpan<float> audioSpan)
     {
-        if (symbolCount > lowCorrelations.Length)
+        int requiredCount = Math.Max(0, audioSpan.Length - SamplesPerBit + 1);
+        EnsureCorrelationCacheCapacity(requiredCount);
+        int previousCount = Math.Min(correlationCacheCount, requiredCount);
+        for (int offset = previousCount; offset < requiredCount; offset++)
         {
-            Array.Resize(ref lowCorrelations, symbolCount * 2);
-            Array.Resize(ref highCorrelations, symbolCount * 2);
-            Array.Resize(ref confidenceBuffer, symbolCount * 2);
-            Array.Resize(ref predecessorsBuffer, symbolCount * 4);
-            Array.Resize(ref tonesBuffer, symbolCount * 2);
-            Array.Resize(ref bitsBuffer, symbolCount * 2);
+            MeasureTones(audioSpan, offset,
+                out lowCorrelationCache[offset],
+                out highCorrelationCache[offset],
+                out confidenceCache[offset]);
         }
+
+        correlationCacheCount = requiredCount;
+        return requiredCount - previousCount;
+    }
+
+    private void EnsureCorrelationCacheCapacity(int requiredCount)
+    {
+        if (requiredCount <= lowCorrelationCache.Length) return;
+        int capacity = Math.Max(requiredCount, lowCorrelationCache.Length * 2);
+        Array.Resize(ref lowCorrelationCache, capacity);
+        Array.Resize(ref highCorrelationCache, capacity);
+        Array.Resize(ref confidenceCache, capacity);
     }
 
     private void UpdateMskSquelch(float separation)
@@ -142,20 +211,11 @@ public sealed partial class AcarsReceiver
         if (++fastMskHopCount < 10) return;
         fastMskHopCount = 0;
 
-        ReadOnlySpan<float> p1 = fastMskWindow.AsSpan(fastMskWindowPosition);
-        ReadOnlySpan<float> p2 = fastMskWindow.AsSpan(0, fastMskWindowPosition);
-        float i1200 = DotProduct(p1, LowTone.I.AsSpan(0, p1.Length)) +
-                      DotProduct(p2, LowTone.I.AsSpan(p1.Length));
-        float q1200 = DotProduct(p1, LowTone.Q.AsSpan(0, p1.Length)) +
-                      DotProduct(p2, LowTone.Q.AsSpan(p1.Length));
-        float i2400 = DotProduct(p1, HighTone.I.AsSpan(0, p1.Length)) +
-                      DotProduct(p2, HighTone.I.AsSpan(p1.Length));
-        float q2400 = DotProduct(p1, HighTone.Q.AsSpan(0, p1.Length)) +
-                      DotProduct(p2, HighTone.Q.AsSpan(p1.Length));
-        double lowPower = i1200 * i1200 + q1200 * q1200;
-        double highPower = i2400 * i2400 + q2400 * q2400;
-        float separation = (float)(Math.Abs(lowPower - highPower) /
-            Math.Max(lowPower + highPower, 1e-20));
+        MeasureMskTonesRing(fastMskWindow, fastMskWindowPosition,
+            out ToneCorrelation lowTone, out ToneCorrelation highTone);
+        double lowPower = lowTone.Power;
+        double highPower = highTone.Power;
+        float separation = CalculateMskToneSeparation(lowPower, highPower);
         float metric = CalculateSquelchMetric(
             lowPower, highPower, separation, Math.Max(fastMskWindowPower, 0));
         lastToneConfidence = MathF.Max(lastToneConfidence, separation);
@@ -180,30 +240,208 @@ public sealed partial class AcarsReceiver
         mskSquelchHoldSamples = MskSquelchHoldSamples;
     }
 
-    private void DecodeToneSequence(ReadOnlySpan<bool> tones, ReadOnlySpan<float> confidence, int phase,
+    private bool DecodeToneSequence(ReadOnlySpan<bool> tones, ReadOnlySpan<float> confidence, int phase,
         IqBlockMetadata metadata, List<AcarsFrame> result)
     {
-        if (bitsBuffer.Length < tones.Length)
+        bool anyDecoded = false;
+        if (bitsBuffer.Length < tones.Length * 2)
             Array.Resize(ref bitsBuffer, tones.Length * 2);
-        Span<bool> bits = bitsBuffer.AsSpan(0, tones.Length);
-        // ACARS is NRZI. Different SDR I/Q conventions and AM detector
-        // polarity can interchange the apparent 1200/2400 Hz states.
-        for (int transitionTonePolarity = 0; transitionTonePolarity < 2; transitionTonePolarity++)
+        if (bitConfidenceBuffer.Length < tones.Length)
+            Array.Resize(ref bitConfidenceBuffer, tones.Length);
+
+        Span<float> bitConfidence = bitConfidenceBuffer.AsSpan(0, tones.Length);
+        MapToneConfidenceToNrziBits(confidence, bitConfidence);
+
+        Span<bool> decodedBits = bitsBuffer.AsSpan(0, tones.Length * 2);
+        Span<ToneHypothesis> hypotheses = stackalloc ToneHypothesis[32];
+        int hypothesisCount = BuildToneHypotheses(tones, decodedBits, hypotheses);
+        hypothesisEvaluationCount += hypothesisCount;
+
+        int exactSyncCount = 0;
+        for (int index = 0; index < hypothesisCount; index++)
+            exactSyncCount += hypotheses[index].ExactSyncCount;
+        syncCandidateCount += exactSyncCount;
+
+        bool useFullSearchFallback = exactSyncCount == 0;
+        if (useFullSearchFallback) hypothesisFallbackCount++;
+        Span<int> decodedSingleSyncPositions = stackalloc int[32];
+        int decodedSingleSyncPositionCount = 0;
+        for (int index = 0; index < hypothesisCount; index++)
         {
-            bool state = false;
-            for (int symbol = 0; symbol < tones.Length; symbol++)
+            ToneHypothesis hypothesis = hypotheses[index];
+            if (!useFullSearchFallback && hypothesis.ExactSyncCount == 0)
             {
-                if (tones[symbol] ^ (transitionTonePolarity != 0)) state = !state;
-                bits[symbol] = state;
+                hypothesisPrunedCount++;
+                continue;
             }
-            for (int bitOffset = 0; bitOffset < 8; bitOffset++)
+            if (!useFullSearchFallback && hypothesis.ExactSyncCount == 1 &&
+                decodedSingleSyncPositions[..decodedSingleSyncPositionCount]
+                    .Contains(hypothesis.BestSyncBitIndex))
             {
-                byte[] bytes = Pack(bits, bitOffset, invert: false);
-                Scan(bytes, confidence, phase, bitOffset, metadata, result);
-                bytes = Pack(bits, bitOffset, invert: true);
-                Scan(bytes, confidence, phase, bitOffset, metadata, result);
+                hypothesisEarlyExitCount++;
+                continue;
+            }
+
+            ReadOnlySpan<bool> bits = decodedBits.Slice(
+                hypothesis.TransitionTonePolarity * tones.Length, tones.Length);
+            int byteCount = Pack(bits, hypothesis.BitOffset, hypothesis.Invert,
+                packedBytesBuffer);
+            hypothesisScanCount++;
+            bool decoded = Scan(packedBytesBuffer.AsSpan(0, byteCount),
+                bitConfidence, phase, hypothesis.BitOffset, metadata, result);
+            if (decoded)
+            {
+                anyDecoded = true;
+                if (hypothesis.ExactSyncCount == 1)
+                    decodedSingleSyncPositions[decodedSingleSyncPositionCount++] = hypothesis.BestSyncBitIndex;
             }
         }
+        return anyDecoded;
+    }
+
+    internal readonly record struct ToneHypothesis(
+        int TransitionTonePolarity,
+        int BitOffset,
+        bool Invert,
+        int MinimumSyncDistance,
+        int ExactSyncCount,
+        int BestSyncBitIndex,
+        int OriginalOrder);
+
+    internal static ToneHypothesis[] RankToneHypotheses(ReadOnlySpan<bool> tones)
+    {
+        var decodedBits = new bool[tones.Length * 2];
+        var hypotheses = new ToneHypothesis[32];
+        BuildToneHypotheses(tones, decodedBits, hypotheses);
+        return hypotheses;
+    }
+
+    private static int BuildToneHypotheses(ReadOnlySpan<bool> tones, Span<bool> decodedBits,
+        Span<ToneHypothesis> hypotheses)
+    {
+        const uint syncPattern = 0x01_16_16;
+        const uint sevenBitMask = 0x7f_7f_7f;
+        const int comparedSyncBits = 21;
+        const int hypothesisCount = 32;
+        if (decodedBits.Length < tones.Length * 2)
+            throw new ArgumentException("The decoded bit buffer is too small.", nameof(decodedBits));
+        if (hypotheses.Length < hypothesisCount)
+            throw new ArgumentException("The hypothesis buffer is too small.", nameof(hypotheses));
+
+        int hypothesisIndex = 0;
+        for (int polarity = 0; polarity < 2; polarity++)
+            for (int bitOffset = 0; bitOffset < 8; bitOffset++)
+                for (int invert = 0; invert < 2; invert++)
+                {
+                    hypotheses[hypothesisIndex] = new(polarity, bitOffset, invert != 0,
+                        comparedSyncBits, 0, -1, hypothesisIndex);
+                    hypothesisIndex++;
+                }
+
+        // ACARS is NRZI. Different SDR I/Q conventions and AM detector
+        // polarity can interchange the apparent 1200/2400 Hz states. Keep both
+        // interpretations because changing transition polarity is not the same
+        // operation as inverting the packed bit stream.
+        bool normalState = false;
+        bool oppositeState = false;
+        Span<bool> normalBits = decodedBits[..tones.Length];
+        Span<bool> oppositeBits = decodedBits.Slice(tones.Length, tones.Length);
+        for (int symbol = 0; symbol < tones.Length; symbol++)
+        {
+            if (tones[symbol]) normalState = !normalState;
+            else oppositeState = !oppositeState;
+            normalBits[symbol] = normalState;
+            oppositeBits[symbol] = oppositeState;
+        }
+
+        if (tones.Length >= 24)
+        {
+            for (int polarity = 0; polarity < 2; polarity++)
+            {
+                ReadOnlySpan<bool> bits = decodedBits.Slice(polarity * tones.Length, tones.Length);
+                uint window = 0;
+                for (int bit = 0; bit < 24; bit++)
+                    if (bits[bit]) window |= 1u << bit;
+
+                for (int start = 0; start + 24 <= bits.Length; start++)
+                {
+                    int bitOffset = start & 7;
+                    int baseIndex = polarity * 16 + bitOffset * 2;
+                    int normalDistance = BitOperations.PopCount((window ^ syncPattern) & sevenBitMask);
+                    int invertedDistance = BitOperations.PopCount(((~window) ^ syncPattern) & sevenBitMask);
+                    hypotheses[baseIndex] = UpdateSyncScore(
+                        hypotheses[baseIndex], normalDistance, start);
+                    hypotheses[baseIndex + 1] = UpdateSyncScore(
+                        hypotheses[baseIndex + 1], invertedDistance, start);
+
+                    window >>= 1;
+                    int nextBit = start + 24;
+                    if (nextBit < bits.Length && bits[nextBit]) window |= 1u << 23;
+                }
+            }
+        }
+
+        SortHypotheses(hypotheses[..hypothesisCount]);
+        return hypothesisCount;
+
+        static ToneHypothesis UpdateSyncScore(ToneHypothesis hypothesis, int distance, int start)
+        {
+            int exactSyncCount = hypothesis.ExactSyncCount + (distance == 0 ? 1 : 0);
+            if (distance >= hypothesis.MinimumSyncDistance)
+                return hypothesis with { ExactSyncCount = exactSyncCount };
+            return hypothesis with
+            {
+                MinimumSyncDistance = distance,
+                ExactSyncCount = exactSyncCount,
+                BestSyncBitIndex = start
+            };
+        }
+
+        static void SortHypotheses(Span<ToneHypothesis> values)
+        {
+            // Stable insertion sort keeps the previous exhaustive-search order
+            // for hypotheses with the same synchronization score.
+            for (int index = 1; index < values.Length; index++)
+            {
+                ToneHypothesis value = values[index];
+                int insert = index;
+                while (insert > 0 && Compare(values[insert - 1], value) > 0)
+                {
+                    values[insert] = values[insert - 1];
+                    insert--;
+                }
+                values[insert] = value;
+            }
+        }
+
+        static int Compare(ToneHypothesis left, ToneHypothesis right)
+        {
+            int score = left.MinimumSyncDistance.CompareTo(right.MinimumSyncDistance);
+            return score != 0 ? score : left.OriginalOrder.CompareTo(right.OriginalOrder);
+        }
+    }
+
+    internal static void MapToneConfidenceToNrziBits(
+        ReadOnlySpan<float> toneConfidence,
+        Span<float> bitConfidence)
+    {
+        if (bitConfidence.Length < toneConfidence.Length)
+            throw new ArgumentException("The NRZI confidence buffer is too small.", nameof(bitConfidence));
+        if (toneConfidence.IsEmpty) return;
+
+        float previous = NormalizeConfidence(toneConfidence[0]);
+        bitConfidence[0] = previous;
+        for (int symbol = 1; symbol < toneConfidence.Length; symbol++)
+        {
+            float current = NormalizeConfidence(toneConfidence[symbol]);
+            // An NRZI bit is determined from two adjacent tone states. Treat
+            // the weaker decision as the reliability of that decoded bit.
+            bitConfidence[symbol] = MathF.Min(previous, current);
+            previous = current;
+        }
+
+        static float NormalizeConfidence(float value) =>
+            float.IsFinite(value) ? Math.Clamp(value, 0f, 1f) : 0f;
     }
 
     internal readonly record struct ToneCorrelation(double I, double Q, double Power);
@@ -268,9 +506,11 @@ public sealed partial class AcarsReceiver
         }
     }
 
-    private void Scan(byte[] bytes, ReadOnlySpan<float> confidence, int phase, int bitOffset,
+    private bool Scan(ReadOnlySpan<byte> bytes, ReadOnlySpan<float> confidence,
+        int phase, int bitOffset,
         IqBlockMetadata metadata, List<AcarsFrame> result)
     {
+        bool decoded = false;
         for (int index = 0; index + 18 <= bytes.Length; index++)
         {
             if ((bytes[index] & 0x7f) != 0x16 || (bytes[index + 1] & 0x7f) != 0x16 ||
@@ -278,18 +518,28 @@ public sealed partial class AcarsReceiver
             int end = index + 15;
             while (end < bytes.Length && (bytes[end] & 0x7f) is not (0x03 or 0x17)) end++;
             if (end + 2 >= bytes.Length) continue;
-            byte[] raw = bytes[index..(end + 3)];
+            byte[] raw = bytes[index..(end + 3)].ToArray();
             if (!AcarsMessageParser.TryParse(raw, out AcarsMessage? parsed) || parsed is null) continue;
             long demodOffset = phase + ((long)bitOffset + index * 8) * SamplesPerBit;
             long position = audioSampleStart + (long)Math.Round(demodOffset * (double)inputSampleRate / DemodulationSampleRateHz);
-            if (position <= lastFramePosition + inputSampleRate / 20) continue;
             ReadOnlySpan<float> confidenceSlice = confidence.Slice(bitOffset + index * 8, raw.Length * 8);
             double quality = confidenceSlice.IsEmpty ? 0 : Average(confidenceSlice);
+            CorrectionReport correctionReport = NoCorrectionReport(CorrectionStatus.None, 0);
             if (!parsed.IsBlockCheckValid &&
-                TryCorrectSingleBit(raw, out byte[] corrected, out AcarsMessage? correctedMessage))
+                TryCorrectWithConfidence(
+                    raw,
+                    confidenceSlice,
+                    out byte[] corrected,
+                    out AcarsMessage? correctedMessage,
+                    out correctionReport))
             {
                 raw = corrected;
                 parsed = correctedMessage!;
+            }
+            if (parsed.IsBlockCheckValid)
+            {
+                decoded = true;
+                if (position <= lastFramePosition + inputSampleRate / 20) continue;
             }
             if (!parsed.IsBlockCheckValid)
             {
@@ -297,6 +547,7 @@ public sealed partial class AcarsReceiver
                 {
                     lastCandidatePosition = position;
                     RejectedFrameCount++;
+                    RecordCorrectionRejection(correctionReport.Status);
                 }
                 continue;
             }
@@ -310,27 +561,79 @@ public sealed partial class AcarsReceiver
                 Math.Abs(position - lastCandidatePosition) <= duplicateWindow)
             {
                 RejectedFrameCount--;
+                ClearLastCorrectionRejection();
             }
             // A decoded BCS is required on air. Parity is retained as a
             // diagnostic because some SDR recordings have already stripped it.
             result.Add(new(raw, metadata.UtcTimestamp, metadata.StreamId, position,
                 targetFrequencyHz, Math.Clamp(quality, 0, 1)));
+            decoded = true;
             lastFramePosition = position;
             lastCandidatePosition = Math.Max(lastCandidatePosition, position);
             ValidFrameCount++;
+            RecordAcceptedCorrection(correctionReport);
         }
+        return decoded;
+    }
+
+    private void RecordCorrectionRejection(CorrectionStatus status)
+    {
+        lastRejectedCorrectionStatus = status;
+        switch (status)
+        {
+            case CorrectionStatus.Ambiguous:
+                ambiguousCorrectionRejectionCount++;
+                break;
+            case CorrectionStatus.CandidateLimitReached:
+                candidateLimitRejectionCount++;
+                break;
+        }
+    }
+
+    private void ClearLastCorrectionRejection()
+    {
+        switch (lastRejectedCorrectionStatus)
+        {
+            case CorrectionStatus.Ambiguous when ambiguousCorrectionRejectionCount > 0:
+                ambiguousCorrectionRejectionCount--;
+                break;
+            case CorrectionStatus.CandidateLimitReached when candidateLimitRejectionCount > 0:
+                candidateLimitRejectionCount--;
+                break;
+        }
+
+        lastRejectedCorrectionStatus = CorrectionStatus.None;
+    }
+
+    private void RecordAcceptedCorrection(CorrectionReport report)
+    {
+        lastRejectedCorrectionStatus = CorrectionStatus.None;
+        switch (report.Status)
+        {
+            case CorrectionStatus.SingleBit:
+                singleBitCorrectionCount++;
+                break;
+            case CorrectionStatus.DoubleBit:
+                doubleBitCorrectionCount++;
+                break;
+            default:
+                uncorrectedValidFrameCount++;
+                return;
+        }
+
+        lastCorrectedBitIndex1 = report.FirstBitIndex;
+        lastCorrectedBitIndex2 = report.SecondBitIndex;
+        lastCorrectedBitConfidence1 = report.FirstBitConfidence;
+        lastCorrectedBitConfidence2 = report.SecondBitConfidence;
+        lastCorrectionTrialCount = report.TrialCount;
     }
 
     private void MeasureTones(ReadOnlySpan<float> audioSpan, int offset, out ToneCorrelation lowTone,
         out ToneCorrelation highTone, out float confidence)
     {
-        (float i1200, float q1200) = Correlate(audioSpan, offset, LowTone);
-        (float i2400, float q2400) = Correlate(audioSpan, offset, HighTone);
-        float low = i1200 * i1200 + q1200 * q1200;
-        float high = i2400 * i2400 + q2400 * q2400;
-        lowTone = new(i1200, q1200, low);
-        highTone = new(i2400, q2400, high);
-        confidence = Math.Abs(low - high) / Math.Max(low + high, 1e-20f);
+        MeasureMskTones(audioSpan.Slice(offset, SamplesPerBit),
+            out lowTone, out highTone);
+        confidence = CalculateMskToneSeparation(lowTone.Power, highTone.Power);
     }
 
     private float MeasureSquelchMetric(
@@ -351,51 +654,6 @@ public sealed partial class AcarsReceiver
         double amplitudePresence = Math.Clamp(windowRms / minimumFullScaleToneRms, 0, 1);
         return confidence * (float)(
             Math.Clamp(tonePresence, 0, 1) * amplitudePresence);
-    }
-
-    private static (float I, float Q) Correlate(ReadOnlySpan<float> audioSpan, int offset, (float[] I, float[] Q) correlator)
-    {
-        ReadOnlySpan<float> window = audioSpan.Slice(offset, SamplesPerBit);
-        float i = DotProduct(window, correlator.I);
-        float q = DotProduct(window, correlator.Q);
-        return (i, q);
-    }
-
-    private static (float[] I, float[] Q) CreateCorrelator(int frequencyHz)
-    {
-        var i = new float[SamplesPerBit];
-        var q = new float[SamplesPerBit];
-        double step = 2 * Math.PI * frequencyHz / DemodulationSampleRateHz;
-        for (int n = 0; n < SamplesPerBit; n++)
-        {
-            i[n] = (float)Math.Cos(step * n);
-            q[n] = (float)Math.Sin(step * n);
-        }
-        return (i, q);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static float DotProduct(ReadOnlySpan<float> left, ReadOnlySpan<float> right)
-    {
-        float sum = 0f;
-        int index = 0;
-        if (Vector.IsHardwareAccelerated && left.Length >= Vector<float>.Count)
-        {
-            Vector<float> vsum = Vector<float>.Zero;
-            int vectorEnd = left.Length - (left.Length % Vector<float>.Count);
-            for (; index < vectorEnd; index += Vector<float>.Count)
-            {
-                Vector<float> vl = new(left.Slice(index, Vector<float>.Count));
-                Vector<float> vr = new(right.Slice(index, Vector<float>.Count));
-                vsum += vl * vr;
-            }
-            sum = Vector.Dot(vsum, Vector<float>.One);
-        }
-        for (; index < left.Length; index++)
-        {
-            sum += left[index] * right[index];
-        }
-        return sum;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

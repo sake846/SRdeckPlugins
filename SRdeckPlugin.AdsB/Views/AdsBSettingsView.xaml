@@ -25,9 +25,10 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" MinHeight="28"/>
-                                <RowDefinition Height="Auto" MinHeight="28"/>
-                                <RowDefinition Height="Auto" MinHeight="28"/>
+                                <RowDefinition Height="Auto" MinHeight="30"/>
+                                <RowDefinition Height="Auto" MinHeight="30"/>
+                                <RowDefinition Height="Auto" MinHeight="30"/>
+                                <RowDefinition Height="Auto" MinHeight="30"/>
                             </Grid.RowDefinitions>
                             <TextBlock Text="中心周波数" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
                             <TextBlock Grid.Column="1" Text="1,090,000,000 Hz" Style="{DynamicResource PluginSettingsValueStyle}"/>
@@ -37,7 +38,11 @@
                             <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ReceiverLatitude, UpdateSourceTrigger=LostFocus, TargetNullValue=''}" Style="{DynamicResource PluginTextBoxStyle}"/>
                             <TextBlock Grid.Row="1" Grid.Column="3" Text="受信機経度" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
                             <TextBox Grid.Row="1" Grid.Column="4" Text="{Binding ReceiverLongitude, UpdateSourceTrigger=LostFocus, TargetNullValue=''}" Style="{DynamicResource PluginTextBoxStyle}"/>
-                            <TextBlock Grid.Row="2" Grid.ColumnSpan="6" Text="受信機位置は地上CPRの90°領域決定に使用します。2 MS/s以上のIQサンプルレートが必要です。" Style="{DynamicResource PluginSettingsHintStyle}"/>
+                            <CheckBox Grid.Row="2" Grid.ColumnSpan="6"
+                                      Content="逐次干渉キャンセル（SIC）を有効にする"
+                                      IsChecked="{Binding EnableSuccessiveInterferenceCancellation, Mode=TwoWay}"
+                                      Style="{DynamicResource PluginCheckBoxStyle}"/>
+                            <TextBlock Grid.Row="3" Grid.ColumnSpan="6" Text="受信機位置は地上CPRの90°領域決定に使用します。SICを無効にすると複素IQ履歴を保持しません。2 MS/s以上のIQサンプルレートが必要です。" Style="{DynamicResource PluginSettingsHintStyle}"/>
                         </Grid>
                     </ScrollViewer>
                 </TabItem>
@@ -63,7 +68,7 @@
                                     <ColumnDefinition Width="300" />
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="28" /><RowDefinition Height="28" /><RowDefinition Height="28" /><RowDefinition Height="28" />
+                                    <RowDefinition Height="30" /><RowDefinition Height="30" /><RowDefinition Height="30" /><RowDefinition Height="30" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="最大表示機数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                                 <TextBox Grid.Column="1" Text="{Binding MaximumAircraft, UpdateSourceTrigger=LostFocus}"

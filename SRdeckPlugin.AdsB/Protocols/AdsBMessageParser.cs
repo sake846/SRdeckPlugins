@@ -9,9 +9,21 @@ public static class AdsBMessageParser
 
     public static bool TryParse(ModeSFrame frame, out AdsBMessage? message)
     {
+        ArgumentNullException.ThrowIfNull(frame);
+        if (!ModeSCrc.IsValidExtendedSquitter(frame.Bytes))
+        {
+            message = null;
+            return false;
+        }
+
+        return TryParseValidated(frame, out message);
+    }
+
+    internal static bool TryParseValidated(ModeSFrame frame, out AdsBMessage? message)
+    {
         message = null;
         ReadOnlySpan<byte> bytes = frame.Bytes;
-        if (!ModeSCrc.IsValidExtendedSquitter(bytes)) return false;
+        if (bytes.Length != 14 || bytes[0] >> 3 is not (17 or 18)) return false;
 
         string icao = frame.Icao;
         int typeCode = bytes[4] >> 3;

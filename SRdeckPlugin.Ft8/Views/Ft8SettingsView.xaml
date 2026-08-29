@@ -17,18 +17,16 @@
                     <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150"/>
+                                <ColumnDefinition Width="86"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="28" />
-                                <RowDefinition Height="Auto" MinHeight="28" />
-                                <RowDefinition Height="28" />
-                                <RowDefinition Height="28" />
-                                <RowDefinition Height="28" />
-                                <RowDefinition Height="28" />
-                                <RowDefinition Height="28" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="Auto" MinHeight="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
                             </Grid.RowDefinitions>
 
                             <TextBlock Text="モード" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
@@ -46,39 +44,39 @@
                                       IsEnabled="{Binding IsBandSelectorEnabled}" />
 
                             <TextBlock Grid.Row="2" Text="同時受信"
-                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
-                            <ScrollViewer Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}"
+                                       VerticalAlignment="Top" Margin="0,7,0,0" />
+                            <ItemsControl Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
                                           Margin="0,3,0,3"
-                                          VerticalScrollBarVisibility="Disabled"
-                                          HorizontalScrollBarVisibility="Disabled">
-                                <ItemsControl ItemsSource="{Binding NearbyBands}">
-                                    <ItemsControl.Style>
-                                        <Style TargetType="ItemsControl">
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding HasNearbyBands}" Value="False">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </ItemsControl.Style>
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel/>
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <CheckBox Content="{Binding DisplayText}"
-                                                          IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                                          IsEnabled="{Binding DataContext.IsBandSelectorEnabled,
-                                                              RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                          Foreground="{DynamicResource TextPrimaryBrush}"
-                                                          Margin="0,0,14,0" />
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                            </ScrollViewer>
+                                          HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Stretch"
+                                          ItemsSource="{Binding NearbyBands}">
+                                <ItemsControl.Style>
+                                    <Style TargetType="ItemsControl">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasNearbyBands}" Value="False">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ItemsControl.Style>
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel HorizontalAlignment="Stretch"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Content="{Binding DisplayText}"
+                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                  IsEnabled="{Binding DataContext.IsBandSelectorEnabled,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                  Foreground="{DynamicResource TextPrimaryBrush}"
+                                                  Margin="0,3,14,3" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
 
                             <TextBlock x:Name="MonitorAudioLabelTextBlock" Grid.Row="3" Text="モニター音声"
                                        Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
@@ -89,28 +87,39 @@
                                               IsChecked="{Binding MonitorAudioEnabled, Mode=TwoWay}"
                                               Style="{DynamicResource PluginToggleButtonStyle}"
                                               Width="60" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <ToggleButton Content="受信ブザー"
+                                <ToggleButton x:Name="BuzzerToggleButton"
+                                              Content="受信ブザー"
+                                              IsChecked="{Binding BuzzerEnabled, Mode=TwoWay}"
                                               Style="{DynamicResource PluginToggleButtonStyle}"
                                               Width="65" VerticalAlignment="Center" />
                             </StackPanel>
 
-                            <TextBlock Grid.Row="4" Text="最小同期スコア" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
-                            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding MinimumSyncScore, UpdateSourceTrigger=LostFocus}"
-                                     Style="{DynamicResource PluginTextBoxStyle}" MaxWidth="150" HorizontalAlignment="Left"/>
-                            <TextBlock Grid.Row="4" Grid.Column="2" Text="0～40" VerticalAlignment="Center" Margin="10,0,0,0"
-                                       Style="{DynamicResource PluginSettingsHintStyle}"/>
+                            <StackPanel Grid.Row="4" Grid.ColumnSpan="3"
+                                        Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="最小同調スコア" Style="{DynamicResource PluginSettingsFieldLabelStyle}"
+                                           VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBox Text="{Binding MinimumSyncScore, UpdateSourceTrigger=LostFocus}"
+                                         Style="{DynamicResource PluginTextBoxStyle}" Width="42"
+                                         HorizontalAlignment="Left" />
+                                <TextBlock Text="0～40" Style="{DynamicResource PluginSettingsHintStyle}"
+                                           VerticalAlignment="Center" Margin="6,0,16,0" />
 
-                            <TextBlock Grid.Row="5" Text="最大候補数" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
-                            <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding MaximumCandidates, UpdateSourceTrigger=LostFocus}"
-                                     Style="{DynamicResource PluginTextBoxStyle}" MaxWidth="150" HorizontalAlignment="Left"/>
-                            <TextBlock Grid.Row="5" Grid.Column="2" Text="50～1000" VerticalAlignment="Center" Margin="10,0,0,0"
-                                       Style="{DynamicResource PluginSettingsHintStyle}"/>
+                                <TextBlock Text="最大候補数" Style="{DynamicResource PluginSettingsFieldLabelStyle}"
+                                           VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBox Text="{Binding MaximumCandidates, UpdateSourceTrigger=LostFocus}"
+                                         Style="{DynamicResource PluginTextBoxStyle}" Width="52"
+                                         HorizontalAlignment="Left" />
+                                <TextBlock Text="50～1000" Style="{DynamicResource PluginSettingsHintStyle}"
+                                           VerticalAlignment="Center" Margin="6,0,16,0" />
 
-                            <TextBlock Grid.Row="6" Text="LDPC/RS試行回数" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
-                            <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding LdpcIterations, UpdateSourceTrigger=LostFocus}"
-                                     Style="{DynamicResource PluginTextBoxStyle}" MaxWidth="150" HorizontalAlignment="Left"/>
-                            <TextBlock Grid.Row="6" Grid.Column="2" Text="10～100" VerticalAlignment="Center" Margin="10,0,0,0"
-                                       Style="{DynamicResource PluginSettingsHintStyle}"/>
+                                <TextBlock Text="LDPC/RS試行回数" Style="{DynamicResource PluginSettingsFieldLabelStyle}"
+                                           VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBox Text="{Binding LdpcIterations, UpdateSourceTrigger=LostFocus}"
+                                         Style="{DynamicResource PluginTextBoxStyle}" Width="42"
+                                         HorizontalAlignment="Left" />
+                                <TextBlock Text="10～100" Style="{DynamicResource PluginSettingsHintStyle}"
+                                           VerticalAlignment="Center" Margin="6,0,0,0" />
+                            </StackPanel>
 
                         </Grid>
                     </ScrollViewer>
@@ -137,7 +146,7 @@
                                     <ColumnDefinition Width="300" />
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="28"/><RowDefinition Height="28"/><RowDefinition Height="28"/><RowDefinition Height="28"/>
+                                    <RowDefinition Height="30"/><RowDefinition Height="30"/><RowDefinition Height="30"/><RowDefinition Height="30"/>
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="最大表示局数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                                 <TextBox Grid.Column="1" Text="{Binding MaximumStations, UpdateSourceTrigger=LostFocus}" Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />

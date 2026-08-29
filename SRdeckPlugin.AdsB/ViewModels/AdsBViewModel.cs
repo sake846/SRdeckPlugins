@@ -52,6 +52,8 @@ public sealed partial class AdsBViewModel : ObservableObject
     [ObservableProperty] private double _lastSignalQuality;
     [ObservableProperty] private double _averageSignalQuality;
     [ObservableProperty] private double _maximumSignalQuality;
+    [ObservableProperty] private bool _sicEnabled = true;
+    [ObservableProperty] private long _sicCancellationRuns;
     [ObservableProperty] private string _recentValidationText = "直近10秒: CRC合格 — / 訂正 — / 不一致 — / 検証合格率 —";
     [ObservableProperty] private string _recentDetectionText = "直近10秒: 高速候補 — / プリアンブル同期 —";
     [ObservableProperty] private string _passbandStatusText = "1090 MHz / 入力待機中";
@@ -61,6 +63,7 @@ public sealed partial class AdsBViewModel : ObservableObject
     private int maximumHistory = 10_000;
     private bool saveRawModeS = true;
     private string historyRecordMode = "both";
+    private bool enableSuccessiveInterferenceCancellation = true;
     private int maximumTrailPoints = 300;
     private double? receiverLatitude;
     private double? receiverLongitude;
@@ -170,7 +173,7 @@ public sealed partial class AdsBViewModel : ObservableObject
     [RelayCommand]
     private void StartCapture() => CaptureRequested?.Invoke();
 
-    internal Action<int, int, int, int, double?, double?>? SettingsChanged { get; set; }
+    internal Action<int, int, int, int, double?, double?, bool>? SettingsChanged { get; set; }
     internal Action? ClearRequested { get; set; }
     internal Action? CaptureRequested { get; set; }
     internal Action<bool>? SaveRawModeSChanged { get; set; }
@@ -196,12 +199,24 @@ public sealed partial class AdsBViewModel : ObservableObject
         ? $"{NoiseFloorDbm:F1} dBm"
         : (double.IsFinite(NoiseFloorDbfs) ? $"{NoiseFloorDbfs:F1} dBFS" : "—");
     public string SettingStatus => $"1090.000 MHz / {MaximumAircraft:N0}機 / {RetentionMinutes}分 / 航跡{MaximumTrailPoints}点 / " +
-        (ReceiverLatitude is null || ReceiverLongitude is null ? "位置未設定" : $"{ReceiverLatitude:F4}, {ReceiverLongitude:F4}");
+        (ReceiverLatitude is null || ReceiverLongitude is null ? "位置未設定" : $"{ReceiverLatitude:F4}, {ReceiverLongitude:F4}") +
+        $" / SIC {(EnableSuccessiveInterferenceCancellation ? "有効" : "無効")}";
     public int MaximumAircraft { get => maximumAircraft; set { maximumAircraft = Math.Clamp(value, 50, 5000); SettingsUpdated(); } }
     public int RetentionMinutes { get => retentionMinutes; set { retentionMinutes = Math.Clamp(value, 1, 240); SettingsUpdated(); } }
     public int MaximumHistory { get => maximumHistory; set { maximumHistory = Math.Clamp(value, 100, 1_000_000); SettingsUpdated(); } }
     public bool SaveRawModeS { get => saveRawModeS; set { if (saveRawModeS == value) return; saveRawModeS=value; SaveRawModeSChanged?.Invoke(value); OnPropertyChanged(); } }
     public string HistoryRecordMode { get => historyRecordMode; set { string n=value is "snapshot" or "message" or "both" ? value : "both"; if(historyRecordMode==n)return; historyRecordMode=n; HistoryRecordModeChanged?.Invoke(n); OnPropertyChanged(); } }
+    public bool EnableSuccessiveInterferenceCancellation
+    {
+        get => enableSuccessiveInterferenceCancellation;
+        set
+        {
+            if (enableSuccessiveInterferenceCancellation == value) return;
+            enableSuccessiveInterferenceCancellation = value;
+            OnPropertyChanged();
+            SettingsUpdated();
+        }
+    }
     public int MaximumTrailPoints
     {
         get => maximumTrailPoints;
@@ -215,13 +230,15 @@ public sealed partial class AdsBViewModel : ObservableObject
     public double? ReceiverLatitude { get => receiverLatitude; set { receiverLatitude = value is >= -90 and <= 90 ? value : null; SettingsUpdated(); } }
     public double? ReceiverLongitude { get => receiverLongitude; set { receiverLongitude = value is >= -180 and <= 180 ? value : null; SettingsUpdated(); } }
     internal void SynchronizeSettings(int aircraftLimit, int retention, int historyLimit, int trailPoints,
-        double? latitude, double? longitude, bool saveRaw = true, string recordMode = "both")
+        double? latitude, double? longitude, bool saveRaw = true, string recordMode = "both",
+        bool enableSic = true)
     {
         maximumAircraft = aircraftLimit;
         retentionMinutes = retention;
         maximumHistory = historyLimit;
         saveRawModeS = saveRaw;
         historyRecordMode = recordMode;
+        enableSuccessiveInterferenceCancellation = enableSic;
         maximumTrailPoints = trailPoints;
         receiverLatitude = latitude;
         receiverLongitude = longitude;
@@ -229,6 +246,7 @@ public sealed partial class AdsBViewModel : ObservableObject
         OnPropertyChanged(nameof(RetentionMinutes));
         OnPropertyChanged(nameof(MaximumHistory));
         OnPropertyChanged(nameof(SaveRawModeS)); OnPropertyChanged(nameof(HistoryRecordMode));
+        OnPropertyChanged(nameof(EnableSuccessiveInterferenceCancellation));
         OnPropertyChanged(nameof(MaximumTrailPoints));
         OnPropertyChanged(nameof(ReceiverLatitude));
         OnPropertyChanged(nameof(ReceiverLongitude));
@@ -342,6 +360,8 @@ public sealed partial class AdsBViewModel : ObservableObject
         LastSignalQuality = value.LastSignalQuality;
         AverageSignalQuality = value.AverageSignalQuality;
         MaximumSignalQuality = value.MaximumSignalQuality;
+        SicEnabled = value.SicEnabled;
+        SicCancellationRuns = value.SicCancellationRunCount;
         FastPreambleCandidates = value.FastPreambleCandidateCount;
         PreambleMatches = value.PreambleMatchCount;
 
@@ -451,7 +471,7 @@ public sealed partial class AdsBViewModel : ObservableObject
         OnPropertyChanged(nameof(ReceiverLatitude)); OnPropertyChanged(nameof(ReceiverLongitude));
         OnPropertyChanged(nameof(SettingStatus));
         SettingsChanged?.Invoke(maximumAircraft, retentionMinutes, maximumHistory, maximumTrailPoints,
-            receiverLatitude, receiverLongitude);
+            receiverLatitude, receiverLongitude, enableSuccessiveInterferenceCancellation);
     }
 
     public Func<ValueTask>? ResetSettingsRequested { get; set; }

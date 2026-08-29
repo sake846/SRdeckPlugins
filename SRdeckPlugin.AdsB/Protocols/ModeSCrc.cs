@@ -3,17 +3,18 @@
 public static class ModeSCrc
 {
     private const uint Polynomial = 0xFFF409;
+    private const int ExtendedSquitterLength = 14;
+    private const int ExtendedSquitterBits = ExtendedSquitterLength * 8;
+    private static readonly uint[] CrcTable = CreateCrcTable();
+    private static readonly uint[] BitSyndromes = CreateBitSyndromes();
 
     public static uint ComputeSyndrome(ReadOnlySpan<byte> message)
     {
         uint remainder = 0;
         foreach (byte value in message)
         {
-            remainder ^= (uint)value << 16;
-            for (int bit = 0; bit < 8; bit++)
-                remainder = (remainder & 0x800000) != 0
-                    ? ((remainder << 1) ^ Polynomial) & 0xFFFFFF
-                    : (remainder << 1) & 0xFFFFFF;
+            int tableIndex = (int)(((remainder >> 16) ^ value) & 0xFF);
+            remainder = ((remainder << 8) & 0xFFFFFF) ^ CrcTable[tableIndex];
         }
         return remainder;
     }
@@ -21,16 +22,30 @@ public static class ModeSCrc
     public static bool IsValidExtendedSquitter(ReadOnlySpan<byte> message) =>
         message.Length == 14 && message[0] >> 3 is 17 or 18 && ComputeSyndrome(message) == 0;
 
-    public static bool TryValidateOrCorrectExtendedSquitter(byte[] message,
+    public static bool TryValidateOrCorrectExtendedSquitter(byte[]? message,
+        ReadOnlySpan<float> bitConfidence, out bool corrected)
+    {
+        if (message is null)
+        {
+            corrected = false;
+            return false;
+        }
+        return TryValidateOrCorrectExtendedSquitter(message.AsSpan(), bitConfidence, out corrected);
+    }
+
+    public static bool TryValidateOrCorrectExtendedSquitter(Span<byte> message,
         ReadOnlySpan<float> bitConfidence, out bool corrected)
     {
         corrected = false;
         if (IsValidExtendedSquitter(message)) return true;
-        if (message.Length != 14 || bitConfidence.Length != 112) return false;
+        if (message.Length != ExtendedSquitterLength || bitConfidence.Length != ExtendedSquitterBits)
+            return false;
+
+        uint receivedSyndrome = ComputeSyndrome(message);
 
         Span<int> candidateStorage = stackalloc int[8];
         int candidateCount = 0;
-        for (int bit = 0; bit < 112; bit++)
+        for (int bit = 0; bit < ExtendedSquitterBits; bit++)
         {
             if (bitConfidence[bit] >= 0.30f) continue;
             int insert = candidateCount;
@@ -44,12 +59,7 @@ public static class ModeSCrc
         int correctedBit = -1;
         foreach (int bit in candidates)
         {
-            int byteIndex = bit / 8;
-            byte mask = (byte)(1 << (7 - bit % 8));
-            message[byteIndex] ^= mask;
-            bool valid = IsValidExtendedSquitter(message);
-            message[byteIndex] ^= mask;
-            if (!valid) continue;
+            if (BitSyndromes[bit] != receivedSyndrome) continue;
             if (correctedBit >= 0) return false;
             correctedBit = bit;
         }
@@ -65,12 +75,7 @@ public static class ModeSCrc
                 int firstBit = candidates[first];
                 int secondBit = candidates[second];
                 if (bitConfidence[firstBit] + bitConfidence[secondBit] >= 0.30f) continue;
-                message[firstBit / 8] ^= (byte)(1 << (7 - firstBit % 8));
-                message[secondBit / 8] ^= (byte)(1 << (7 - secondBit % 8));
-                bool valid = IsValidExtendedSquitter(message);
-                message[firstBit / 8] ^= (byte)(1 << (7 - firstBit % 8));
-                message[secondBit / 8] ^= (byte)(1 << (7 - secondBit % 8));
-                if (!valid) continue;
+                if ((BitSyndromes[firstBit] ^ BitSyndromes[secondBit]) != receivedSyndrome) continue;
                 if (correctedPair is not null) return false;
                 correctedPair = (firstBit, secondBit);
             }
@@ -79,11 +84,52 @@ public static class ModeSCrc
                 (byte)(1 << (7 - correctedPair.Value.First % 8));
             message[correctedPair.Value.Second / 8] ^=
                 (byte)(1 << (7 - correctedPair.Value.Second % 8));
+            if (IsValidExtendedSquitter(message))
+            {
+                corrected = true;
+                return true;
+            }
+            message[correctedPair.Value.First / 8] ^=
+                (byte)(1 << (7 - correctedPair.Value.First % 8));
+            message[correctedPair.Value.Second / 8] ^=
+                (byte)(1 << (7 - correctedPair.Value.Second % 8));
+            return false;
+        }
+        message[correctedBit / 8] ^= (byte)(1 << (7 - correctedBit % 8));
+        if (IsValidExtendedSquitter(message))
+        {
             corrected = true;
             return true;
         }
         message[correctedBit / 8] ^= (byte)(1 << (7 - correctedBit % 8));
-        corrected = true;
-        return true;
+        return false;
+    }
+
+    private static uint[] CreateCrcTable()
+    {
+        var table = new uint[256];
+        for (int value = 0; value < table.Length; value++)
+        {
+            uint remainder = (uint)value << 16;
+            for (int bit = 0; bit < 8; bit++)
+                remainder = (remainder & 0x800000) != 0
+                    ? ((remainder << 1) ^ Polynomial) & 0xFFFFFF
+                    : (remainder << 1) & 0xFFFFFF;
+            table[value] = remainder;
+        }
+        return table;
+    }
+
+    private static uint[] CreateBitSyndromes()
+    {
+        var syndromes = new uint[ExtendedSquitterBits];
+        Span<byte> message = stackalloc byte[ExtendedSquitterLength];
+        for (int bit = 0; bit < syndromes.Length; bit++)
+        {
+            message.Clear();
+            message[bit / 8] = (byte)(1 << (7 - bit % 8));
+            syndromes[bit] = ComputeSyndrome(message);
+        }
+        return syndromes;
     }
 }

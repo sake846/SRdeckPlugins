@@ -1,6 +1,8 @@
 ﻿using SRdeckPlugin.Contracts;
 using SRdeckPlugin.WiSun.Models;
 
+using SRdeckCore.SignalProcessing;
+
 namespace SRdeckPlugin.WiSun.Dsp;
 
 /// <summary>
@@ -27,11 +29,30 @@ public sealed partial class WiSunDemodulator
     private const int PhrBitCount = 16;
     private static readonly ushort[] UncodedSfds = [0x904E, 0x7A0E];
     private const int MaximumPsduLength = 2_047;
+    private const int RetainedHistorySamples =
+        (MaximumCapturedPreambleBytes * 8 + SfdBitCount + PhrBitCount) * SamplesPerBit;
+    private const int SampleTrimThreshold = 32_768;
+    // Keep prefix differences below the point where double precision becomes
+    // coarser than the float metrics they produce. At 2^30 the double ULP is
+    // 2^-22; an eight-sample average remains accurate to about one float ULP.
+    internal const double PrefixRebaseThreshold = 1L << 30;
+    private const int MaximumFrameSamples =
+        (MaximumCapturedPreambleBytes * 8 + SfdBitCount + PhrBitCount + MaximumPsduLength * 8) *
+        SamplesPerBit;
+    // Covers one maximum frame, the synchronization history retained behind
+    // the scan cursor, and the deferred-trim slack. The current input block is
+    // added with EnsureCapacity before samples are appended.
+    internal const int InitialSampleBufferCapacity =
+        MaximumFrameSamples + RetainedHistorySamples + SampleTrimThreshold + 1;
     private const int Pn9Seed = 0x1FF;
     private const double MinimumTrackedSamplesPerBit = 7.5;
     private const double MaximumTrackedSamplesPerBit = 8.5;
     private const double TimingPhaseGain = 0.35;
     private const double TimingRateGain = 0.015;
+    // The channel request preserves the complete occupied SUN-FSK channel.
+    // A narrower demodulator filter removes residual RF noise before the phase
+    // discriminator; 0.135 Fs is 45% of the 30%-Fs occupied channel width.
+    internal const double DemodulationIqCutoffRatio = 0.135;
     public long TotalSyncAttempts { get; private set; }
     public long TotalRfBursts { get; private set; }
     public long TotalPreambleMatches { get; private set; }
@@ -60,10 +81,11 @@ public sealed partial class WiSunDemodulator
     public ushort? CustomSfd { get; set; }
     public bool EnableRawBurstLog { get; set; }
 
-    private readonly List<float> discriminator = new(HanWorkingSampleRateHz / 2);
-    private readonly List<float> power = new(HanWorkingSampleRateHz / 2);
-    private readonly List<double> discriminatorPrefix = new(HanWorkingSampleRateHz / 2) { 0 };
-    private readonly List<double> powerPrefix = new(HanWorkingSampleRateHz / 2) { 0 };
+    private readonly SlidingSampleBuffer<float> discriminator = new(InitialSampleBufferCapacity);
+    private readonly SlidingSampleBuffer<float> power = new(InitialSampleBufferCapacity);
+    private readonly SlidingSampleBuffer<double> discriminatorPrefix = new(InitialSampleBufferCapacity + 1);
+    private readonly SlidingSampleBuffer<double> powerPrefix = new(InitialSampleBufferCapacity + 1);
+    private readonly ComplexIqLowPassFilter demodulationIqLowPass = new();
     private Complex32 previousSample;
     private bool hasPreviousSample;
     private int scanSample;
@@ -75,6 +97,14 @@ public sealed partial class WiSunDemodulator
     private int rfBurstStartSample = -1;
     private double noiseFloorPower;
     private long noiseFloorSamples;
+    private int iqFilterSampleRateHz;
+    private bool iqFilterConfigured;
+
+    public WiSunDemodulator()
+    {
+        discriminatorPrefix.Add(0);
+        powerPrefix.Add(0);
+    }
 
     public event Action<WiSunPacketFrame>? OnPacketDecoded;
     public event Action<string>? OnDiagnosticLog;
@@ -98,6 +128,9 @@ public sealed partial class WiSunDemodulator
         LastRecoveredSamplesPerBit = SamplesPerBit;
         LastInputLevelDbfs = double.NaN;
         LastNoiseFloorDbfs = double.NaN;
+        demodulationIqLowPass.Reset();
+        iqFilterSampleRateHz = 0;
+        iqFilterConfigured = false;
         noiseFloorPower = 0;
         noiseFloorSamples = 0;
         LastInputSampleRateHz = 0;
@@ -131,6 +164,15 @@ public sealed partial class WiSunDemodulator
         WiSunPhyProfile.Custom => (int)(Math.Clamp(customBitRateBps, 50_000, 300_000) * 2.4),
         _ => throw new ArgumentOutOfRangeException(nameof(profile))
     };
+
+    /// <summary>
+    /// Full-width stopband edge requested from the host channelizer. The
+    /// demodulator retains the occupied channel width while leaving a
+    /// transition region before the neighboring-channel boundary.
+    /// </summary>
+    public static int ChannelStopbandBandwidthHz(
+        WiSunPhyProfile profile, int customBitRateBps = 50_000) => checked(
+            ChannelBandwidthHz(profile, customBitRateBps) * 3 / 2);
 
     public void Reset()
     {

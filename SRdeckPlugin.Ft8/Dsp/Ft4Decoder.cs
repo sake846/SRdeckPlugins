@@ -24,6 +24,7 @@ public sealed class Ft4Decoder
         [3, 2, 0, 1]
     ];
     private static readonly int[] SyncStarts = [0, 33, 66, 99];
+    private static readonly bool[] SyncSymbols = CreateSyncSymbols();
     private static readonly int[] Gray = [0, 1, 3, 2];
     private readonly Ft8Codec codec = new();
     private readonly Radix2Fft fft = new(FftSize);
@@ -45,7 +46,7 @@ public sealed class Ft4Decoder
         int ldpcRejected = 0;
         int crcRejected = 0;
         var decoded = new List<Ft8Reception>();
-        var locations = new List<(string Payload, int Frequency, double Time)>();
+        var locations = new List<DecodedLocation>();
         float[] likelihood = new float[Ft8Codec.CodewordBits];
 
         foreach (Candidate coarse in candidates.Take(MaximumFineCandidates))
@@ -68,12 +69,11 @@ public sealed class Ft4Decoder
 
             double timeOffset = candidate.StartSample / (double)SampleRateHz;
             int audioFrequency = (int)Math.Round(Ft8Receiver.AudioCenterHz + candidate.FrequencyHz);
-            string fingerprint = Convert.ToHexString(message!.Payload);
-            if (locations.Any(item => item.Payload == fingerprint &&
-                    Math.Abs(item.Frequency - audioFrequency) <= 100 &&
-                    Math.Abs(item.Time - timeOffset) <= 0.5))
+            PayloadKey payloadKey = PayloadKey.FromPayload(message!.Payload);
+            if (DecodedLocationDeduplicator.ContainsNearby(locations,
+                    payloadKey, audioFrequency, timeOffset, 100, 0.5))
                 continue;
-            locations.Add((fingerprint, audioFrequency, timeOffset));
+            locations.Add(new DecodedLocation(payloadKey, audioFrequency, timeOffset));
             double ratio = Math.Max(1e-6, signalPower / Math.Max(noisePower, 1e-20) - 1);
             int snr = Math.Max(-24, (int)Math.Round(10 * Math.Log10(ratio) -
                 10 * Math.Log10(2500.0 / 83.3)));
@@ -160,16 +160,24 @@ public sealed class Ft4Decoder
         var selected = new List<Candidate>();
         foreach (Candidate candidate in all.OrderByDescending(item => item.Score))
         {
-            if (selected.Any(item => Math.Abs(item.StartSample - candidate.StartSample) <= HopSamples &&
-                    Math.Abs(item.FrequencyHz - candidate.FrequencyHz) <= ToneSpacingHz))
-                continue;
+            bool overlaps = false;
+            for (int index = 0; index < selected.Count; index++)
+            {
+                Candidate existing = selected[index];
+                if (Math.Abs(existing.StartSample - candidate.StartSample) > HopSamples ||
+                    Math.Abs(existing.FrequencyHz - candidate.FrequencyHz) > ToneSpacingHz)
+                    continue;
+                overlaps = true;
+                break;
+            }
+            if (overlaps) continue;
             selected.Add(candidate);
             if (selected.Count >= settings.MaximumCandidates) break;
         }
         return selected;
     }
 
-    private static Candidate Refine(ReadOnlySpan<Complex32> samples, Candidate coarse)
+    private Candidate Refine(ReadOnlySpan<Complex32> samples, Candidate coarse)
     {
         Candidate best = coarse;
         double bestMetric = double.NegativeInfinity;
@@ -196,7 +204,7 @@ public sealed class Ft4Decoder
         return best;
     }
 
-    private static void ExtractLikelihood(ReadOnlySpan<Complex32> samples,
+    private void ExtractLikelihood(ReadOnlySpan<Complex32> samples,
         Candidate candidate, Span<float> likelihood, out double signalPower,
         out double noisePower)
     {
@@ -215,9 +223,8 @@ public sealed class Ft4Decoder
                 likelihood.Slice(bit, 2).Clear();
                 continue;
             }
-            for (int tone = 0; tone < 4; tone++)
-                tones[tone] = TonePower(samples, start,
-                    candidate.FrequencyHz + tone * ToneSpacingHz);
+            TonePowerBank.Measure(samples, window, start, SymbolSamples, 1, SampleRateHz,
+                candidate.FrequencyHz, ToneSpacingHz, tones);
             double p0 = tones[Gray[0]], p1 = tones[Gray[1]];
             double p2 = tones[Gray[2]], p3 = tones[Gray[3]];
             likelihood[bit] = (float)(10 * Math.Log10(Math.Max(p2, p3) + 1e-20) -
@@ -232,10 +239,18 @@ public sealed class Ft4Decoder
         noisePower /= 87;
     }
 
-    private static bool IsSyncSymbol(int symbol) =>
-        SyncStarts.Any(start => symbol >= start && symbol < start + 4);
+    internal static bool IsSyncSymbol(int symbol) =>
+        symbol >= 0 && symbol < SyncSymbols.Length && SyncSymbols[symbol];
 
-    private static double TonePower(ReadOnlySpan<Complex32> samples, int start, double frequency)
+    private static bool[] CreateSyncSymbols()
+    {
+        var result = new bool[FrameSymbols];
+        foreach (int start in SyncStarts)
+            result.AsSpan(start, 4).Fill(true);
+        return result;
+    }
+
+    private double TonePower(ReadOnlySpan<Complex32> samples, int start, double frequency)
     {
         double angle = -2 * Math.PI * frequency / SampleRateHz;
         double rotationReal = Math.Cos(angle), rotationImaginary = Math.Sin(angle);
@@ -243,7 +258,7 @@ public sealed class Ft4Decoder
         for (int index = 0; index < SymbolSamples; index++)
         {
             Complex32 sample = samples[start + index];
-            double weight = 0.5 - 0.5 * Math.Cos(2 * Math.PI * (index + 0.5) / SymbolSamples);
+            double weight = window[index];
             sumReal += weight * (sample.I * oscillatorReal - sample.Q * oscillatorImaginary);
             sumImaginary += weight * (sample.I * oscillatorImaginary + sample.Q * oscillatorReal);
             double next = oscillatorReal * rotationReal - oscillatorImaginary * rotationImaginary;

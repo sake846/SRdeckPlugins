@@ -393,7 +393,7 @@
                                 <Expander Header="検証・復号" Style="{DynamicResource PluginDiagnosticsSectionStyle}">
                                     <StackPanel Margin="8,5">
                                         <TextBlock Text="{Binding RecentValidationText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" TextWrapping="Wrap"/>
-                                        <TextBlock Foreground="{DynamicResource TextDimBrush}" FontFamily="{DynamicResource DisplayFontFamily}" Margin="0,4,0,0"><Run Text="累積（統計リセット以降）: 有効 "/><Run Text="{Binding ValidFrames, Mode=OneWay, StringFormat=N0}"/><Run Text=" / fallback FCS不一致 "/><Run Text="{Binding RejectedFrames, Mode=OneWay, StringFormat=N0}"/></TextBlock>
+                                        <TextBlock Foreground="{DynamicResource TextDimBrush}" FontFamily="{DynamicResource DisplayFontFamily}" Margin="0,4,0,0"><Run Text="累積（仮説単位）: FCS合格 "/><Run Text="{Binding HypothesisValidFrames, Mode=OneWay, StringFormat=N0}"/><Run Text=" / FCS不一致 "/><Run Text="{Binding HypothesisRejectedFrames, Mode=OneWay, StringFormat=N0}"/></TextBlock>
                                     </StackPanel>
                                 </Expander>
                                 <Expander Header="詳細・デバッグ" Style="{DynamicResource PluginDiagnosticsSectionStyle}" IsExpanded="False">

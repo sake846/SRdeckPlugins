@@ -132,7 +132,7 @@
                                                 </Grid.ColumnDefinitions>
                                                 <Grid.RowDefinitions>
                                                     <RowDefinition Height="22" /><RowDefinition Height="22" /><RowDefinition Height="22" />
-                                                    <RowDefinition Height="22" /><RowDefinition Height="Auto" /><RowDefinition Height="22" />
+                                                    <RowDefinition Height="22" /><RowDefinition Height="22" /><RowDefinition Height="22" />
                                                     <RowDefinition Height="Auto" />
                                                 </Grid.RowDefinitions>
                                                 <TextBlock Text="対象周波数" Foreground="{DynamicResource TextDimBrush}" />

@@ -18,7 +18,8 @@ public sealed record Ft8Settings(
     bool SplitHistoryByBand = false,
     int MapMarkerLimit = 100,
     WeakSignalMode Mode = WeakSignalMode.FT8,
-    IReadOnlyList<string>? AdditionalBandIds = null)
+    IReadOnlyList<string>? AdditionalBandIds = null,
+    bool BuzzerEnabled = true)
 {
     public Ft8Settings Normalize()
     {
@@ -50,6 +51,7 @@ public sealed record Ft8Settings(
         false,
         Math.Clamp(MapMarkerLimit, 50, 10_000),
         selectedBand.Mode,
-        additionalBandIds);
+        additionalBandIds,
+        BuzzerEnabled);
     }
 }

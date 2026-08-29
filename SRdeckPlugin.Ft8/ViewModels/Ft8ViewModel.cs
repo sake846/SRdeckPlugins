@@ -48,6 +48,7 @@ public sealed partial class Ft8ViewModel : ObservableObject
     [ObservableProperty] private int _ldpcIterations = 35;
     [ObservableProperty] private bool _monitorAudioEnabled = true;
     [ObservableProperty] private int _monitorAudioVolume = 100;
+    [ObservableProperty] private bool _buzzerEnabled = true;
     [ObservableProperty] private string _captureStatus = "IQ録音: 待機";
     [ObservableProperty] private long _decodedCount;
     [ObservableProperty] private int _stationsThisSlot;
@@ -108,6 +109,7 @@ public sealed partial class Ft8ViewModel : ObservableObject
     internal Action<bool>? SavePayloadChanged { get; set; }
     internal Action<bool>? SplitHistoryByBandChanged { get; set; }
     internal Action<int>? MapMarkerLimitChanged { get; set; }
+    internal Action<bool>? BuzzerEnabledChanged { get; set; }
     public Action? ClearRequested { get; set; }
     internal Action? CaptureRequested { get; set; }
 
@@ -158,6 +160,7 @@ public sealed partial class Ft8ViewModel : ObservableObject
     partial void OnLdpcIterationsChanged(int value) => SettingsUpdated();
     partial void OnMonitorAudioEnabledChanged(bool value) => SettingsUpdated();
     partial void OnMonitorAudioVolumeChanged(int value) => SettingsUpdated();
+    partial void OnBuzzerEnabledChanged(bool value) => BuzzerEnabledChanged?.Invoke(value);
     partial void OnStationSearchTextChanged(string value) => RefreshFilteredStations();
     partial void OnHistorySearchTextChanged(string value) => RefreshFilteredHistory();
 
@@ -187,6 +190,7 @@ public sealed partial class Ft8ViewModel : ObservableObject
         LdpcIterations = settings.LdpcIterations;
         MonitorAudioEnabled = settings.MonitorAudioEnabled;
         MonitorAudioVolume = settings.MonitorAudioVolume;
+        BuzzerEnabled = settings.BuzzerEnabled;
         suppressSelection = true;
         SelectedMode = band.Mode;
         SelectedBand = band;

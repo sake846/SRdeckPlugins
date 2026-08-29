@@ -48,6 +48,8 @@ public sealed partial class Ft8Decoder
     private readonly bool enableFineSynchronization;
     private readonly bool enableCancellationPass;
 
+    internal int SnrBaselineGenerationCount { get; private set; }
+
     public Ft8Decoder() : this(true, true)
     {
     }
@@ -82,11 +84,11 @@ public sealed partial class Ft8Decoder
             return new([], 0, 0, 0, TimeSpan.Zero);
         var stopwatch = Stopwatch.StartNew();
         Waterfall waterfall = CreateWaterfall(samples);
-        WsjtNoiseBaseline snrBaseline = CreateWsjtNoiseBaseline(samples);
+        WsjtNoiseBaseline? snrBaseline = null;
         List<Candidate> candidates = FindCandidates(waterfall, settings);
         int candidateCount = candidates.Count;
         var decoded = new List<Ft8Reception>();
-        var decodedLocations = new List<(string Payload, int AudioFrequency, double TimeOffset)>();
+        var decodedLocations = new List<DecodedLocation>();
         int ldpcRejected = 0;
         int crcRejected = 0;
         float[] likelihoodBuffer = new float[Ft8Codec.CodewordBits];
@@ -145,14 +147,13 @@ public sealed partial class Ft8Decoder
                 continue;
             }
             int audioFrequency = (int)Math.Round(AudioCenterHz + basebandOffset);
-            string fingerprint = Convert.ToHexString(message!.Payload);
-            if (decodedLocations.Any(item =>
-                    item.Payload == fingerprint &&
-                    Math.Abs(item.AudioFrequency - audioFrequency) <= 75 &&
-                    Math.Abs(item.TimeOffset - timeOffset) <= 1.0))
+            PayloadKey payloadKey = PayloadKey.FromPayload(message!.Payload);
+            if (DecodedLocationDeduplicator.ContainsNearby(decodedLocations,
+                    payloadKey, audioFrequency, timeOffset, 75, 1.0))
                 continue;
-            decodedLocations.Add((fingerprint, audioFrequency, timeOffset));
+            decodedLocations.Add(new DecodedLocation(payloadKey, audioFrequency, timeOffset));
 
+            snrBaseline ??= CreateWsjtNoiseBaseline(samples);
             int snr = CalculateSnr(samples, basebandOffset, timeOffset, message.Payload, snrBaseline);
             decoded.Add(new(
                 slotStart,
@@ -183,14 +184,13 @@ public sealed partial class Ft8Decoder
             crcRejected += secondPass.CrcRejected;
             foreach (Ft8Reception reception in secondPass.Messages)
             {
-                string fingerprint = Convert.ToHexString(reception.Payload);
-                if (decodedLocations.Any(item =>
-                        item.Payload == fingerprint &&
-                        Math.Abs(item.AudioFrequency - reception.AudioFrequencyHz) <= 75 &&
-                        Math.Abs(item.TimeOffset - reception.TimeOffsetSeconds) <= 1.0))
+                PayloadKey payloadKey = PayloadKey.FromPayload(reception.Payload);
+                if (DecodedLocationDeduplicator.ContainsNearby(decodedLocations,
+                        payloadKey, reception.AudioFrequencyHz,
+                        reception.TimeOffsetSeconds, 75, 1.0))
                     continue;
-                decodedLocations.Add((fingerprint, reception.AudioFrequencyHz,
-                    reception.TimeOffsetSeconds));
+                decodedLocations.Add(new DecodedLocation(payloadKey,
+                    reception.AudioFrequencyHz, reception.TimeOffsetSeconds));
                 decoded.Add(reception);
             }
         }
@@ -255,12 +255,23 @@ public sealed partial class Ft8Decoder
         var selected = new List<Candidate>(settings.MaximumCandidates);
         foreach (Candidate candidate in candidates.OrderByDescending(item => item.Score))
         {
-            if (selected.Any(item =>
-                    Math.Abs(item.TimeOffset * TimeOversampling + item.TimeSub -
-                             (candidate.TimeOffset * TimeOversampling + candidate.TimeSub)) <= 2 &&
-                    Math.Abs(item.FrequencyOffset * FrequencyOversampling + item.FrequencySub -
-                             (candidate.FrequencyOffset * FrequencyOversampling + candidate.FrequencySub)) <= 2))
-                continue;
+            int timeCoordinate = candidate.TimeOffset * TimeOversampling + candidate.TimeSub;
+            int frequencyCoordinate = candidate.FrequencyOffset * FrequencyOversampling +
+                                      candidate.FrequencySub;
+            bool overlaps = false;
+            for (int index = 0; index < selected.Count; index++)
+            {
+                Candidate existing = selected[index];
+                int existingTime = existing.TimeOffset * TimeOversampling + existing.TimeSub;
+                int existingFrequency = existing.FrequencyOffset * FrequencyOversampling +
+                                        existing.FrequencySub;
+                if (Math.Abs(existingTime - timeCoordinate) > 2 ||
+                    Math.Abs(existingFrequency - frequencyCoordinate) > 2)
+                    continue;
+                overlaps = true;
+                break;
+            }
+            if (overlaps) continue;
             selected.Add(candidate);
             if (selected.Count == settings.MaximumCandidates) break;
         }

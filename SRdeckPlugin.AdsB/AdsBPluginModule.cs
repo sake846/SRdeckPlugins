@@ -45,16 +45,20 @@ public sealed partial class AdsBPluginModule : PluginModuleBase, IIqBlockConsume
     public AdsBPluginModule()
     {
         RegisterStreamReset(pretriggerBuffer.Reset);
-        viewModel.SettingsChanged = (maximum, retention, historyLimit, trailPoints, latitude, longitude) =>
+        viewModel.SettingsChanged = (maximum, retention, historyLimit, trailPoints, latitude, longitude, enableSic) =>
         {
             settings = settings with
             {
                 MaximumAircraft = maximum, RetentionMinutes = retention,
                 ReceiverLatitude = latitude, ReceiverLongitude = longitude,
                 MaximumTrailPoints = trailPoints,
-                MaximumHistory = historyLimit
+                MaximumHistory = historyLimit,
+                EnableSuccessiveInterferenceCancellation = enableSic
             };
             settings = settings.Normalize();
+            lock (processingGate)
+                receiver.ConfigureSuccessiveInterferenceCancellation(
+                    settings.EnableSuccessiveInterferenceCancellation);
             PruneStoredHistory();
             cprDecoder.ConfigureReceiverReference(settings.ReceiverLatitude, settings.ReceiverLongitude);
             PersistSettings();
@@ -76,11 +80,15 @@ public sealed partial class AdsBPluginModule : PluginModuleBase, IIqBlockConsume
             await host.Settings.DeleteAsync().ConfigureAwait(false);
         }
         settings = new AdsBSettings().Normalize();
+        lock (processingGate)
+            receiver.ConfigureSuccessiveInterferenceCancellation(
+                settings.EnableSuccessiveInterferenceCancellation);
         cprDecoder.ConfigureReceiverReference(settings.ReceiverLatitude, settings.ReceiverLongitude);
         viewModel.SynchronizeSettings(settings.MaximumAircraft, settings.RetentionMinutes,
             settings.MaximumHistory, settings.MaximumTrailPoints,
             settings.ReceiverLatitude, settings.ReceiverLongitude,
-            settings.SaveRawModeS, settings.HistoryRecordMode);
+            settings.SaveRawModeS, settings.HistoryRecordMode,
+            settings.EnableSuccessiveInterferenceCancellation);
     }
 
     public override PluginDescriptor Descriptor { get; } = new(
@@ -124,6 +132,9 @@ public sealed partial class AdsBPluginModule : PluginModuleBase, IIqBlockConsume
             8,
             true,
             AccelerationPreference: PluginChannelAccelerationPreference.Cpu)
+        {
+            StopbandBandwidthHz = 2_000_000
+        }
     ];
     public IReadOnlyList<PluginExportFormat> ExportFormats { get; } =
     [
@@ -161,11 +172,14 @@ public sealed partial class AdsBPluginModule : PluginModuleBase, IIqBlockConsume
             }
         }
         cprDecoder.ConfigureReceiverReference(settings.ReceiverLatitude, settings.ReceiverLongitude);
+        receiver.ConfigureSuccessiveInterferenceCancellation(
+            settings.EnableSuccessiveInterferenceCancellation);
         historyWriter = CreateHistoryWriter(hostContext);
         viewModel.SynchronizeSettings(settings.MaximumAircraft, settings.RetentionMinutes,
             settings.MaximumHistory, settings.MaximumTrailPoints,
             settings.ReceiverLatitude, settings.ReceiverLongitude,
-            settings.SaveRawModeS, settings.HistoryRecordMode);
+            settings.SaveRawModeS, settings.HistoryRecordMode,
+            settings.EnableSuccessiveInterferenceCancellation);
         LoadHistory();
     }
 
@@ -344,7 +358,7 @@ public sealed partial class AdsBPluginModule : PluginModuleBase, IIqBlockConsume
             metrics.AddCounter(PluginProcessingStage.Detection, "frames", frames.Count, "frames");
             foreach (ModeSFrame frame in frames)
             {
-                if (!AdsBMessageParser.TryParse(frame, out AdsBMessage? message) || message is null)
+                if (!AdsBMessageParser.TryParseValidated(frame, out AdsBMessage? message) || message is null)
                 {
                     metrics.AddCounter(PluginProcessingStage.ProtocolDecode, "rejected", 1, "frames");
                     continue;

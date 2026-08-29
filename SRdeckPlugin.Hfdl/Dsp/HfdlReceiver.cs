@@ -14,14 +14,24 @@ public sealed partial class HfdlReceiver
     private const int WorkingSampleRate = MonitorAudioSampleRateHz;
     private const int SamplesPerSymbol = WorkingSampleRate / SymbolRate;
     private const double ChannelCutoffHz = 2_400;
+    // The raw path already applies this edge in its rate-conversion FIR. The
+    // standard channel path needs the equivalent demodulation filter after
+    // host rate conversion and before differential PSK correlation.
+    internal const double DemodulationIqCutoffHz = 2_400;
     private const double MinimumPreambleCorrelation = 0.72;
-    private readonly List<Complex32> working = new(WorkingSampleRate * 6);
+    private readonly SlidingSampleBuffer<Complex32> working = new(WorkingSampleRate * 6);
+    private Complex32[] workingSampleScratch = new Complex32[WorkingSampleRate * 6];
+    private Complex32[] integerSymbolScratch = new Complex32[WorkingSampleRate * 6];
+    private int integerSymbolStride;
+    private double[] symbolMagnitudeScratch = new double[WorkingSampleRate * 6 / SamplesPerSymbol];
+    private double[] differentialEnergyPrefixScratch = new double[WorkingSampleRate * 6 / SamplesPerSymbol];
     private readonly List<bool> postFecBits = new(16_384);
     // Reduce multi-MS/s SDR streams in inexpensive bounded stages before the
     // selective polyphase FIR runs at roughly 60 kS/s.
     private readonly BoundedCicDecimator coarseDecimator = new();
     private readonly BoundedCicDecimator fineDecimator = new();
     private readonly PolyphaseRationalResampler finalResampler = new(64, allowUpsampling: false);
+    private readonly ComplexIqLowPassFilter demodulationIqLowPass = new();
     private readonly AudioMonitor audioMonitor = new();
     private int inputSampleRate;
     private long workingSampleStart;
@@ -38,8 +48,22 @@ public sealed partial class HfdlReceiver
     private long processedInputSamples;
     private long processedWorkingSamples;
     private long preambleSearchPassCount;
+    private long preambleCorrelationEvaluationCount;
+    private long preambleSparseCorrelationPointCount;
+    private long preambleSparseGateCandidateCount;
+    private long preambleCoarsePeakCandidateCount;
+    private long preambleFullCorrelationEvaluationCount;
+    private long preambleFullCorrelationPointCount;
+    private long preambleReusedCorrelationPointCount;
+    private long preambleMagnitudeCalculationCount;
+    private long preambleSearchCpuTicks;
     private long preambleCandidateCount;
+    private long preambleRefinementCount;
     private long synchronizationCount;
+    private int preambleSearchSampleOffset;
+
+    internal long PreambleCorrelationEvaluationCount => preambleCorrelationEvaluationCount;
+    internal int PreambleSearchSampleOffset => preambleSearchSampleOffset;
 
     public long ValidFrameCount { get; private set; }
     public long RejectedFrameCount { get; private set; }
@@ -67,7 +91,16 @@ public sealed partial class HfdlReceiver
         long PreambleCandidateCount,
         long SynchronizationCount,
         long ValidFrameCount,
-        long RejectedFrameCount);
+        long RejectedFrameCount,
+        long PreambleSparseCorrelationPointCount = 0,
+        long PreambleFullCorrelationPointCount = 0,
+        long PreambleReusedCorrelationPointCount = 0,
+        long PreambleMagnitudeCalculationCount = 0,
+        double PreambleSearchCpuMilliseconds = 0,
+        long PreambleSparseGateCandidateCount = 0,
+        long PreambleCoarsePeakCandidateCount = 0,
+        long PreambleFullCorrelationEvaluationCount = 0,
+        long PreambleRefinementCount = 0);
 
     public DiagnosticsSnapshot GetDiagnostics() => new(
         inputSampleRate,
@@ -92,7 +125,16 @@ public sealed partial class HfdlReceiver
         preambleCandidateCount,
         synchronizationCount,
         ValidFrameCount,
-        RejectedFrameCount);
+        RejectedFrameCount,
+        preambleSparseCorrelationPointCount,
+        preambleFullCorrelationPointCount,
+        preambleReusedCorrelationPointCount,
+        preambleMagnitudeCalculationCount,
+        preambleSearchCpuTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+        preambleSparseGateCandidateCount,
+        preambleCoarsePeakCandidateCount,
+        preambleFullCorrelationEvaluationCount,
+        preambleRefinementCount);
 
     public IReadOnlyList<HfdlFrame> Process(ReadOnlySpan<Complex32> samples, IqBlockMetadata metadata)
         => ProcessCore(samples, metadata, Span<float>.Empty, captureAudio: false, out _);
@@ -172,8 +214,11 @@ public sealed partial class HfdlReceiver
         double peak = 0;
         foreach (Complex32 sample in samples)
         {
-            working.Add(sample);
-            double power = sample.I * sample.I + sample.Q * sample.Q;
+            demodulationIqLowPass.Process(sample.I, sample.Q,
+                out float filteredI, out float filteredQ);
+            Complex32 filtered = new(filteredI, filteredQ);
+            working.Add(filtered);
+            double power = filteredI * filteredI + filteredQ * filteredQ;
             energy += power;
             peak = Math.Max(peak, Math.Sqrt(power));
             if (!captureAudio) continue;
@@ -213,8 +258,10 @@ public sealed partial class HfdlReceiver
             applied.InputSampleRateHz / (double)(applied.CoarseDecimationFactor * applied.FineDecimationFactor),
             applied.InterpolationFactor,
             applied.ResamplerDecimationFactor);
+        demodulationIqLowPass.Configure(WorkingSampleRate, DemodulationIqCutoffHz);
         audioMonitor.Reset();
         pendingCandidate = null;
+        preambleSearchSampleOffset = 0;
         inputRms = channelRms = channelPeak = 0;
         lastSearchBestCorrelation = 0;
         lastPreambleCorrelation = 0;
@@ -224,7 +271,17 @@ public sealed partial class HfdlReceiver
         processedInputSamples = 0;
         processedWorkingSamples = 0;
         preambleSearchPassCount = 0;
+        preambleCorrelationEvaluationCount = 0;
+        preambleSparseCorrelationPointCount = 0;
+        preambleSparseGateCandidateCount = 0;
+        preambleCoarsePeakCandidateCount = 0;
+        preambleFullCorrelationEvaluationCount = 0;
+        preambleFullCorrelationPointCount = 0;
+        preambleReusedCorrelationPointCount = 0;
+        preambleMagnitudeCalculationCount = 0;
+        preambleSearchCpuTicks = 0;
         preambleCandidateCount = 0;
+        preambleRefinementCount = 0;
         synchronizationCount = 0;
     }
 
@@ -247,6 +304,7 @@ public sealed partial class HfdlReceiver
             WorkingSampleRate, ChannelCutoffHz);
         audioMonitor.Reset();
         pendingCandidate = null;
+        preambleSearchSampleOffset = 0;
         inputRms = channelRms = channelPeak = 0;
         lastSearchBestCorrelation = 0;
         lastPreambleCorrelation = 0;
@@ -256,7 +314,17 @@ public sealed partial class HfdlReceiver
         processedInputSamples = 0;
         processedWorkingSamples = 0;
         preambleSearchPassCount = 0;
+        preambleCorrelationEvaluationCount = 0;
+        preambleSparseCorrelationPointCount = 0;
+        preambleSparseGateCandidateCount = 0;
+        preambleCoarsePeakCandidateCount = 0;
+        preambleFullCorrelationEvaluationCount = 0;
+        preambleFullCorrelationPointCount = 0;
+        preambleReusedCorrelationPointCount = 0;
+        preambleMagnitudeCalculationCount = 0;
+        preambleSearchCpuTicks = 0;
         preambleCandidateCount = 0;
+        preambleRefinementCount = 0;
         synchronizationCount = 0;
     }
 

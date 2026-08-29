@@ -3,6 +3,51 @@ using SRdeckPlugin.Contracts;
 
 namespace SRdeckPlugin.Ais.Dsp;
 
+internal readonly record struct CoherentGmskMixedSample(
+    double PositiveI,
+    double PositiveQ,
+    double NegativeI,
+    double NegativeQ);
+
+/// <summary>Frequency-only front end shared by all timing hypotheses.</summary>
+internal sealed class CoherentGmskFrequencyMixer
+{
+    // All supported tone hypotheses are integer multiples of 300 Hz, so their
+    // continuous local oscillators repeat after 320 samples at 96 kS/s.
+    private const int OscillatorPeriod = AisReceiver.DemodulationSampleRateHz / 300;
+    private readonly float[] positiveOscillatorI = new float[OscillatorPeriod];
+    private readonly float[] positiveOscillatorQ = new float[OscillatorPeriod];
+    private readonly float[] negativeOscillatorI = new float[OscillatorPeriod];
+    private readonly float[] negativeOscillatorQ = new float[OscillatorPeriod];
+
+    public CoherentGmskFrequencyMixer(int frequencyOffsetHz)
+    {
+        CreateOscillator(2_400 + frequencyOffsetHz, positiveOscillatorI, positiveOscillatorQ);
+        CreateOscillator(-2_400 + frequencyOffsetHz, negativeOscillatorI, negativeOscillatorQ);
+    }
+
+    public CoherentGmskMixedSample Mix(Complex32 sample, long sampleIndex)
+    {
+        int index = (int)(sampleIndex % OscillatorPeriod);
+        float positiveI = sample.I * positiveOscillatorI[index] + sample.Q * positiveOscillatorQ[index];
+        float positiveQ = sample.Q * positiveOscillatorI[index] - sample.I * positiveOscillatorQ[index];
+        float negativeI = sample.I * negativeOscillatorI[index] + sample.Q * negativeOscillatorQ[index];
+        float negativeQ = sample.Q * negativeOscillatorI[index] - sample.I * negativeOscillatorQ[index];
+        return new(positiveI, positiveQ, negativeI, negativeQ);
+    }
+
+    private static void CreateOscillator(int frequencyHz, float[] i, float[] q)
+    {
+        double step = 2 * Math.PI * frequencyHz / AisReceiver.DemodulationSampleRateHz;
+        for (int index = 0; index < i.Length; index++)
+        {
+            double phase = step * index;
+            i[index] = (float)Math.Cos(phase);
+            q[index] = (float)Math.Sin(phase);
+        }
+    }
+}
+
 /// <summary>
 /// Coherent soft-decision sequence detector for the AIS GMSK waveform.
 /// It combines a bank of complex matched correlators with a Viterbi detector
@@ -14,11 +59,8 @@ internal sealed class CoherentGmskSequenceDecoder
     private const double ToneRadiansPerSymbol = Math.PI / 2;
     private readonly int offset;
     private readonly int frequencyOffsetHz;
+    private readonly int frequencyHypothesisIndex;
     private readonly AisHdlcDecoder decoder = new();
-    private readonly float[] positiveOscillatorI;
-    private readonly float[] positiveOscillatorQ;
-    private readonly float[] negativeOscillatorI;
-    private readonly float[] negativeOscillatorQ;
     private readonly byte[,] predecessors = new byte[TracebackDepth, 2];
     private readonly double[] confidenceHistory = new double[TracebackDepth];
     private readonly double[,] transitionCos = new double[2, 2];
@@ -36,16 +78,11 @@ internal sealed class CoherentGmskSequenceDecoder
     private bool hasPreviousCorrelations;
     private double recentConfidence;
 
-    public CoherentGmskSequenceDecoder(int offset, int frequencyOffsetHz)
+    public CoherentGmskSequenceDecoder(int offset, int frequencyOffsetHz, int frequencyHypothesisIndex)
     {
         this.offset = offset;
         this.frequencyOffsetHz = frequencyOffsetHz;
-        positiveOscillatorI = new float[AisReceiver.SamplesPerSymbol];
-        positiveOscillatorQ = new float[AisReceiver.SamplesPerSymbol];
-        negativeOscillatorI = new float[AisReceiver.SamplesPerSymbol];
-        negativeOscillatorQ = new float[AisReceiver.SamplesPerSymbol];
-        CreateOscillator(2_400 + frequencyOffsetHz, positiveOscillatorI, positiveOscillatorQ);
-        CreateOscillator(-2_400 + frequencyOffsetHz, negativeOscillatorI, negativeOscillatorQ);
+        this.frequencyHypothesisIndex = frequencyHypothesisIndex;
         for (int previousState = 0; previousState < 2; previousState++)
         for (int currentState = 0; currentState < 2; currentState++)
         {
@@ -59,6 +96,7 @@ internal sealed class CoherentGmskSequenceDecoder
     }
 
     public int FrequencyOffsetHz => frequencyOffsetHz;
+    public int FrequencyHypothesisIndex => frequencyHypothesisIndex;
     public long RejectedFrames => decoder.RejectedFrames;
     public long FlagCount => decoder.FlagCount;
     public long FrameCandidateCount => decoder.FrameCandidateCount;
@@ -67,6 +105,17 @@ internal sealed class CoherentGmskSequenceDecoder
     public void Reset()
     {
         decoder.Reset();
+        ResetSequenceState();
+    }
+
+    public void ResetState()
+    {
+        decoder.ResetState();
+        ResetSequenceState();
+    }
+
+    private void ResetSequenceState()
+    {
         sampleCount = 0;
         positiveI = positiveQ = negativeI = negativeQ = 0;
         symbolIndex = 0;
@@ -78,12 +127,16 @@ internal sealed class CoherentGmskSequenceDecoder
         Array.Clear(confidenceHistory);
     }
 
-    public byte[]? Feed(Complex32 sample, long sampleIndex, out double quality)
+    public byte[]? Feed(
+        Complex32 sample,
+        CoherentGmskMixedSample mixed,
+        long sampleIndex,
+        out double quality)
     {
         quality = 0;
         if (sampleIndex < offset) return null;
 
-        Accumulate(sample, sampleCount);
+        Accumulate(sample, mixed, sampleCount);
         if (++sampleCount < AisReceiver.SamplesPerSymbol) return null;
         sampleCount = 0;
 
@@ -145,13 +198,12 @@ internal sealed class CoherentGmskSequenceDecoder
         return payload;
     }
 
-    private void Accumulate(Complex32 sample, int index)
+    private void Accumulate(Complex32 sample, CoherentGmskMixedSample mixed, int index)
     {
-        // x * conjugate(local oscillator)
-        positiveI += sample.I * positiveOscillatorI[index] + sample.Q * positiveOscillatorQ[index];
-        positiveQ += sample.Q * positiveOscillatorI[index] - sample.I * positiveOscillatorQ[index];
-        negativeI += sample.I * negativeOscillatorI[index] + sample.Q * negativeOscillatorQ[index];
-        negativeQ += sample.Q * negativeOscillatorI[index] - sample.I * negativeOscillatorQ[index];
+        positiveI += mixed.PositiveI;
+        positiveQ += mixed.PositiveQ;
+        negativeI += mixed.NegativeI;
+        negativeQ += mixed.NegativeQ;
         if (index is >= 4 and <= 6)
         {
             currentCenter = new(currentCenter.I + sample.I, currentCenter.Q + sample.Q);
@@ -180,17 +232,6 @@ internal sealed class CoherentGmskSequenceDecoder
         1.15 * Math.Clamp(
             observedCos * transitionCos[previous, current] +
             observedSin * transitionSin[previous, current], -1, 1);
-
-    private static void CreateOscillator(int frequencyHz, float[] i, float[] q)
-    {
-        double step = 2 * Math.PI * frequencyHz / AisReceiver.DemodulationSampleRateHz;
-        for (int index = 0; index < i.Length; index++)
-        {
-            double phase = step * index;
-            i[index] = (float)Math.Cos(phase);
-            q[index] = (float)Math.Sin(phase);
-        }
-    }
 
     private readonly record struct Correlation(double I, double Q)
     {

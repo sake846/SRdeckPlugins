@@ -13,7 +13,13 @@ public sealed record LoRaPayloadFrame(
     ushort? ReceivedCrc,
     ushort? CalculatedCrc,
     int CodingRateDenominator,
-    int CorrectedCodewords);
+    int CorrectedCodewords)
+{
+    public LoRaSoftFrameInformation? SoftInformation { get; init; }
+    public bool WasRecoveredByListDecoding { get; init; }
+    public float? CrcListMetric { get; init; }
+    public int CrcListRetries { get; init; }
+}
 
 internal static class LoRaPayloadDecoder
 {
@@ -47,7 +53,34 @@ internal static class LoRaPayloadDecoder
         return nibbles;
     }
 
-    public static LoRaPayloadFrame BuildFrame(LoRaExplicitHeader header, IReadOnlyList<byte> decodedNibbles, int correctedCodewords)
+    public static byte[] DecodeBlockSoft(
+        IReadOnlyList<LoRaSoftSymbol> symbols,
+        int codingRateDenominator,
+        int spreadingFactor,
+        float missingCandidatePenalty,
+        out int correctedCodewords)
+    {
+        ArgumentNullException.ThrowIfNull(symbols);
+        if (codingRateDenominator is < 5 or > 8)
+            throw new ArgumentOutOfRangeException(nameof(codingRateDenominator));
+        int codewordCount = spreadingFactor;
+        LoRaCodewordSoftMetrics[] metrics = LoRaSoftMetricPropagator.Deinterleave(
+            symbols, codewordCount, codingRateDenominator, missingCandidatePenalty);
+        var nibbles = new byte[codewordCount];
+        correctedCodewords = 0;
+        for (int index = 0; index < metrics.Length; index++)
+        {
+            nibbles[index] = DecodeCodeword(metrics[index], codingRateDenominator, out bool corrected);
+            if (corrected) correctedCodewords++;
+        }
+        return nibbles;
+    }
+
+    public static LoRaPayloadFrame BuildFrame(
+        LoRaExplicitHeader header,
+        IReadOnlyList<byte> decodedNibbles,
+        int correctedCodewords,
+        LoRaSoftFrameInformation? softInformation = null)
     {
         ArgumentNullException.ThrowIfNull(header);
         ArgumentNullException.ThrowIfNull(decodedNibbles);
@@ -95,7 +128,10 @@ internal static class LoRaPayloadDecoder
             receivedCrc,
             calculatedCrc,
             header.CodingRateDenominator,
-            correctedCodewords);
+            correctedCodewords)
+        {
+            SoftInformation = softInformation
+        };
     }
 
     public static ushort CalculateCrc(ReadOnlySpan<byte> data)
@@ -157,6 +193,29 @@ internal static class LoRaPayloadDecoder
         }
 
         corrected = bestDistance == 1 && codingRateDenominator >= 7;
+        return (byte)bestNibble;
+    }
+
+    private static byte DecodeCodeword(
+        LoRaCodewordSoftMetrics metrics,
+        int codingRateDenominator,
+        out bool corrected)
+    {
+        int bestNibble = 0;
+        byte bestCodeword = 0;
+        float bestScore = float.PositiveInfinity;
+        for (int nibble = 0; nibble < 16; nibble++)
+        {
+            byte encoded = EncodeCodeword(nibble, codingRateDenominator);
+            float score = metrics.Score(encoded);
+            if (score >= bestScore) continue;
+            bestScore = score;
+            bestNibble = nibble;
+            bestCodeword = encoded;
+        }
+
+        corrected = codingRateDenominator >= 7 &&
+                    BitOperations.PopCount((uint)(metrics.HardValue ^ bestCodeword)) == 1;
         return (byte)bestNibble;
     }
 

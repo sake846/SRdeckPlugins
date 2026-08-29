@@ -123,11 +123,17 @@ public sealed partial class Ft8PluginModule
             // A subscriber exception must never hide a successfully decoded batch.
             host?.Dispatcher.Post(() => viewModel.AddBatch(batch));
             WaterfallAnnotationsChanged?.Invoke(this, EventArgs.Empty);
+
         }
         catch (Exception exception)
         {
             host?.Logger.Log(PluginLogLevel.Error, "ft8.results.failed",
                 "Failed to update the FT8 receiver pane.", exception);
+        }
+
+        if (batch.Length > 0 && settings.BuzzerEnabled)
+        {
+            host?.Notifications.PlayReceptionAlarm(TimeSpan.FromMilliseconds(500));
         }
 
         foreach (Ft8Reception message in batch)

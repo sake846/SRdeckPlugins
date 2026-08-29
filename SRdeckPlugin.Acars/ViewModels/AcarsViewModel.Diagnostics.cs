@@ -147,7 +147,11 @@ public sealed partial class AcarsViewModel
         DetectorText = snapshot.DecodePassCount == 0
             ? "同期データ待ち / SQ CLOSED"
             : $"コヒーレントMSK / SQ {(snapshot.IsMskSquelchOpen ? "OPEN" : "CLOSED")} ({openAudioChannelCount}/{monitoredChannelCount} ch)";
-        DecodePassText = $"{snapshot.DecodePassCount:N0} 回 / {snapshot.ProcessedAudioSampleCount / (double)AcarsReceiver.DemodulationSampleRateHz:F1} 秒";
+        DecodePassText = $"{snapshot.DecodePassCount:N0} 回 / " +
+            $"{snapshot.ProcessedAudioSampleCount / (double)AcarsReceiver.DemodulationSampleRateHz:F1} 秒 / " +
+            $"位相候補 {snapshot.LastAcquisitionCandidatePhaseCount:N0} / " +
+            $"完全復号 {snapshot.LastFullDecodePhaseCount:N0} / " +
+            $"フォールバック {snapshot.AcquisitionFallbackCount:N0}";
         long recentTotal = recentValid + recentRejected;
         string recentRate = recentTotal == 0 ? "—" : $"{recentValid * 100.0 / recentTotal:F1} %";
         RecentValidationText = $"直近60秒: 候補 {recentCandidates:N0} / BCS合格 {recentValid:N0} / 不一致 {recentRejected:N0} / 検証合格率 {recentRate}";
