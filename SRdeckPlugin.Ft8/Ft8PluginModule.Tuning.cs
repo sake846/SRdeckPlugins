@@ -70,8 +70,6 @@ public sealed partial class Ft8PluginModule
         long lower = requestedBands.Min(item => item.ChannelCenterFrequencyHz - halfBandwidth);
         long upper = requestedBands.Max(item => item.ChannelCenterFrequencyHz + halfBandwidth);
         long requiredSpan = upper - lower;
-        int minimumSampleRate = (int)Math.Min(int.MaxValue,
-            Math.Max(48_000L, (long)Math.Ceiling(requiredSpan / 0.95)));
         long preferredCenter = lower + requiredSpan / 2;
         return new PluginTuningRequest(
             band.Id,
@@ -79,7 +77,7 @@ public sealed partial class Ft8PluginModule
             requestedBands.Select(item =>
                 new TuningTarget(item.ChannelCenterFrequencyHz, Ft8Receiver.OccupiedPassbandHz)).ToArray(),
             preferredCenter,
-            minimumSampleRate,
+            48_000,
             1,
             true,
             false,

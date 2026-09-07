@@ -30,7 +30,7 @@ public static partial class HfdlPhysicalLayer
         {
             symbols.AddRange(dataSymbols.AsSpan(
                 frame * DataSymbolsPerFrame, DataSymbolsPerFrame).ToArray());
-            AppendBpsk(symbols, shiftedM1[..ProbeSymbolsPerFrame]);
+            AppendBpsk(symbols, TSequence.AsSpan(0, ProbeSymbolsPerFrame));
         }
         return symbols.ToArray();
     }

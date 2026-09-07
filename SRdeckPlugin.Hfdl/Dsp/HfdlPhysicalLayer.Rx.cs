@@ -16,7 +16,7 @@ public static partial class HfdlPhysicalLayer
         var chips = new float[mode.InterleaverColumns * 40];
         int chipPosition = 0;
         double qualitySum = 0;
-        var equalizer = new ProbeAdaptiveEqualizer(3);
+        var equalizer = new ProbeAdaptiveEqualizer(7);
         var corrected = new Complex32[SymbolsPerFrame];
         for (int frame = 0; frame < mode.FrameCount; frame++)
         {
@@ -52,6 +52,115 @@ public static partial class HfdlPhysicalLayer
             return ViterbiDecode(deinterleaved.AsSpan(0, collapsedLength), mode.UserBitCount);
         }
         return ViterbiDecode(deinterleaved, mode.UserBitCount);
+    }
+
+    /// <summary>
+    /// Demodulates a complete synchronized burst, using the known preamble tail
+    /// to converge equalization before data begins and tracking residual carrier
+    /// phase continuously through data and embedded probe segments.
+    /// </summary>
+    public static bool[] DecodeBurstSymbols(ReadOnlySpan<Complex32> symbols, HfdlPhysicalMode mode,
+        ReadOnlySpan<bool> probe, out double quality)
+    {
+        int expected = PreambleSymbols + mode.FrameCount * SymbolsPerFrame;
+        if (symbols.Length < expected)
+            throw new ArgumentException("The HFDL burst is incomplete.", nameof(symbols));
+        if (probe.Length < ProbeSymbolsPerFrame)
+            throw new ArgumentException("The HFDL probe sequence is incomplete.", nameof(probe));
+
+        Complex32[] burst = symbols[..expected].ToArray();
+        var chips = new float[mode.InterleaverColumns * 40];
+        int chipPosition = 0;
+        var equalizer = new CenteredProbeAdaptiveEqualizer(7, 0.10);
+        const int centerTap = 3;
+        const int preambleTrainingStart = PreambleSymbols - 9 * ProbeSymbolsPerFrame;
+        int nextInput = preambleTrainingStart - centerTap;
+        for (int tap = 0; tap < 7; tap++) equalizer.Push(burst[nextInput++]);
+
+        double carrierPhase = 0;
+        double carrierFrequency = 0;
+        double signalEnergy = 0;
+        double errorEnergy = 0;
+        double constellationStep = 2 * Math.PI / mode.ModulationOrder;
+
+        Complex32 ProcessSymbol(bool? trainingBit, bool measureQuality)
+        {
+            Complex32 value = equalizer.Process();
+            double phaseError;
+            if (trainingBit is { } bit)
+            {
+                float target = bit ? -1 : 1;
+                if (measureQuality)
+                {
+                    double di = value.I - target;
+                    signalEnergy += 1;
+                    errorEnergy += di * di + value.Q * value.Q;
+                }
+                equalizer.Train(new(target, 0), value);
+                phaseError = Math.Atan2(value.Q * target, value.I * target);
+            }
+            else
+            {
+                double angle = Math.Atan2(value.Q, value.I);
+                phaseError = WrapPhase(angle - Math.Round(angle / constellationStep) * constellationStep);
+            }
+
+            carrierFrequency += 0.002 * phaseError;
+            carrierPhase += carrierFrequency + 0.08 * phaseError;
+            if (nextInput < expected)
+                equalizer.Push(RotatePhase(burst[nextInput++], -carrierPhase));
+            return value;
+        }
+
+        for (int segment = 0; segment < 9; segment++)
+            for (int item = 0; item < ProbeSymbolsPerFrame; item++)
+                ProcessSymbol(probe[item], false);
+
+        for (int frame = 0; frame < mode.FrameCount; frame++)
+        {
+            for (int item = 0; item < DataSymbolsPerFrame; item++)
+            {
+                Complex32 value = ProcessSymbol(null, false);
+                int dataIndex = frame * DataSymbolsPerFrame + item;
+                if (Scrambler[dataIndex % Scrambler.Length]) value = new(-value.I, -value.Q);
+                AppendMappedSoftChips(chips, ref chipPosition, value, mode.ModulationOrder);
+            }
+
+            int trainCount = frame + 1 < mode.FrameCount
+                ? ProbeSymbolsPerFrame
+                : ProbeSymbolsPerFrame - centerTap;
+            for (int item = 0; item < trainCount; item++)
+                ProcessSymbol(probe[item], true);
+        }
+
+        quality = signalEnergy <= 0
+            ? 0
+            : Math.Clamp(1 - Math.Sqrt(errorEnergy / signalEnergy), 0, 1);
+        float[] deinterleaved = Deinterleave(chips, mode.InterleaverColumns, mode.LongInterleaver);
+        if (mode.DataRate == 300)
+        {
+            int collapsedLength = deinterleaved.Length / 2;
+            for (int index = 0; index < collapsedLength; index++)
+                deinterleaved[index] = deinterleaved[index * 2] + deinterleaved[index * 2 + 1];
+            return ViterbiDecode(deinterleaved.AsSpan(0, collapsedLength), mode.UserBitCount);
+        }
+        return ViterbiDecode(deinterleaved, mode.UserBitCount);
+    }
+
+    private static double WrapPhase(double phase)
+    {
+        while (phase > Math.PI) phase -= 2 * Math.PI;
+        while (phase < -Math.PI) phase += 2 * Math.PI;
+        return phase;
+    }
+
+    private static Complex32 RotatePhase(Complex32 value, double phase)
+    {
+        double cosine = Math.Cos(phase);
+        double sine = Math.Sin(phase);
+        return new(
+            (float)(value.I * cosine - value.Q * sine),
+            (float)(value.I * sine + value.Q * cosine));
     }
 
     private static void AppendMappedSoftChips(Span<float> output, ref int position, Complex32 value, int order)
@@ -202,6 +311,60 @@ public static partial class HfdlPhysicalLayer
             }
             double evm = Math.Sqrt(error / Math.Max(reference, 1e-12));
             return Math.Clamp(1 - evm, 0, 1);
+        }
+    }
+
+    private sealed class CenteredProbeAdaptiveEqualizer
+    {
+        private readonly Complex32[] weights;
+        private readonly Complex32[] samples;
+        private readonly double step;
+        private int position;
+
+        public CenteredProbeAdaptiveEqualizer(int taps, double step)
+        {
+            weights = new Complex32[taps];
+            samples = new Complex32[taps];
+            weights[taps / 2] = new(1, 0);
+            this.step = step;
+        }
+
+        public void Push(Complex32 sample)
+        {
+            position = (position + 1) % samples.Length;
+            samples[position] = sample;
+        }
+
+        public Complex32 Process()
+        {
+            double i = 0;
+            double q = 0;
+            for (int tap = 0; tap < weights.Length; tap++)
+            {
+                Complex32 x = samples[(position + samples.Length - tap) % samples.Length];
+                Complex32 w = weights[tap];
+                i += w.I * x.I - w.Q * x.Q;
+                q += w.I * x.Q + w.Q * x.I;
+            }
+            return new((float)i, (float)q);
+        }
+
+        public void Train(Complex32 target, Complex32 value)
+        {
+            double errorI = target.I - value.I;
+            double errorQ = target.Q - value.Q;
+            double energy = 1e-9;
+            foreach (Complex32 sample in samples)
+                energy += sample.I * sample.I + sample.Q * sample.Q;
+            double gain = step / energy;
+            for (int tap = 0; tap < weights.Length; tap++)
+            {
+                Complex32 x = samples[(position + samples.Length - tap) % samples.Length];
+                Complex32 w = weights[tap];
+                weights[tap] = new(
+                    (float)(w.I + gain * (errorI * x.I + errorQ * x.Q)),
+                    (float)(w.Q + gain * (errorQ * x.I - errorI * x.Q)));
+            }
         }
     }
 

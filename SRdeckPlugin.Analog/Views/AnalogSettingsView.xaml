@@ -4,7 +4,8 @@
              xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
              UseLayoutRounding="True"
              SnapsToDevicePixels="True">
-    <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+    <Grid>
+        <Border Style="{DynamicResource PluginSettingsPanelStyle}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="36" />
@@ -205,7 +206,7 @@
                                      GotKeyboardFocus="SquelchThresholdTextBox_OnGotKeyboardFocus"
                                      KeyDown="SquelchThresholdTextBox_OnKeyDown"
                                      LostFocus="SquelchThresholdTextBox_OnLostFocus" />
-                            <TextBlock Text="dBm" Style="{DynamicResource PluginSettingsFieldLabelStyle}" VerticalAlignment="Center" Margin="4,0,0,0" />
+                            <TextBlock Text="dBm / dBFS" Style="{DynamicResource PluginSettingsFieldLabelStyle}" VerticalAlignment="Center" Margin="4,0,0,0" />
                         </StackPanel>
                         <StackPanel Grid.Column="7" Orientation="Horizontal" Margin="6,0,0,0" VerticalAlignment="Center">
                             <Button x:Name="SquelchDownButton"
@@ -245,7 +246,7 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="受信中に直前3秒のIQデータを保存します。"
+                                <TextBlock Text="受信中に復調チャネルの直前3秒のIQデータを保存します。"
                                            Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,0,16,0" />
                                 <Button Grid.Column="1" Content="IQ 録音 (直前3秒)"
                                         Style="{DynamicResource PluginButtonStyle}"
@@ -264,5 +265,6 @@
                 </TabItem>
             </TabControl>
         </Grid>
-    </Border>
+        </Border>
+    </Grid>
 </UserControl>

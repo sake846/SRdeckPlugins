@@ -1,5 +1,6 @@
 <UserControl x:Class="SRdeckPlugin.Hfdl.Views.HfdlSettingsView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10">
-    <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+    <Grid>
+        <Border Style="{DynamicResource PluginSettingsPanelStyle}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="36"/>
@@ -97,10 +98,10 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="受信中に直前3秒のIQデータを保存します。"
+                                <TextBlock Text="受信中に直前20秒のIQデータを保存します。"
                                            Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,0,16,0" />
-                                <Button Grid.Column="1" Content="IQ 録音 (直前3秒)" Command="{Binding StartCaptureCommand}"
-                                        Style="{DynamicResource PluginButtonStyle}" Height="22" Width="130" HorizontalAlignment="Left"/>
+                                <Button Grid.Column="1" Content="IQ 録音 (直前20秒)" Command="{Binding StartCaptureCommand}"
+                                        Style="{DynamicResource PluginButtonStyle}" Width="130" HorizontalAlignment="Left"/>
                                 <TextBlock Grid.Column="2" Text="{Binding CaptureStatus}" Style="{DynamicResource PluginSettingsActionStatusStyle}"
                                            VerticalAlignment="Center" Margin="10,0,0,0" />
                             </Grid>
@@ -109,5 +110,6 @@
                 </TabItem>
             </TabControl>
         </Grid>
-    </Border>
+        </Border>
+    </Grid>
 </UserControl>

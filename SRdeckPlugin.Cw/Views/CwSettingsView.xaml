@@ -1,0 +1,242 @@
+<UserControl x:Class="SRdeckPlugin.Cw.Views.CwSettingsView"
+              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+              xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+              Foreground="{DynamicResource TextPrimaryBrush}"
+              FontSize="10">
+    <Grid>
+        <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="36" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <ContentControl Content="{Binding SettingStatus}" Tag="CW Skimmer"
+                            ToolTip="{Binding SettingStatus}"
+                            Style="{DynamicResource PluginSettingsHeaderStyle}" />
+
+            <TabControl Grid.Row="1"
+                        Style="{DynamicResource PluginSettingsTabControlStyle}">
+                <TabItem Header="一般">
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <Grid Margin="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="中心周波数"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <TextBox x:Name="FrequencyTextBox"
+                                     Grid.Column="1"
+                                     Style="{DynamicResource PluginTextBoxStyle}"
+                                     Width="120"
+                                     HorizontalAlignment="Left"
+                                     HorizontalContentAlignment="Right"
+                                     ToolTip="数字＋M/m: MHz、数字＋K/k: kHz、Enter: Hz"
+                                     PreviewMouseDown="FrequencyTextBox_OnPreviewMouseDown"
+                                     GotKeyboardFocus="FrequencyTextBox_OnGotKeyboardFocus"
+                                     KeyDown="FrequencyTextBox_OnKeyDown"
+                                     LostFocus="FrequencyTextBox_OnLostFocus" />
+                            <TextBlock x:Name="FrequencyInputStatusTextBlock"
+                                       Grid.Column="2"
+                                       Text="M: MHz / K: kHz / Enter: Hz"
+                                       Style="{DynamicResource PluginSettingsHintStyle}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center" />
+
+                            <TextBlock Grid.Row="1"
+                                       Text="受信帯域"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <ComboBox x:Name="ReceiveBandwidthComboBox"
+                                      Grid.Row="1"
+                                      Grid.Column="1"
+                                      ItemsSource="{Binding ReceiveBandwidthOptions}"
+                                      SelectedValuePath="Value"
+                                      SelectedValue="{Binding ReceiveBandwidthHz, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      Style="{DynamicResource PluginComboBoxStyle}"
+                                      Width="120"
+                                      HorizontalAlignment="Left"
+                                      ToolTip="CW信号を探す受信帯域幅">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Display}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="2"
+                                       Text="10 / 20 / 50 kHz"
+                                       Style="{DynamicResource PluginSettingsHintStyle}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center" />
+
+                            <TextBlock Grid.Row="2"
+                                       Text="最小 S/N (dB)"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <TextBox Grid.Row="2"
+                                     Grid.Column="1"
+                                     Text="{Binding MinimumSnrDb, UpdateSourceTrigger=LostFocus}"
+                                     Style="{DynamicResource PluginTextBoxStyle}"
+                                     Width="120"
+                                     HorizontalAlignment="Left" />
+                            <TextBlock Grid.Row="2"
+                                       Grid.Column="2"
+                                       Text="3～30 dB（既定 8 dB）"
+                                       Style="{DynamicResource PluginSettingsHintStyle}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center" />
+
+                            <TextBlock Grid.Row="3"
+                                       Text="最大同時信号数"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <TextBox Grid.Row="3"
+                                     Grid.Column="1"
+                                     Text="{Binding MaximumSignals, UpdateSourceTrigger=LostFocus}"
+                                     Style="{DynamicResource PluginTextBoxStyle}"
+                                     Width="120"
+                                     HorizontalAlignment="Left" />
+                            <TextBlock Grid.Row="3"
+                                       Grid.Column="2"
+                                       Text="1～32（既定 24）"
+                                       Style="{DynamicResource PluginSettingsHintStyle}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center" />
+
+                            <TextBlock Grid.Row="4"
+                                       Text="表示行数"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <TextBox Grid.Row="4"
+                                     Grid.Column="1"
+                                     Text="{Binding MaximumRows, UpdateSourceTrigger=LostFocus}"
+                                     Style="{DynamicResource PluginTextBoxStyle}"
+                                     Width="120"
+                                     HorizontalAlignment="Left" />
+                            <TextBlock Grid.Row="4"
+                                       Grid.Column="2"
+                                       Text="25～2000"
+                                       Style="{DynamicResource PluginSettingsHintStyle}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center" />
+
+                            <TextBlock Grid.Row="5"
+                                       Text="モニター音声"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <CheckBox Grid.Row="5"
+                                      Grid.Column="1"
+                                      Content="有効にする"
+                                      IsChecked="{Binding MonitorAudioEnabled, Mode=TwoWay}"
+                                      VerticalAlignment="Center"
+                                      Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Grid.Row="5"
+                                       Grid.Column="2"
+                                       Text="受信帯域の音をスピーカーへ出力"
+                                       Style="{DynamicResource PluginSettingsHintStyle}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center" />
+
+                            <TextBlock Grid.Row="6"
+                                       Text="モニター音量"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <Slider Grid.Row="6"
+                                    Grid.Column="1"
+                                    Minimum="0"
+                                    Maximum="100"
+                                    TickFrequency="5"
+                                    IsSnapToTickEnabled="True"
+                                    Value="{Binding MonitorAudioVolume, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    Width="120"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center" />
+                            <TextBlock Grid.Row="6"
+                                       Grid.Column="2"
+                                       Text="{Binding MonitorAudioVolume, StringFormat={}{0}%}"
+                                       Style="{DynamicResource PluginSettingsValueStyle}"
+                                       Margin="10,0,0,0" />
+
+                            <TextBlock Grid.Row="7"
+                                       Text="デフォルト言語"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <ComboBox x:Name="LanguageComboBox"
+                                      Grid.Row="7"
+                                      Grid.Column="1"
+                                      ItemsSource="{Binding LanguageOptions}"
+                                      SelectedItem="{Binding Language, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      Style="{DynamicResource PluginComboBoxStyle}"
+                                      Width="120"
+                                      HorizontalAlignment="Left"
+                                      ToolTip="受信開始時の言語（途中切り替え対応）">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBlock Grid.Row="7"
+                                       Grid.Column="2"
+                                       Text="ホレ/ラタで自動切り替え"
+                                       Style="{DynamicResource PluginSettingsHintStyle}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center" />
+
+                            <TextBlock Grid.Row="8"
+                                       Grid.ColumnSpan="3"
+                                       Text="選択した受信帯域をFFT解析し、帯域内の複数キャリアを同時に追尾します。短点速度は信号ごとに自動追従します。"
+                                       Style="{DynamicResource PluginSettingsHintStyle}"
+                                       Margin="0,8,0,2"
+                                       TextWrapping="Wrap" />
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+                <TabItem Header="プラグイン設定">
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <Grid Margin="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <controls:PluginResetView Grid.Row="0" />
+                            <TextBlock Grid.Row="1" Text="過去録音" Style="{DynamicResource PluginSettingsSectionHeaderStyle}" />
+                            <Grid Grid.Row="2" Style="{DynamicResource PluginSettingsActionRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="受信中に直前10秒のIQデータを保存します。"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,0,16,0" />
+                                <Button Grid.Column="1" Content="IQ 録音 (直前10秒)"
+                                        Command="{Binding StartCaptureCommand}"
+                                        Style="{DynamicResource PluginButtonStyle}"
+                                        Height="22"
+                                        Width="130"
+                                        HorizontalAlignment="Left" />
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding CaptureStatus}"
+                                           Style="{DynamicResource PluginSettingsActionStatusStyle}"
+                                           VerticalAlignment="Center"
+                                           Margin="10,0,0,0" />
+                            </Grid>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Grid>
+        </Border>
+    </Grid>
+</UserControl>

@@ -205,7 +205,7 @@
                                         <DataGridTemplateColumn Header="最終受信" Width="82" SortMemberPath="LatestTimestamp" SortDirection="Descending"
                                                                 CellStyle="{DynamicResource PluginTimelineTimestampCellStyle}">
                                             <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                                                <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13" VerticalAlignment="Top" Margin="0,2,0,0">
+                                                <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13" VerticalAlignment="Top" Margin="0">
                                                     <Run Text="{Binding LatestTimestamp, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd}}"/><LineBreak/>
                                                     <Run Text="{Binding LatestTimestamp, Mode=OneWay, StringFormat={}{0:HH:mm:ss}}"/>
                                                 </TextBlock>
@@ -213,16 +213,16 @@
                                         </DataGridTemplateColumn>
                                         <DataGridTemplateColumn Header="PAN" Width="*" MinWidth="200" SortMemberPath="PanIdText">
                                             <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                                                <Grid Margin="0,2,0,3" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
+                                                <Grid Margin="0,2,0,2" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
                                                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                                                     <Grid>
                                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                                        <TextBlock Text="{Binding PanIdText}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis"/>
-                                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0">
+                                                        <TextBlock Text="{Binding PanIdText}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0" VerticalAlignment="Center">
                                                             <Run Text="{Binding NodeCount, Mode=OneWay, StringFormat=N0}"/><Run Text=" ノード"/>
                                                         </TextBlock>
                                                     </Grid>
-                                                    <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0">
+                                                    <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0">
                                                         <Run Text="通信 "/><Run Text="{Binding PacketCount, Mode=OneWay, StringFormat=N0}"/><Run Text=" 件"/>
                                                     </TextBlock>
                                                 </Grid>
@@ -395,7 +395,7 @@
                                                             CellStyle="{DynamicResource PluginTimelineTimestampCellStyle}">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13" VerticalAlignment="Top" Margin="0,2,0,0">
+                                                <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13" VerticalAlignment="Top" Margin="0">
                                                     <Run Text="{Binding LocalTimestamp, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd}}"/><LineBreak/>
                                                     <Run Text="{Binding LocalTimestamp, Mode=OneWay, StringFormat={}{0:HH:mm:ss.fff}}"/>
                                                 </TextBlock>
@@ -405,7 +405,7 @@
                                     <DataGridTemplateColumn Header="受信イベント" Width="*" MinWidth="300" SortMemberPath="Timestamp">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <Grid Margin="0,2,0,3" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
+                                                <Grid Margin="0,2,0,2" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
                                                     <Grid.RowDefinitions>
                                                         <RowDefinition Height="Auto"/>
                                                         <RowDefinition Height="Auto"/>
@@ -418,18 +418,20 @@
                                                         </Grid.ColumnDefinitions>
                                                         <TextBlock Text="{Binding CommunicationText}"
                                                                    Style="{DynamicResource PluginTimelineIdentityTextStyle}"
-                                                                   TextTrimming="CharacterEllipsis"/>
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   VerticalAlignment="Center"/>
                                                         <TextBlock Grid.Column="1" Text="{Binding FrameType}"
                                                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                                                    Margin="8,0,0,0"
-                                                                   TextTrimming="CharacterEllipsis"/>
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   VerticalAlignment="Center"/>
                                                     </Grid>
-                                                    <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0">
+                                                    <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0">
                                                         <Run Text="{Binding PanIdText, Mode=OneWay}" Foreground="{DynamicResource PluginDisplayAccentTertiaryBrush}"/>
                                                         <Run Text="  /  Seq "/>
                                                         <Run Text="{Binding SequenceNumber, TargetNullValue=--}"/>
                                                     </TextBlock>
-                                                    <TextBlock Grid.Row="2" Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0">
+                                                    <TextBlock Grid.Row="2" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0">
                                                         <Run Text="{Binding FrequencyHz, Mode=OneWay, StringFormat={}{0:N0} Hz}"/>
                                                         <Run Text="  /  "/>
                                                         <Run Text="{Binding FrameLengthBytes, Mode=OneWay}"/>

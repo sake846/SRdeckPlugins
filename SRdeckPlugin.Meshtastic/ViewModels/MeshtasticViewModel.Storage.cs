@@ -27,27 +27,9 @@ public partial class MeshtasticViewModel
     private void LoadMeshtasticHistory()
     {
         if (!File.Exists(MeshtasticHistoryPath)) return;
-        DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddDays(-MeshtasticHistoryRetentionDays);
-            var retainedLines = new List<string>();
-        var displayItems = new Queue<MeshtasticDisplayItem>(MeshtasticHistoryDisplayLimit);
-        lock (MeshtasticHistorySync)
-        {
-            foreach (string line in File.ReadLines(MeshtasticHistoryPath))
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                try
-                {
-                    MeshtasticDisplayItem? item = JsonSerializer.Deserialize<MeshtasticDisplayItem>(line);
-                    if (item is null || item.ReceivedAt < cutoff) continue;
-                    retainedLines.Add(line);
-                    if (displayItems.Count == MeshtasticHistoryDisplayLimit) displayItems.Dequeue();
-                    displayItems.Enqueue(item);
-                }
-                catch (JsonException) { }
-            }
-            if (retainedLines.Count != File.ReadLines(MeshtasticHistoryPath).Count())
-                File.WriteAllLines(MeshtasticHistoryPath, retainedLines, new UTF8Encoding(false));
-        }
+        ApplyMeshtasticHistoryRetention(MeshtasticHistoryPath, GetMeshtasticHistoryPolicy());
+        IReadOnlyList<MeshtasticDisplayItem> displayItems = PluginJsonLinesHistory.Load<MeshtasticDisplayItem>(
+            MeshtasticHistoryPath, MeshtasticHistoryDisplayLimit, MeshtasticHistoryJsonOptions);
         foreach (MeshtasticDisplayItem item in displayItems.Reverse())
         {
             MeshtasticMessages.Add(item);
@@ -55,42 +37,28 @@ public partial class MeshtasticViewModel
         }
     }
 
-    private List<MeshtasticDisplayItem> ReadAllMeshtasticHistory()
+    private List<MeshtasticDisplayItem> ReadAllMeshtasticHistory() =>
+        PluginJsonLinesHistory.LoadAll<MeshtasticDisplayItem>(MeshtasticHistoryPath, MeshtasticHistoryJsonOptions).ToList();
+
+    private async Task PruneMeshtasticHistoryFileAsync()
     {
-        var items = new List<MeshtasticDisplayItem>();
-        if (!File.Exists(MeshtasticHistoryPath)) return items;
-        lock (MeshtasticHistorySync)
+        string path = MeshtasticHistoryPath;
+        PluginJsonLinesHistoryPolicy policy = GetMeshtasticHistoryPolicy();
+        try
         {
-            foreach (string line in File.ReadLines(MeshtasticHistoryPath))
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                try
-                {
-                    MeshtasticDisplayItem? item = JsonSerializer.Deserialize<MeshtasticDisplayItem>(line);
-                    if (item is not null) items.Add(item);
-                }
-                catch (JsonException) { }
-            }
+            if (_meshtasticHistoryWriter is { } writer) await writer.FlushAsync();
+            await Task.Run(() => ApplyMeshtasticHistoryRetention(path, policy));
         }
-        return items;
+        catch (Exception exception)
+        {
+            _hostContext?.Logger.Log(PluginLogLevel.Warning, "meshtastic.history.retention-failed",
+                "Meshtastic history retention could not be applied.", exception);
+        }
     }
 
-    private void PruneMeshtasticHistoryFile()
-    {
-        if (!File.Exists(MeshtasticHistoryPath)) return;
-        _meshtasticHistoryWriter?.FlushAsync().AsTask().GetAwaiter().GetResult();
-        DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddDays(-Math.Clamp(MeshtasticHistoryRetentionDays, 1, 3650));
-        lock (MeshtasticHistorySync)
-        {
-            List<MeshtasticDisplayItem> retained = ReadAllMeshtasticHistory()
-                .Where(item => item.ReceivedAt >= cutoff)
-                .ToList();
-            File.WriteAllLines(MeshtasticHistoryPath,
-                retained.Select(item => JsonSerializer.Serialize(item,
-                    new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping })),
-                new UTF8Encoding(false));
-        }
-    }
+    private static void ApplyMeshtasticHistoryRetention(string path, PluginJsonLinesHistoryPolicy policy) =>
+        PluginJsonLinesHistory.ApplyRetention(path, policy.MaximumEntries, policy.MaximumAge,
+            DateTimeOffset.UtcNow, MeshtasticHistoryTimestamp, MeshtasticHistoryJsonOptions, policy.MaximumBytes);
 
     private static string BuildMeshtasticTransmission(MeshtasticDataReception reception)
         => MeshtasticRouteDisplay.Format(reception);
@@ -148,7 +116,7 @@ public partial class MeshtasticViewModel
         VisibleMeshtasticMessages.Clear();
         MeshtasticTextMessages.Clear();
         MeshtasticPacketGroups.Clear();
-        SelectedMeshtasticNodeReceptions.Clear();
+        SelectedMeshtasticNodeLatestApplications.Clear();
         MeshtasticNodes.Clear();
         FilteredMeshtasticNodes.Clear();
         _meshtasticNodesById.Clear();
@@ -157,8 +125,7 @@ public partial class MeshtasticViewModel
         _meshtasticMapPointsById.Clear();
         SelectedMeshtasticNode = null;
         ResetMeshtasticHistoryWriter();
-        lock (MeshtasticHistorySync)
-            if (File.Exists(MeshtasticHistoryPath)) File.Delete(MeshtasticHistoryPath);
+        PluginJsonLinesHistory.Delete(MeshtasticHistoryPath);
         SaveMeshtasticState();
         SetMeshtasticReceiverStatus("受信待機中", OverallStatusKind.Running);
     }

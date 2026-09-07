@@ -19,7 +19,7 @@ public sealed partial class AnalogViewModel : ObservableObject
     {
         _module = module;
         _module.SelectedProfileChanged += (s, e) => OnPropertyChanged(nameof(SelectedProfileId));
-        _module.ReceiverStateChanged += (s, e) => OnPropertyChanged(nameof(CaptureStatus));
+        _module.CaptureStatusChanged += (s, e) => OnPropertyChanged(nameof(CaptureStatus));
     }
 
     public string? SelectedProfileId => _module.SelectedProfileId;

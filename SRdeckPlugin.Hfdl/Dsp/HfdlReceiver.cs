@@ -18,7 +18,7 @@ public sealed partial class HfdlReceiver
     // standard channel path needs the equivalent demodulation filter after
     // host rate conversion and before differential PSK correlation.
     internal const double DemodulationIqCutoffHz = 2_400;
-    private const double MinimumPreambleCorrelation = 0.72;
+    private const double MinimumPreambleCorrelation = 0.70;
     private readonly SlidingSampleBuffer<Complex32> working = new(WorkingSampleRate * 6);
     private Complex32[] workingSampleScratch = new Complex32[WorkingSampleRate * 6];
     private Complex32[] integerSymbolScratch = new Complex32[WorkingSampleRate * 6];
@@ -224,7 +224,7 @@ public sealed partial class HfdlReceiver
             if (!captureAudio) continue;
             if (monitorAudioSampleCount >= monitorAudio.Length)
                 throw new ArgumentException("The HFDL monitor audio buffer is too small.", nameof(monitorAudio));
-            monitorAudio[monitorAudioSampleCount++] = audioMonitor.Process(sample.I, sample.Q);
+            monitorAudio[monitorAudioSampleCount++] = audioMonitor.Process(filteredI, filteredQ);
         }
         inputRms = samples.IsEmpty ? 0 : (float)Math.Sqrt(energy / samples.Length);
         if (!samples.IsEmpty)

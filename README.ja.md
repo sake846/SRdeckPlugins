@@ -6,8 +6,8 @@
 
 SRdeckの公式プラグインをバージョン付きリリーススナップショットとして収録しています。
 
-公開ソーススナップショットには、実行ファイルパッケージ向けの8プラグインと、
-ソース公開のみのMeshtasticを収録します。MeshtasticのDLLはSRdeckの実行ファイル
+公開ソーススナップショットには、実行ファイルパッケージ向けの10プラグインと、
+ソース公開のみのMeshtasticおよびワンセグを収録します。MeshtasticとワンセグのDLLはSRdeckの実行ファイル
 パッケージに含めません。再配布前に`PATENT-NOTICE.md`を確認してください。
 
 製品の変更をこのリポジトリへ直接コミットしないでください。通常の開発・レビュー手順を利用してください。
@@ -22,8 +22,8 @@ SRdeckの公式プラグインをバージョン付きリリーススナップ�
 
 ## リリースメタデータ
 
-- リリースバージョン: `1.0.2`
-- 必要なSRdeckプラットフォームパッケージ: `1.0.2`
+- リリースバージョン: `1.0.3`
+- 必要なSRdeckプラットフォームパッケージ: `1.0.3`
 
 ## ビルド
 
@@ -32,7 +32,7 @@ SRdeckの公式プラグインをバージョン付きリリーススナップ�
 - Windows x64
 - .NET 10 SDK（`dotnet --info`で10.x SDKが表示されること）
 - Git
-- `1.0.2`と同じバージョンのSRdeckプラットフォームNuGetパッケージ4個
+- `1.0.3`と同じバージョンのSRdeckプラットフォームNuGetパッケージ4個
 
 プラグインは`SRdeckPlugin.Contracts`、`SRdeckPlugin.Sdk`、`SRdeckPlugin.Wpf`、
 `SRdeckCore.SignalProcessing`をNuGetパッケージとして参照します。ビルド・動作確認に使う
@@ -42,8 +42,8 @@ SRdeckホストとNuGetパッケージのバージョンを一致させてくだ
 ### 1. 対応するソーススナップショットを取得する
 
 ```powershell
-$releaseVersion = "1.0.2"
-$platformVersion = "1.0.2"
+$releaseVersion = "1.0.3"
+$platformVersion = "1.0.3"
 
 git clone --branch "v$releaseVersion" --depth 1 https://github.com/sake846/SRdeckPlugins.git
 Set-Location .\SRdeckPlugins
@@ -54,10 +54,10 @@ Set-Location .\SRdeckPlugins
 対応する[SRdeckのリリース](https://github.com/sake846/SRdeck/releases)から、次の4ファイルを
 ダウンロードしてください。
 
-- `SRdeckCore.SignalProcessing.1.0.2.nupkg`
-- `SRdeckPlugin.Contracts.1.0.2.nupkg`
-- `SRdeckPlugin.Sdk.1.0.2.nupkg`
-- `SRdeckPlugin.Wpf.1.0.2.nupkg`
+- `SRdeckCore.SignalProcessing.1.0.3.nupkg`
+- `SRdeckPlugin.Contracts.1.0.3.nupkg`
+- `SRdeckPlugin.Sdk.1.0.3.nupkg`
+- `SRdeckPlugin.Wpf.1.0.3.nupkg`
 
 GitHub CLIをインストール済みなら、次のコマンドで自動取得できます。
 
@@ -122,7 +122,7 @@ DLLの検索先は`SRdeck.exe`と同じフォルダーです。`%LOCALAPPDATA%\S
 プラグインデータ用で、プラグインDLLの配置場所ではありません。DLLを差し替えた後は、
 SRdeckを完全に終了してから再起動してください。
 
-Meshtasticはこのソーススナップショットからローカル検証用にビルドできますが、公式の
+Meshtasticおよびワンセグはこのソーススナップショットからローカル検証用にビルドできますが、公式の
 SRdeck実行ファイルパッケージにはDLLを含めません。
 
 ### トラブルシューティング

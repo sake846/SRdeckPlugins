@@ -164,7 +164,8 @@ public sealed partial class MeshtasticReceiveService
             configuration.Profile.BandwidthHz,
             configuration.Profile.SpreadingFactor,
             MeshtasticJpLongFastProfile.SyncWord,
-            configuration.FrequencyHz - channelizerCenterFrequencyHz);
+            configuration.FrequencyHz - channelizerCenterFrequencyHz,
+            inputNoiseBandwidthHz: MeshtasticJpLongFastProfile.BandwidthHz);
         detector.PreambleDetected += value => HandlePreambleDetected(configuration, state, value);
         detector.FrameSynchronized += value => HandleFrameSynchronized(configuration, state, value);
         detector.ExplicitHeaderDecoded += value => HandleExplicitHeaderDecoded(configuration, state, value);

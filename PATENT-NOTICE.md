@@ -6,6 +6,6 @@ The public binary packages contain only the plugins selected by the release
 catalog. Source-only modules are not included in the SRdeck host or
 plugin-inclusive executable packages.
 
-Meshtastic source is published in the `SRdeckPlugins` source repository for
-source-level development. Its DLL is source-only and must not be included in
+Meshtastic and OneSeg sources are published in the `SRdeckPlugins` source repository for
+source-level development. Their DLLs are source-only and must not be included in
 the SRdeck host or plugin-inclusive executable packages.

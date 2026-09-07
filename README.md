@@ -7,10 +7,10 @@
 This repository contains the official SRdeck plugins as a versioned release
 snapshot.
 
-The public source snapshot contains the eight plugins selected for executable
-packages and the Meshtastic source-only plugin. Meshtastic is not included in
-the SRdeck executable packages. See `PATENT-NOTICE.md` before redistributing
-plugins or binaries.
+The public source snapshot contains the ten plugins selected for executable
+packages and the Meshtastic and OneSeg source-only plugins. Meshtastic and OneSeg
+are not included in the SRdeck executable packages. See `PATENT-NOTICE.md` before
+redistributing plugins or binaries.
 
 Do not commit product changes directly to this repository.  Use the project's
 normal development and review process for product changes.
@@ -25,8 +25,8 @@ For detailed plugin specifications, reception procedures, and development guides
 
 ## Release metadata
 
-- Release version: `1.0.2`
-- Required SRdeck platform package version: `1.0.2`
+- Release version: `1.0.3`
+- Required SRdeck platform package version: `1.0.3`
 
 ## Building
 
@@ -36,7 +36,7 @@ For detailed plugin specifications, reception procedures, and development guides
 - .NET 10 SDK (`dotnet --info` should show an installed 10.x SDK)
 - Git
 - The four SRdeck platform NuGet packages with the same version as
-  `1.0.2`
+  `1.0.3`
 
 The plugin projects consume `SRdeckPlugin.Contracts`, `SRdeckPlugin.Sdk`,
 `SRdeckPlugin.Wpf`, and `SRdeckCore.SignalProcessing` as NuGet packages. The
@@ -46,8 +46,8 @@ mix packages from different SRdeck releases.
 ### 1. Clone the matching source snapshot
 
 ```powershell
-$releaseVersion = "1.0.2"
-$platformVersion = "1.0.2"
+$releaseVersion = "1.0.3"
+$platformVersion = "1.0.3"
 
 git clone --branch "v$releaseVersion" --depth 1 https://github.com/sake846/SRdeckPlugins.git
 Set-Location .\SRdeckPlugins
@@ -58,10 +58,10 @@ Set-Location .\SRdeckPlugins
 Create a local package directory and download these four files from the
 matching [SRdeck release](https://github.com/sake846/SRdeck/releases):
 
-- `SRdeckCore.SignalProcessing.1.0.2.nupkg`
-- `SRdeckPlugin.Contracts.1.0.2.nupkg`
-- `SRdeckPlugin.Sdk.1.0.2.nupkg`
-- `SRdeckPlugin.Wpf.1.0.2.nupkg`
+- `SRdeckCore.SignalProcessing.1.0.3.nupkg`
+- `SRdeckPlugin.Contracts.1.0.3.nupkg`
+- `SRdeckPlugin.Sdk.1.0.3.nupkg`
+- `SRdeckPlugin.Wpf.1.0.3.nupkg`
 
 If GitHub CLI is installed, the files can be downloaded automatically:
 
@@ -126,8 +126,8 @@ The DLL search directory is the directory containing `SRdeck.exe`; the
 `%LOCALAPPDATA%\SRdeck\plugins` directory is for settings and plugin data,
 not for plugin assemblies. Restart the host after replacing a DLL.
 
-Meshtastic can be built from this source snapshot for local testing, but its
-DLL is intentionally not included in the official SRdeck executable packages.
+Meshtastic and OneSeg can be built from this source snapshot for local testing, but
+their DLLs are intentionally not included in the official SRdeck executable packages.
 
 ### Troubleshooting
 

@@ -20,6 +20,7 @@ public sealed partial class AnalogPluginModule
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(update);
+        AnalogReceiverOptions? changedOptions = null;
         await _receiverGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -29,10 +30,12 @@ public sealed partial class AnalogPluginModule
             if (requestTuning && after.IsReceiverEnabled &&
                 State is PluginLifecycleState.Active or PluginLifecycleState.Streaming)
             {
-                PluginTuningResult? result = await ApplyTuningAsync(after, cancellationToken).ConfigureAwait(false);
+                PluginTuningResult? result = await ApplyTuningAsync(
+                    after, _selectedProfileId, cancellationToken).ConfigureAwait(false);
                 if (result?.Outcome == PluginTuningOutcome.Rejected) return;
             }
             Volatile.Write(ref _receiverOptions, after);
+            changedOptions = after;
             if (after.BandwidthHz != before.BandwidthHz ||
                 after.IsAfcEnabled != before.IsAfcEnabled ||
                 after.IsLowerSideband != before.IsLowerSideband)
@@ -45,12 +48,16 @@ public sealed partial class AnalogPluginModule
             {
                 _hostContext?.Audio.Reset();
             }
-            await SaveSettingsAsync(cancellationToken).ConfigureAwait(false);
-            NotifyReceiverStateChanged(force: true);
         }
         finally
         {
             _receiverGate.Release();
+        }
+        if (changedOptions is not null)
+        {
+            await SaveSettingsAsync(
+                _selectedProfileId, changedOptions, cancellationToken).ConfigureAwait(false);
+            NotifyReceiverStateChanged(force: true);
         }
     }
 
@@ -63,13 +70,9 @@ public sealed partial class AnalogPluginModule
             requestTuning: true,
             cancellationToken);
 
-    private async ValueTask ApplyTuningAsync(CancellationToken cancellationToken)
-    {
-        await ApplyTuningAsync(Volatile.Read(ref _receiverOptions), cancellationToken).ConfigureAwait(false);
-    }
-
     private async ValueTask<PluginTuningResult?> ApplyTuningAsync(
         AnalogReceiverOptions options,
+        string profileId,
         CancellationToken cancellationToken)
     {
         if (_hostContext is null) return null;
@@ -79,8 +82,8 @@ public sealed partial class AnalogPluginModule
             96_000,
             2_400_000);
         var request = new PluginTuningRequest(
-            $"analog.{_selectedProfileId}",
-            $"アナログ受信 {_selectedProfileId.ToUpperInvariant()}",
+            $"analog.{profileId}",
+            $"アナログ受信 {profileId.ToUpperInvariant()}",
             [new TuningTarget(options.FrequencyHz, options.BandwidthHz)],
             options.FrequencyHz,
             minimumSampleRate,
@@ -113,7 +116,8 @@ public sealed partial class AnalogPluginModule
             {
                 options = options with { FrequencyHz = roundedFreqHz };
                 Volatile.Write(ref _receiverOptions, options);
-                _ = SaveSettingsAsync(CancellationToken.None);
+                _ = SaveSettingsAsync(
+                    _selectedProfileId, options, CancellationToken.None);
             }
         }
         _tuningStatus = result.Outcome == PluginTuningOutcome.Rejected
@@ -122,19 +126,35 @@ public sealed partial class AnalogPluginModule
         NotifyReceiverStateChanged(force: true);
     }
 
-    private void UpdateSignalLevel(ReadOnlySpan<Complex32> samples, AnalogReceiverOptions options)
+    private void UpdateSignalLevel(
+        float inputLevelDbfs,
+        float channelLevelDbfs,
+        double blockDurationSeconds,
+        AnalogReceiverOptions options)
     {
-        if (samples.IsEmpty) return;
-        double power = 0;
-        foreach (Complex32 sample in samples)
-            power += sample.I * sample.I + sample.Q * sample.Q;
-        float level = 10f * MathF.Log10(MathF.Max((float)(power / samples.Length), 1e-12f));
-        _signalLevelDbfs += 0.2f * (level - _signalLevelDbfs);
+        if (!float.IsFinite(inputLevelDbfs) || !float.IsFinite(channelLevelDbfs)) return;
+        long previousMeasurementTicks = Interlocked.Read(ref _lastInputMeasuredUtcTicks);
+        float alpha = 1f - MathF.Exp(-(float)Math.Max(blockDurationSeconds, 0) / 0.25f);
+        alpha = Math.Clamp(alpha, 0.01f, 1f);
+        if (previousMeasurementTicks == 0)
+            _signalLevelDbfs = channelLevelDbfs;
+        else
+            _signalLevelDbfs += alpha * (channelLevelDbfs - _signalLevelDbfs);
         Interlocked.Exchange(ref _lastInputMeasuredUtcTicks, DateTime.UtcNow.Ticks);
         float? calibratedDbm = _hostContext?.ReceiverTelemetry?.SignalLevelDbm;
-        float signalLevelForSquelch = (calibratedDbm is not null && float.IsFinite(calibratedDbm.Value))
-            ? calibratedDbm.Value
-            : _signalLevelDbfs;
+        bool hasCalibration = calibratedDbm is not null && float.IsFinite(calibratedDbm.Value);
+        if (hasCalibration)
+        {
+            float channelLevelDbm = calibratedDbm!.Value + channelLevelDbfs - inputLevelDbfs;
+            if (previousMeasurementTicks == 0 || !_hasCalibratedSignalLevelDbm)
+                _signalLevelDbm = channelLevelDbm;
+            else
+                _signalLevelDbm += alpha * (channelLevelDbm - _signalLevelDbm);
+        }
+        Volatile.Write(ref _hasCalibratedSignalLevelDbm, hasCalibration);
+        float signalLevelForSquelch = hasCalibration
+            ? calibratedDbm!.Value + channelLevelDbfs - inputLevelDbfs
+            : channelLevelDbfs;
         bool wasOpen = _isSquelchOpen;
         _isSquelchOpen = !options.IsSquelchEnabled ||
             (_isSquelchOpen
@@ -195,7 +215,8 @@ public sealed partial class AnalogPluginModule
                     settings.IsSquelchEnabled,
                     squelchDbm,
                     settings.IsAfcEnabled,
-                    settings.IsLowerSideband));
+                    settings.IsLowerSideband,
+                    settings.IsStereoEnabled));
             }
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException)
@@ -208,29 +229,51 @@ public sealed partial class AnalogPluginModule
         }
     }
 
-    private async ValueTask SaveSettingsAsync(CancellationToken cancellationToken)
+    private ValueTask SaveSettingsAsync(CancellationToken cancellationToken) =>
+        SaveSettingsAsync(
+            _selectedProfileId,
+            Volatile.Read(ref _receiverOptions),
+            cancellationToken);
+
+    private async ValueTask SaveSettingsAsync(
+        string profileId,
+        AnalogReceiverOptions options,
+        CancellationToken cancellationToken)
     {
-        if (_hostContext is null) return;
+        IPluginHostContext? context = _hostContext;
+        if (context is null) return;
+        bool gateTaken = false;
         try
         {
-            await _hostContext.Settings.SaveAsync(
-                new PluginSettingsDocument(2, JsonSerializer.Serialize(new AnalogSettings(
-                    _selectedProfileId,
-                    _receiverOptions.FrequencyHz,
-                    _receiverOptions.StepHz,
-                    _receiverOptions.BandwidthHz,
-                    _receiverOptions.IsReceiverEnabled,
-                    _receiverOptions.IsMuted,
-                    _receiverOptions.IsSquelchEnabled,
-                    _receiverOptions.SquelchThresholdDbm,
-                    _receiverOptions.IsAfcEnabled,
-                    _receiverOptions.IsLowerSideband))),
+            await _settingsSaveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            gateTaken = true;
+            await context.Settings.SaveAsync(
+                new PluginSettingsDocument(3, JsonSerializer.Serialize(new AnalogSettings(
+                    profileId,
+                    options.FrequencyHz,
+                    options.StepHz,
+                    options.BandwidthHz,
+                    options.IsReceiverEnabled,
+                    options.IsMuted,
+                    options.IsSquelchEnabled,
+                    options.SquelchThresholdDbm,
+                    options.IsAfcEnabled,
+                    options.IsLowerSideband,
+                    options.IsStereoEnabled))),
                 cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _hostContext.Logger.Log(PluginLogLevel.Warning, "analog.settings.save-failed",
+            throw;
+        }
+        catch (Exception exception)
+        {
+            context.Logger.Log(PluginLogLevel.Warning, "analog.settings.save-failed",
                 "Analog settings could not be saved.", exception);
+        }
+        finally
+        {
+            if (gateTaken) _settingsSaveGate.Release();
         }
     }
 
@@ -245,21 +288,49 @@ public sealed partial class AnalogPluginModule
         float? SquelchThresholdDbm = null,
         bool IsAfcEnabled = true,
         bool IsLowerSideband = false,
+        bool IsStereoEnabled = true,
         float? SquelchThresholdDbfs = null);
 
     public async ValueTask ResetSettingsAsync()
     {
-        if (_hostContext is not null)
-        {
-            await _hostContext.Settings.DeleteAsync().ConfigureAwait(false);
-        }
         await _profileGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            _selectedProfileId = "am";
-            _receiverOptions = ValidateOptions(new AnalogReceiverOptions());
-            _demodulator.Reset();
-            _hostContext?.Audio.Reset();
+            bool wasStreaming = State == PluginLifecycleState.Streaming;
+            if (wasStreaming) await StopStreamAsync(CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                await _settingsSaveGate.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    if (_hostContext is not null)
+                        await _hostContext.Settings.DeleteAsync().ConfigureAwait(false);
+
+                    await _receiverGate.WaitAsync().ConfigureAwait(false);
+                    try
+                    {
+                        _selectedProfileId = "am";
+                        Volatile.Write(ref _receiverOptions,
+                            ValidateOptions(new AnalogReceiverOptions()));
+                        ResetDemodulatorState();
+                        _pretriggerBuffer.Reset();
+                        _isSquelchOpen = true;
+                        _hostContext?.Audio.Reset();
+                    }
+                    finally
+                    {
+                        _receiverGate.Release();
+                    }
+                }
+                finally
+                {
+                    _settingsSaveGate.Release();
+                }
+            }
+            finally
+            {
+                if (wasStreaming) await StartStreamAsync(CancellationToken.None).ConfigureAwait(false);
+            }
         }
         finally
         {

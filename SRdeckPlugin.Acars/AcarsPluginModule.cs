@@ -312,15 +312,10 @@ public sealed partial class AcarsPluginModule : PluginModuleBase, IIqBlockConsum
         IPluginHostContext context, Channel primaryChannel, IReadOnlyList<Channel> channels,
         CancellationToken cancellationToken)
     {
-        long lowerEdgeHz = channels.Min(channel => channel.FrequencyHz - 4_000);
-        long upperEdgeHz = channels.Max(channel => channel.FrequencyHz + 4_000);
-        long requiredWidthHz = upperEdgeHz - lowerEdgeHz;
-        int minimumSampleRateHz = checked((int)Math.Max(AcarsReceiver.DemodulationSampleRateHz,
-            (requiredWidthHz * 20 + 18) / 19));
         return context.Tuning.RequestAsync(new(primaryChannel.Id,
             $"ACARS {channels.Count} ch",
             channels.Select(channel => new TuningTarget(channel.FrequencyHz, 8_000)).ToArray(),
-            SelectPreferredCenterFrequency(channels), minimumSampleRateHz,
+            SelectPreferredCenterFrequency(channels), AcarsReceiver.DemodulationSampleRateHz,
             5_000, true, false, PluginGainPreference.Automatic), cancellationToken);
     }
 

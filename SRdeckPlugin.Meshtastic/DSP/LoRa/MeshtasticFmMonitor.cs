@@ -17,6 +17,15 @@ internal sealed class MeshtasticFmMonitor
     private const float AudioGain = 0.8f;
     private const float AudioHighPassHz = 20f;
     private const float AudioLowPassHz = 12_000f;
+    private const float SquelchOpenPowerRatio = 2.5f;
+    private const float SquelchKeepOpenPowerRatio = 1.6f;
+    private const float SquelchMinimumExcessPower = 1e-5f;
+    private const float SquelchOpenNoiseTrackingFactor = 0.000002f;
+    private const float SquelchReleaseSeconds = 0.15f;
+    private const float SquelchFadeSeconds = 0.005f;
+
+    public bool IsSquelchEnabled { get; set; } = true;
+    internal bool IsSquelchOpen => !IsSquelchEnabled || _isSquelchOpen;
 
     private readonly LoRaChannelizer _channelizer = new();
     private readonly PolyphaseRationalResampler _audioResampler = new(
@@ -33,6 +42,11 @@ internal sealed class MeshtasticFmMonitor
     private float _dcPreviousInput;
     private float _dcPreviousOutput;
     private float _dcPole;
+    private float _smoothPower;
+    private float _noiseFloorPower = 1e-4f;
+    private int _squelchHoldSamples;
+    private bool _isSquelchOpen;
+    private float _squelchGain;
     private float[]? _activeOutput;
     private int _activeOutputCount;
 
@@ -113,6 +127,42 @@ internal sealed class MeshtasticFmMonitor
 
     private void ProcessChannelSample(float sampleI, float sampleQ)
     {
+        float power = (sampleI * sampleI) + (sampleQ * sampleQ);
+        _smoothPower += 0.01f * (power - _smoothPower);
+        // Avoid teaching a packet to the noise estimator. A very slow update while
+        // open still lets the gate recover from a persistent SDR gain/noise step.
+        if (!_isSquelchOpen && _smoothPower < _noiseFloorPower)
+        {
+            _noiseFloorPower += 0.001f * (_smoothPower - _noiseFloorPower);
+        }
+        else if (!_isSquelchOpen)
+        {
+            _noiseFloorPower += 0.00005f * (_smoothPower - _noiseFloorPower);
+        }
+        else
+        {
+            _noiseFloorPower += SquelchOpenNoiseTrackingFactor *
+                                (_smoothPower - _noiseFloorPower);
+        }
+
+        float requiredRatio = _isSquelchOpen
+            ? SquelchKeepOpenPowerRatio
+            : SquelchOpenPowerRatio;
+        if (_smoothPower > _noiseFloorPower * requiredRatio + SquelchMinimumExcessPower)
+        {
+            _isSquelchOpen = true;
+            _squelchHoldSamples = checked((int)(
+                MeshtasticJpLongFastProfile.DecoderSampleRateHz * SquelchReleaseSeconds));
+        }
+        else if (_squelchHoldSamples > 0)
+        {
+            _squelchHoldSamples--;
+        }
+        else
+        {
+            _isSquelchOpen = false;
+        }
+
         if (!_hasPrevious)
         {
             _previousI = sampleI;
@@ -140,7 +190,14 @@ internal sealed class MeshtasticFmMonitor
             throw new InvalidOperationException("The FM monitor output buffer is not active.");
         if (_activeOutputCount >= output.Length)
             throw new ArgumentException("The FM monitor output buffer is too small.", nameof(output));
-        output[_activeOutputCount++] = Math.Clamp(audio * AudioGain, -1f, 1f);
+
+        float targetGain = !IsSquelchEnabled || _isSquelchOpen ? 1f : 0f;
+        float fadeStep = 1f / Math.Max(1f, OutputSampleRateHz * SquelchFadeSeconds);
+        _squelchGain = targetGain > _squelchGain
+            ? Math.Min(targetGain, _squelchGain + fadeStep)
+            : Math.Max(targetGain, _squelchGain - fadeStep);
+
+        output[_activeOutputCount++] = Math.Clamp(audio * AudioGain * _squelchGain, -1f, 1f);
     }
 
     private void ResetDemodulator()
@@ -150,6 +207,11 @@ internal sealed class MeshtasticFmMonitor
         _previousQ = 0;
         _dcPreviousInput = 0;
         _dcPreviousOutput = 0;
+        _smoothPower = 0f;
+        _noiseFloorPower = 1e-4f;
+        _squelchHoldSamples = 0;
+        _isSquelchOpen = false;
+        _squelchGain = 0f;
         _activeOutput = null;
         _activeOutputCount = 0;
     }

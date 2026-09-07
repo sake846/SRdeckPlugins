@@ -18,7 +18,8 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+    <Grid>
+        <Border Style="{DynamicResource PluginSettingsPanelStyle}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="36"/>
@@ -163,5 +164,6 @@
                 </TabItem>
             </TabControl>
         </Grid>
-    </Border>
+        </Border>
+    </Grid>
 </UserControl>

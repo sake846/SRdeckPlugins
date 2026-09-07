@@ -196,9 +196,9 @@ public sealed partial class AdsBPluginModule : PluginModuleBase, IIqBlockConsume
             true,
             false,
             PluginGainPreference.Automatic), cancellationToken).ConfigureAwait(false);
-        if (result.Outcome == PluginTuningOutcome.Rejected)
+        if (result.Outcome is PluginTuningOutcome.Rejected or PluginTuningOutcome.Deferred)
             throw new PluginActivationRejectedException(
-                "ADS-B は 2.0 MS/s 以上が必要です。受信を停止して RATE を 2 MS/s 以上に変更してから、再度 ADS-B を選択してください。\n" +
+                "ADS-B の受信条件を適用できませんでした（必要レート: 2.0 MS/s 以上）。\n" +
                 result.Message);
         if (result.SampleRateHz < ModeSReceiver.MinimumInputSampleRateHz)
             throw new PluginActivationRejectedException(

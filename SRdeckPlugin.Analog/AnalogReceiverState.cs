@@ -34,5 +34,6 @@ internal sealed record AnalogReceiverSnapshot(
     DateTimeOffset? LastAudioOutputAt,
     float AudioRms,
     float AudioPeak,
+    float[] ThirdOctaveLevelsDb,
     double AfcCorrectionHz,
     double DemodulationSampleRateHz);

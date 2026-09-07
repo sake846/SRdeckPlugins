@@ -65,12 +65,15 @@ public sealed partial class MeshtasticReceiveService
             if (isDuplicate) Interlocked.Increment(ref _duplicateMeshtasticPackets);
 
             var quality = new MeshtasticLoRaReceptionQuality(
-                state.LastDetection?.PeakToAverageDb,
+                frame.EstimatedSnrDb,
                 state.LastDetection?.DechirpedPeakHz,
                 state.LastSynchronization?.UpChirpPeakHz,
                 state.LastSynchronization?.DownChirpPeakHz,
                 frame.IsPayloadCrcValid,
-                frame.CorrectedCodewords);
+                frame.CorrectedCodewords)
+            {
+                EstimatedRssiDbfs = frame.EstimatedRssiDbfs
+            };
             var radio = new MeshtasticRadioReception(
                 channel.Region,
                 channel.RadioChannel,

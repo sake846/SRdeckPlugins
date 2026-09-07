@@ -121,7 +121,7 @@
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}"
-                                                           LineHeight="13" VerticalAlignment="Top" Margin="0,2,0,0">
+                                                           LineHeight="13" VerticalAlignment="Top" Margin="0">
                                                     <Run Text="{Binding LastReceivedAt, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd}}"/><LineBreak/>
                                                     <Run Text="{Binding LastReceivedAt, Mode=OneWay, StringFormat={}{0:HH:mm:ss}}"/>
                                                 </TextBlock>
@@ -131,18 +131,18 @@
                                     <DataGridTemplateColumn Header="送信局" Width="*" MinWidth="200" SortMemberPath="Callsign">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <Grid Margin="0,2,0,3" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
+                                                <Grid Margin="0,2,0,2" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
                                                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                                                     <Grid>
                                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                         <TextBlock Text="{Binding Callsign}" Style="{DynamicResource PluginTimelineIdentityTextStyle}"
-                                                                   TextTrimming="CharacterEllipsis"/>
-                                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0">
+                                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0" VerticalAlignment="Center">
                                                             <Run Text="{Binding LatestReception.Mode, Mode=OneWay}"/><Run Text=" / "/>
                                                             <Run Text="{Binding Locator, Mode=OneWay}"/>
                                                         </TextBlock>
                                                     </Grid>
-                                                    <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0"
+                                                    <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0"
                                                                TextTrimming="CharacterEllipsis">
                                                         <Run Text="受信 "/><Run Text="{Binding Count, Mode=OneWay, StringFormat=N0}"/><Run Text=" 件  /  SNR "/>
                                                         <Run Text="{Binding LatestReception.SnrDb, Mode=OneWay, StringFormat={}{0:+0;-0;0} dB}"/><Run Text="  /  "/>
@@ -253,7 +253,7 @@
                                                     CellStyle="{DynamicResource PluginTimelineTimestampCellStyle}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13" VerticalAlignment="Top" Margin="0,2,0,0">
+                                        <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13" VerticalAlignment="Top" Margin="0">
                                             <Run Text="{Binding LocalReceivedAt, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd}}"/><LineBreak/>
                                             <Run Text="{Binding LocalReceivedAt, Mode=OneWay, StringFormat={}{0:HH:mm:ss}}"/>
                                         </TextBlock>
@@ -263,18 +263,18 @@
                             <DataGridTemplateColumn Header="受信イベント" Width="*" MinWidth="200" SortMemberPath="FromCall">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <Grid Margin="0,2,0,3" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
+                                        <Grid Margin="0,2,0,2" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
                                             <Grid>
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding FromCall}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock Grid.Column="1" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0"><Run Text="{Binding Mode, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding MessageType, Mode=OneWay}"/></TextBlock>
+                                                <TextBlock Text="{Binding FromCall}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0" VerticalAlignment="Center"><Run Text="{Binding Mode, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding MessageType, Mode=OneWay}"/></TextBlock>
                                             </Grid>
-                                            <TextBlock Grid.Row="1" Text="{Binding Message}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,2,0,0" TextWrapping="Wrap"/>
-                                            <TextBlock Grid.Row="2" Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0" TextWrapping="Wrap">
+                                            <TextBlock Grid.Row="1" Text="{Binding Message}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                                            <TextBlock Grid.Row="2" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0" TextWrapping="Wrap">
                                                 <Run Text="SNR "/><Run Text="{Binding SnrDb, Mode=OneWay, StringFormat={}{0:+0;-0;0} dB}"/>
                                                 <Run Text="  /  DT "/><Run Text="{Binding TimeOffsetSeconds, Mode=OneWay, StringFormat={}{0:F1} s}"/>
                                                 <Run Text="  /  バンド "/><Run Text="{Binding BandFrequencyText, Mode=OneWay}"/>

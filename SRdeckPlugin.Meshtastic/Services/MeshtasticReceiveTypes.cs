@@ -84,24 +84,70 @@ public sealed record MeshtasticRadioReception(
 }
 
 public sealed record MeshtasticLoRaReceptionQuality(
-    float? PreambleMarginDb,
+    float? EstimatedSnrDb,
     float? PreamblePeakHz,
     float? SyncUpPeakHz,
     float? SyncDownPeakHz,
     bool? PayloadCrcValid,
     int CorrectedCodewords)
 {
+    public float? EstimatedRssiDbfs { get; init; }
+    public float? EstimatedRssiDbm { get; init; }
+
     public string Summary =>
-        $"Q {(PreambleMarginDb.HasValue ? $"{PreambleMarginDb.Value:F1} dB" : "-")} / " +
+        $"{FormatSignal(EstimatedSnrDb, EstimatedRssiDbfs, EstimatedRssiDbm)} / " +
         $"CRC {(PayloadCrcValid switch { true => "OK", false => "NG", _ => "-" })} / " +
         $"Corr {CorrectedCodewords}";
 
     public string Details =>
-        $"marginDb={PreambleMarginDb?.ToString("F1") ?? "-"} " +
+        $"estimatedSnrDb={(EstimatedSnrDb is float snr && float.IsFinite(snr) ? snr.ToString("F1") : "-")} " +
+        $"estimatedRssiDbfs={(EstimatedRssiDbfs is float dbfs && float.IsFinite(dbfs) ? dbfs.ToString("F1") : "-")} " +
+        $"estimatedRssiDbm={(EstimatedRssiDbm is float dbm && float.IsFinite(dbm) ? dbm.ToString("F1") : "-")} " +
         $"preamblePeakHz={PreamblePeakHz?.ToString("F1") ?? "-"} " +
         $"syncUpPeakHz={SyncUpPeakHz?.ToString("F1") ?? "-"} " +
         $"syncDownPeakHz={SyncDownPeakHz?.ToString("F1") ?? "-"} " +
         $"payloadCrc={PayloadCrcValid?.ToString() ?? "-"} correctedCodewords={CorrectedCodewords}";
+
+    public const string SnrDescription = "SNR は受信帯域基準の推定SNR（繰り返しを確認したプリアンブルから算出）。LoRaチップの報告値とは推定方法が異なります。";
+    public const string RssiDescription = "RSSI は同じプリアンブルの帯域内電力（信号＋雑音）の推定値。dBm はSRdeckの受信レベル校正に依存します。校正情報がない場合はdBFSで表示します。";
+    public static string SignalDescription => SnrDescription + Environment.NewLine + RssiDescription;
+
+    public static string FormatSnr(float? value) => value is float snr && float.IsFinite(snr)
+        ? $"SNR {snr:+0.0;-0.0;0.0} dB"
+        : "SNR —";
+
+    public static string FormatRssi(float? dbfs, float? dbm = null) =>
+        dbm is float calibrated && float.IsFinite(calibrated) ? $"RSSI {calibrated:F1} dBm" :
+        dbfs is float relative && float.IsFinite(relative) ? $"RSSI {relative:F1} dBFS" : "RSSI —";
+
+    public static string FormatSignal(float? snr, float? dbfs, float? dbm = null) =>
+        $"{FormatSnr(snr)} / {FormatRssi(dbfs, dbm)}";
+
+    internal static float? CalibrateRssi(float? dbfs, IPluginReceiverTelemetry? telemetry)
+    {
+        if (dbfs is not float value || !float.IsFinite(value) || telemetry is null) return null;
+        float calibrated = telemetry.DbfsToDbm(value);
+        return float.IsFinite(calibrated) ? calibrated : null;
+    }
+
+    internal MeshtasticLoRaReceptionQuality WithReceiverCalibration(IPluginReceiverTelemetry? telemetry) =>
+        this with { EstimatedRssiDbm = CalibrateRssi(EstimatedRssiDbfs, telemetry) };
+
+    internal static string HideLegacyQuality(string value)
+    {
+        if (value.StartsWith("Q ", StringComparison.OrdinalIgnoreCase))
+        {
+            int separator = value.IndexOf(" / ", StringComparison.Ordinal);
+            value = "SNR —" + (separator >= 0 ? value[separator..] : "");
+        }
+        else if (value.StartsWith("S/N ", StringComparison.Ordinal)) value = "SNR " + value[4..];
+        if (value.StartsWith("SNR ", StringComparison.Ordinal) && !value.Contains(" / RSSI ", StringComparison.Ordinal))
+        {
+            int separator = value.IndexOf(" / ", StringComparison.Ordinal);
+            value = separator >= 0 ? value.Insert(separator, " / RSSI —") : value + " / RSSI —";
+        }
+        return value;
+    }
 }
 
 public interface IMeshtasticReceiveService : IDisposable

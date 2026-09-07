@@ -7,13 +7,15 @@
     <UserControl.Resources>
         <ResourceDictionary Source="/SRdeckPlugin.Meshtastic;component/Views/MeshtasticStyles.xaml" />
     </UserControl.Resources>
-    <Border Style="{DynamicResource PluginSettingsPanelStyle}" MinHeight="320">
+    <Grid>
+        <Border Style="{DynamicResource PluginSettingsPanelStyle}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="36" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <ContentControl Content="{Binding MeshtasticChannelSettingStatus}" Tag="Meshtastic"
+                            ToolTip="{Binding MeshtasticChannelSettingStatus}"
                             Style="{DynamicResource PluginSettingsHeaderStyle}" />
 
             <TabControl Grid.Row="1" Style="{DynamicResource PluginSettingsTabControlStyle}">
@@ -21,23 +23,24 @@
                     <Grid Margin="10,7">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
 
-                        <!-- 地域, モード, 探索帯域/方式 を横並びに配置 -->
-                        <WrapPanel Grid.Row="0" Margin="0,2,0,10" VerticalAlignment="Center">
+                        <!-- 地域, モード, 探索帯域/方式・スロット を横並びに配置 -->
+                        <WrapPanel Grid.Row="0" Margin="0,2,0,8" VerticalAlignment="Center">
                             <!-- 1. 地域 -->
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,3,36,3">
-                                <TextBlock Text="地域" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,10,0" />
+                                <TextBlock Text="地域" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,8,0" />
                                 <ComboBox ItemsSource="{Binding MeshtasticRegions}"
-                                          SelectedItem="{Binding SelectedMeshtasticRegion}" Width="84" Height="22"
-                                          FontSize="10" Style="{DynamicResource PluginComboBoxStyle}" />
+                                          SelectedItem="{Binding SelectedMeshtasticRegion}" Width="90"
+                                          Style="{DynamicResource PluginComboBoxStyle}" />
                             </StackPanel>
 
                             <!-- 2. モード -->
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,3,36,3">
-                                <TextBlock Text="モード" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,10,0" />
-                                <ComboBox Width="92" Height="22" FontSize="10"
+                                <TextBlock Text="モード" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,8,0" />
+                                <ComboBox Width="100"
                                           Style="{DynamicResource PluginComboBoxStyle}"
                                           VerticalAlignment="Center">
                                     <ComboBoxItem Content="探索"
@@ -47,7 +50,7 @@
                                 </ComboBox>
                             </StackPanel>
 
-                            <!-- 3. 探索帯域 (探索モード時) / 方式 (条件指定モード時) -->
+                            <!-- 3. 探索帯域 (探索モード時) / 方式・スロット (条件指定モード時) -->
                             <Grid VerticalAlignment="Center" Margin="0,3,0,3">
                                 <!-- 探索帯域 (探索モード時) -->
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -61,18 +64,18 @@
                                             </Style.Triggers>
                                         </Style>
                                     </StackPanel.Style>
-                                    <TextBlock Text="探索帯域" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,10,0" />
-                                    <ToggleButton Content="250 kHz" FontSize="10" Width="60"
+                                    <TextBlock Text="探索帯域" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,8,0" />
+                                    <ToggleButton Content="250 kHz" Width="68"
                                                   IsChecked="{Binding MeshtasticDiscoveryUses250Khz, Mode=TwoWay}"
                                                   Style="{DynamicResource PluginToggleButtonStyle}"
-                                                  Margin="0,0,12,0" VerticalAlignment="Center" />
-                                    <ToggleButton Content="125 kHz" FontSize="10" Width="60"
+                                                  Margin="0,0,10,0" VerticalAlignment="Center" />
+                                    <ToggleButton Content="125 kHz" Width="68"
                                                   IsChecked="{Binding MeshtasticDiscoveryUses125Khz, Mode=TwoWay}"
                                                   Style="{DynamicResource PluginToggleButtonStyle}"
                                                   VerticalAlignment="Center" />
                                 </StackPanel>
 
-                                <!-- 方式 (条件指定モード時) -->
+                                <!-- 方式・スロット (条件指定モード時) -->
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <StackPanel.Style>
                                         <Style TargetType="StackPanel">
@@ -84,18 +87,65 @@
                                             </Style.Triggers>
                                         </Style>
                                     </StackPanel.Style>
-                                    <TextBlock Text="方式" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,10,0" />
-                                    <ComboBox Width="132" Height="22"
+                                    <TextBlock Text="方式" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,8,0" />
+                                    <ComboBox Width="130"
                                               ItemsSource="{Binding MeshtasticSpecifiedModemPresets}"
                                               SelectedItem="{Binding SelectedMeshtasticSpecifiedModemPreset}"
-                                              FontSize="10" Style="{DynamicResource PluginComboBoxStyle}" />
+                                              Style="{DynamicResource PluginComboBoxStyle}"
+                                              Margin="0,0,36,0" />
+                                    <TextBlock Text="スロット" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,8,0" />
+                                    <ComboBox Width="180"
+                                              ItemsSource="{Binding MeshtasticSpecifiedSlotOptions}"
+                                              SelectedItem="{Binding SelectedMeshtasticSpecifiedSlotOption, Mode=TwoWay}"
+                                              DisplayMemberPath="DisplayName"
+                                              Style="{DynamicResource PluginComboBoxStyle}" />
                                 </StackPanel>
                             </Grid>
 
                         </WrapPanel>
 
-                        <!-- Slot selection gets the full panel width with limited height. -->
-                        <Grid Grid.Row="1" MaxHeight="170" VerticalAlignment="Top">
+                        <!-- モニター音声制御ボタン群 (条件指定モード時のみ表示) -->
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,10">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsMeshtasticDiscoveryMode}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <TextBlock x:Name="MonitorAudioLabelTextBlock" Text="モニター音声" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                            <ToggleButton x:Name="MonitorAudioToggleButton"
+                                          Content="音声出力"
+                                          IsChecked="{Binding IsAudioMonitorEnabled, Mode=TwoWay}"
+                                          Style="{DynamicResource PluginToggleButtonStyle}"
+                                          Width="60" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <ToggleButton x:Name="SquelchToggleButton"
+                                          Content="スケルチ"
+                                          IsChecked="{Binding IsSquelchEnabled, Mode=TwoWay}"
+                                          Style="{DynamicResource PluginToggleButtonStyle}"
+                                          Width="60" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <ToggleButton x:Name="BuzzerToggleButton"
+                                          Content="受信ブザー"
+                                          IsChecked="{Binding BuzzerEnabled, Mode=TwoWay}"
+                                          Style="{DynamicResource PluginToggleButtonStyle}"
+                                          Width="65" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <!-- Slot selection: 探索モード時のみ複数スロット選択を表示 -->
+                        <Grid Grid.Row="2" MaxHeight="170" VerticalAlignment="Top">
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsMeshtasticDiscoveryMode}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="10" />
@@ -232,7 +282,6 @@
                                 <Button Grid.Column="1" Content="IQ 録音 (直前10秒)"
                                         Command="{Binding StartCaptureCommand}"
                                         Style="{DynamicResource PluginButtonStyle}"
-                                        Height="22"
                                         Width="130"
                                         HorizontalAlignment="Left" />
                                 <TextBlock Grid.Column="2"
@@ -246,5 +295,6 @@
                 </TabItem>
             </TabControl>
         </Grid>
-    </Border>
+        </Border>
+    </Grid>
 </UserControl>

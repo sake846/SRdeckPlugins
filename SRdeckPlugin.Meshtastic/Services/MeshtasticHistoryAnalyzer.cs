@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using SRdeckPlugin.Meshtastic.Protocols;
 using SRdeckPlugin.Meshtastic.ViewModels;
 
 namespace SRdeckPlugin.Meshtastic.Services;
@@ -12,6 +13,26 @@ namespace SRdeckPlugin.Meshtastic.Services;
 /// </summary>
 public sealed class MeshtasticHistoryAnalyzer
 {
+    /// <summary>Returns the latest decoded values for each APP of the selected node.</summary>
+    public IReadOnlyList<MeshtasticDisplayItem> GetLatestApplications(
+        IEnumerable<MeshtasticDisplayItem> messages, string sender)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+
+        return messages
+            .Where(item => item.IsDecoded && !string.IsNullOrWhiteSpace(item.Port) &&
+                            string.Equals(item.Sender, sender, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(item => item.Port, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => MeshtasticDataParser.GetNodeListApplicationOrder(group.Key))
+            .ThenBy(group => MeshtasticDataParser.GetPortNumber(group.Key))
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderByDescending(item => item.ReceivedAt)
+                .ThenByDescending(item => item.IsDirect)
+                .First())
+            .ToArray();
+    }
+
     /// <summary>
     /// Returns one display item per packet, preferring a direct reception when
     /// the same packet was also received through a relay.

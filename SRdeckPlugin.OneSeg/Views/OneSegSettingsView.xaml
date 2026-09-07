@@ -1,0 +1,110 @@
+<UserControl x:Class="SRdeckPlugin.OneSeg.Views.OneSegSettingsView"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+  Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10">
+  <Grid>
+   <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+   <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <ContentControl Content="{Binding SelectedStation.DisplayName, TargetNullValue=放送局を選択してください}" Tag="ワンセグ"
+                    ToolTip="{Binding Status}" Style="{DynamicResource PluginSettingsHeaderStyle}"/>
+      <TabControl Grid.Row="1" Style="{DynamicResource PluginSettingsTabControlStyle}">
+      <TabItem Header="受信設定">
+        <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+        <StackPanel>
+       <Grid Margin="0,4,0,0">
+         <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+         <TextBlock Text="放送局" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+         <ComboBox Grid.Column="1" ItemsSource="{Binding Stations}" SelectedItem="{Binding SelectedStation}" DisplayMemberPath="DisplayName" IsEnabled="{Binding SelectionEnabled}" Style="{DynamicResource PluginComboBoxStyle}" Margin="6,0" Width="180" HorizontalAlignment="Left"/>
+         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="2,0,0,0">
+          <Button Style="{DynamicResource PluginLeftStepButtonStyle}" Content="◀" Command="{Binding PreviousStationCommand}" Width="28" Height="22" ToolTip="前の放送局"/>
+          <Button Style="{DynamicResource PluginRightStepButtonStyle}" Content="▶" Command="{Binding NextStationCommand}" Width="28" Height="22" ToolTip="次の放送局"/>
+         </StackPanel>
+         <TextBlock Grid.Column="3" Text="サーチ" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="16,0,0,0"/>
+         <Button Grid.Column="4" Content="新規" Command="{Binding ScanCommand}" Margin="6,0,0,0" Padding="8,2" Width="60" HorizontalAlignment="Left" ToolTip="全スキャン（局リストを再構築）"/>
+         <Button Grid.Column="5" Content="追加" Command="{Binding AdditionalScanCommand}" Margin="12,0,0,0" Padding="8,2" Width="60" HorizontalAlignment="Left" ToolTip="追加スキャン（既存局を維持して追加・更新）"/>
+       </Grid>
+       <TextBlock Text="{Binding ScanStatus}" Visibility="{Binding ScanStatusVisibility}" Style="{DynamicResource PluginSettingsHintStyle}" ToolTip="{Binding ScanStatus}" Margin="4,3,0,0"/>
+
+          <Grid Margin="0,7,0,4">
+         <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="120"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <TextBlock Text="音声モード" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+          <ComboBox Grid.Column="1" ItemsSource="{Binding AudioTracks}" SelectedItem="{Binding SelectedAudioTrack}" DisplayMemberPath="DisplayName" Style="{DynamicResource PluginComboBoxStyle}"/>
+         <ToggleButton Grid.Column="2" Content="字幕" IsChecked="{Binding CaptionsEnabled, Mode=TwoWay}" Padding="8,2" Margin="12,0,0,0" Width="60" HorizontalAlignment="Left"/>
+        </Grid>
+        </StackPanel>
+       </ScrollViewer>
+      </TabItem>
+      <TabItem Header="プラグイン設定">
+       <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+        <Grid Margin="2">
+          <Grid.RowDefinitions>
+           <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+           <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+         <TextBlock Text="TS・IQ保存" Style="{DynamicResource PluginSettingsSectionHeaderStyle}"/>
+         <TextBlock Grid.Row="1" Text="TS保存はメイン画面の操作で開始・停止できます。ここでは保存先と自動分割を設定します。"
+                    Style="{DynamicResource PluginSettingsDescriptionStyle}" TextWrapping="Wrap"/>
+         <Grid Grid.Row="2" Margin="0,0,0,4">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <TextBlock Text="TS保存先" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+          <TextBox Grid.Column="1" Text="{Binding RecordingDirectory, UpdateSourceTrigger=LostFocus}"
+                   Style="{DynamicResource PluginTextBoxStyle}"/>
+          <TextBlock Grid.Column="2" Text="空欄時はプラグインデータのrecordings" Style="{DynamicResource PluginSettingsHintStyle}" Margin="8,0" VerticalAlignment="Center"/>
+         </Grid>
+         <Grid Grid.Row="3" Margin="0,0,0,4">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <TextBlock Text="分割時間（分）" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+          <TextBox Grid.Column="1" Text="{Binding RecordingSegmentMinutes, UpdateSourceTrigger=LostFocus}" Style="{DynamicResource PluginTextBoxStyle}"/>
+          <TextBlock Grid.Column="2" Text="0で分割なし" Style="{DynamicResource PluginSettingsHintStyle}" Margin="8,0" VerticalAlignment="Center"/>
+         </Grid>
+         <Grid Grid.Row="4" Margin="0,0,0,4">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <TextBlock Text="1ファイル上限（バイト）" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+          <TextBox Grid.Column="1" Text="{Binding RecordingMaxBytes, UpdateSourceTrigger=LostFocus, StringFormat={}{0:0}}" Style="{DynamicResource PluginTextBoxStyle}"/>
+          <TextBlock Grid.Column="2" Text="0で無制限" Style="{DynamicResource PluginSettingsHintStyle}" Margin="8,0" VerticalAlignment="Center"/>
+         </Grid>
+          <Grid Grid.Row="5" Margin="0,0,0,4">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <TextBlock Text="保存先上限（バイト）" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+          <TextBox Grid.Column="1" Text="{Binding RecordingStorageLimitBytes, UpdateSourceTrigger=LostFocus, StringFormat={}{0:0}}" Style="{DynamicResource PluginTextBoxStyle}"/>
+          <TextBlock Grid.Column="2" Text="古いTSとサイドカーを削除" Style="{DynamicResource PluginSettingsHintStyle}" Margin="8,0" VerticalAlignment="Center"/>
+          </Grid>
+          <Grid Grid.Row="6" Margin="0,0,0,4">
+           <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+           <TextBlock Text="IQ保存先" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+           <TextBox Grid.Column="1" Text="{Binding IqCaptureDirectory, UpdateSourceTrigger=LostFocus}" Style="{DynamicResource PluginTextBoxStyle}"/>
+           <TextBlock Grid.Column="2" Text="空欄時はプラグインデータのcaptures" Style="{DynamicResource PluginSettingsHintStyle}" Margin="8,0" VerticalAlignment="Center"/>
+          </Grid>
+          <Grid Grid.Row="7">
+           <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+           <TextBlock Text="IQキャプチャ時間（秒）" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+           <TextBox Grid.Column="1" Text="{Binding IqCaptureSeconds, UpdateSourceTrigger=LostFocus}" Style="{DynamicResource PluginTextBoxStyle}"/>
+           <TextBlock Grid.Column="2" Text="1～60秒。WAVとメタデータJSONを保存" Style="{DynamicResource PluginSettingsHintStyle}" Margin="8,0" VerticalAlignment="Center"/>
+           </Grid>
+          <CheckBox Grid.Row="8" Content="受信開始時に自動録画" IsChecked="{Binding AutoRecordOnStart, Mode=TwoWay}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4,0,4" />
+          <CheckBox Grid.Row="9" Content="TSごとにサイドカーJSONを作成" IsChecked="{Binding RecordingSidecarEnabled, Mode=TwoWay}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4,0,4" />
+            <controls:PluginResetView Grid.Row="10" />
+            <TextBlock Grid.Row="11" Text="過去録音" Style="{DynamicResource PluginSettingsSectionHeaderStyle}"/>
+            <Grid Grid.Row="12" Style="{DynamicResource PluginSettingsActionRowStyle}">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <TextBlock Text="受信中に直前5秒のIQデータを保存します。"
+                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+            <Button Grid.Column="1" Content="IQ 録音 (直前5秒)" Command="{Binding CaptureCommand}" ToolTip="{Binding CaptureStatus}"
+                    Style="{DynamicResource PluginButtonStyle}" Width="130" HorizontalAlignment="Left"/>
+            <TextBlock Grid.Column="2" Text="{Binding CaptureStatus}" Style="{DynamicResource PluginSettingsActionStatusStyle}"
+                       VerticalAlignment="Center" Margin="10,0,0,0"/>
+           </Grid>
+        </Grid>
+       </ScrollViewer>
+      </TabItem>
+     </TabControl>
+  </Grid>
+   </Border>
+  </Grid>
+</UserControl>

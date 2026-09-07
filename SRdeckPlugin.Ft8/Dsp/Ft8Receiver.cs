@@ -17,6 +17,7 @@ public sealed class Ft8Receiver
     private readonly Ft4Decoder ft4Decoder = new();
     private readonly Jt65Decoder jt65Decoder = new();
     private readonly ComplexFrequencyTranslator translator = new();
+    private readonly ComplexIqLowPassFilter monitorUsbLowPass = new();
     private readonly PolyphaseRationalResampler resampler = new(40, 320, true);
     private Complex32[] convertedBuffer = [];
     private Complex32[] slot = new Complex32[Ft8Decoder.SlotSamples];
@@ -49,10 +50,30 @@ public sealed class Ft8Receiver
     private float monitorPower;
     private float monitorGain = 1f;
     private double channelPower;
-    private static readonly float MonitorPowerCoefficient =
-        (float)(1 - Math.Exp(-1 / (0.050 * OutputSampleRateHz)));
-    private static readonly float MonitorGainCoefficient =
-        (float)(1 - Math.Exp(-1 / (0.020 * OutputSampleRateHz)));
+    // The monitor is deliberately normalized independently of the decoder. FT8
+    // channel levels can be tens of dB below a full-scale SDR stream, while the
+    // audio router still expects useful 16-bit PCM levels.
+    private const float MonitorTargetRms = 0.22f;
+    private const float MonitorMinimumGain = 0.1f;
+    private const float MonitorMaximumGain = 2_000f;
+    private const float MonitorPeakLimit = 0.95f;
+    private static readonly float MonitorPowerAttackCoefficient =
+        MonitorTimeConstant(0.025);
+    private static readonly float MonitorPowerReleaseCoefficient =
+        MonitorTimeConstant(0.500);
+    private static readonly float MonitorGainAttackCoefficient =
+        MonitorTimeConstant(0.005);
+    private static readonly float MonitorGainReleaseCoefficient =
+        MonitorTimeConstant(0.100);
+
+    public Ft8Receiver()
+    {
+        // The channel is centered at dial + 1,600 Hz. A 1,400 Hz complex
+        // low-pass keeps the 200–3,000 Hz USB audio passband after the
+        // monitor's 1,600 Hz frequency re-insertion.
+        monitorUsbLowPass.Configure(OutputSampleRateHz,
+            AudioCenterHz - Ft8Decoder.AudioMinimumHz);
+    }
 
     public event EventHandler<IReadOnlyList<Ft8Reception>>? MessagesDecoded;
 
@@ -85,7 +106,11 @@ public sealed class Ft8Receiver
                 (double)Math.Max(1, metadata.Configuration.CoarseDecimationFactor) /
                 Math.Max(1, metadata.Configuration.FineDecimationFactor);
             DateTimeOffset timestamp = GetChannelSampleTimestamp(metadata);
-            if (metadata.Source.Discontinuity != IqDiscontinuity.None) ResetSlotState();
+            if (metadata.Source.Discontinuity != IqDiscontinuity.None)
+            {
+                ResetSlotState();
+                ResetMonitorAudio();
+            }
             Feed(samples, timestamp, metadata.Source.StreamId,
                 metadata.Configuration.ChannelCenterFrequencyHz, settings);
             monitorAudioSampleCount = RenderMonitorAudio(samples, monitorAudio);
@@ -113,6 +138,7 @@ public sealed class Ft8Receiver
                 resampler.Configure(metadata.SampleRateHz, 1, OutputSampleRateHz, 3_100);
                 resamplerConfigured = true;
                 ResetSlotState();
+                ResetMonitorAudio();
             }
             translator.Configure(targetCenterHz - metadata.CenterFrequencyHz, metadata.SampleRateHz);
             int convertedCapacity = resampler.GetOutputCount(samples.Length);
@@ -146,9 +172,7 @@ public sealed class Ft8Receiver
             inputSampleRate = 0;
             rateConversionIntermediateSampleRate = 0;
             usesHostChannelRateConversion = false;
-            monitorOscillatorPhase = 0;
-            monitorPower = 0;
-            monitorGain = 1;
+            ResetMonitorAudio();
             channelPower = 0;
             UpdateDiagnosticsSnapshot();
         }
@@ -166,16 +190,53 @@ public sealed class Ft8Receiver
         for (int index = 0; index < samples.Length; index++)
         {
             Complex32 sample = samples[index];
-            float raw = sample.I * (float)Math.Cos(phase) -
-                        sample.Q * (float)Math.Sin(phase);
+            monitorUsbLowPass.Process(sample.I, sample.Q,
+                out float filteredI, out float filteredQ);
+            // Re{(I+jQ) * exp(+j*2*pi*1600*t)} places positive IQ
+            // frequencies above the USB dial frequency.
+            float raw = filteredI * (float)Math.Cos(phase) -
+                        filteredQ * (float)Math.Sin(phase);
             phase += step;
             if (phase >= 2 * Math.PI) phase -= 2 * Math.PI;
 
-            monitorPower += MonitorPowerCoefficient * (raw * raw - monitorPower);
-            float desiredGain = 0.2f / MathF.Sqrt(MathF.Max(monitorPower, 1e-10f));
-            desiredGain = Math.Clamp(desiredGain, 0.1f, 40f);
-            monitorGain += MonitorGainCoefficient * (desiredGain - monitorGain);
-            output[index] = MathF.Tanh(raw * monitorGain);
+            if (!float.IsFinite(raw))
+            {
+                ResetMonitorAudioLevel();
+                output[index] = 0;
+                continue;
+            }
+
+            float power = raw * raw;
+            if (!float.IsFinite(power))
+            {
+                ResetMonitorAudioLevel();
+                output[index] = 0;
+                continue;
+            }
+
+            float powerCoefficient = power > monitorPower
+                ? MonitorPowerAttackCoefficient
+                : MonitorPowerReleaseCoefficient;
+            monitorPower += powerCoefficient * (power - monitorPower);
+
+            float desiredGain = MonitorTargetRms /
+                                MathF.Sqrt(MathF.Max(monitorPower, 1e-12f));
+            desiredGain = Math.Clamp(desiredGain, MonitorMinimumGain, MonitorMaximumGain);
+            float gainCoefficient = desiredGain < monitorGain
+                ? MonitorGainAttackCoefficient
+                : MonitorGainReleaseCoefficient;
+            monitorGain += gainCoefficient * (desiredGain - monitorGain);
+            if (!float.IsFinite(monitorGain))
+            {
+                ResetMonitorAudioLevel();
+                output[index] = 0;
+                continue;
+            }
+
+            // A soft limiter keeps a sudden strong signal from producing a full-
+            // scale click while the slower AGC loop is reducing its gain.
+            output[index] = MonitorPeakLimit *
+                            MathF.Tanh(raw * monitorGain / MonitorPeakLimit);
         }
         monitorOscillatorPhase = phase;
         return samples.Length;
@@ -211,6 +272,7 @@ public sealed class Ft8Receiver
             slotStart = blockSlot;
             streamId = newStreamId;
             channelCenterHz = newChannelCenterHz;
+            ResetMonitorAudio();
             lowestWritten = slot.Length;
             highestWritten = 0;
             Array.Clear(slot);
@@ -305,6 +367,22 @@ public sealed class Ft8Receiver
         highestWritten = 0;
         Array.Clear(slot);
     }
+
+    private void ResetMonitorAudio()
+    {
+        monitorOscillatorPhase = 0;
+        monitorUsbLowPass.Reset();
+        ResetMonitorAudioLevel();
+    }
+
+    private void ResetMonitorAudioLevel()
+    {
+        monitorPower = 0;
+        monitorGain = 1;
+    }
+
+    private static float MonitorTimeConstant(double seconds) =>
+        (float)(1 - Math.Exp(-1 / (seconds * OutputSampleRateHz)));
 
     /// <summary>
     /// Reconstructs the UTC time of the first channel sample from its monotonic

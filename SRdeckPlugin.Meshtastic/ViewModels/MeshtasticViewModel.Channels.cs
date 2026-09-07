@@ -26,7 +26,7 @@ public partial class MeshtasticViewModel
 {
     private void ApplyMeshtasticChannelSettings()
     {
-        if (_isLoadingMeshtasticSettings) return;
+        if (_isLoadingMeshtasticSettings || _isSwitchingMeshtasticMode) return;
         // Slot highlighting follows the checkbox state even when the current
         // selection is temporarily invalid (for example, after clearing all).
         FrequencyOverlaysChanged?.Invoke(this, EventArgs.Empty);
@@ -52,15 +52,20 @@ public partial class MeshtasticViewModel
             .SelectMany(selection => selection.RadioChannels.Select(channel =>
                 (region.CalculateChannelFrequencyHz(channel, selection.BandwidthHz), selection.BandwidthHz)))
             .ToArray();
-        MeshtasticRadioChannel = bandwidthSlots[0].RadioChannels[0];
-        string slotText = FormatMeshtasticBandwidthSlots(bandwidthSlots);
-        int detectorCount = bandwidthSlots.Sum(selection => selection.RadioChannels.Count *
-            MeshtasticJpLongFastProfile.GetDetectionProfiles(SelectedMeshtasticModemPreset).Count(candidate => candidate.BandwidthHz == selection.BandwidthHz));
-        string monitorText = IsMeshtasticDiscoveryMode
-            ? string.Empty
-            : $" / FMモニター slot {MeshtasticRadioChannel}";
-        MeshtasticChannelSettingStatus =
-            $"設定を適用しました: {profile.Name} / {slotText}（{detectorCount}検出器）{monitorText}";
+        if (IsMeshtasticDiscoveryMode)
+        {
+            MeshtasticRadioChannel = bandwidthSlots[0].RadioChannels[0];
+        }
+        if (IsMeshtasticDiscoveryMode)
+        {
+            int slots250 = bandwidthSlots.FirstOrDefault(b => b.BandwidthHz == 250_000)?.RadioChannels.Count ?? 0;
+            int slots125 = bandwidthSlots.FirstOrDefault(b => b.BandwidthHz == 125_000)?.RadioChannels.Count ?? 0;
+            MeshtasticChannelSettingStatus = $"探索 モード, 250 kHz: {slots250} スロット, 125 kHz: {slots125} スロット";
+        }
+        else
+        {
+            MeshtasticChannelSettingStatus = $"条件指定 モード, 方式: {profile.Name}, スロット: {MeshtasticRadioChannel}";
+        }
         SetMeshtasticReceiverStatus(
             $"受信 {MeshtasticMessages.Count}件 / Node {MeshtasticNodes.Count}",
             OverallStatusKind.Running);
@@ -71,6 +76,17 @@ public partial class MeshtasticViewModel
     private bool TryGetMeshtasticBandwidthSlots(out List<MeshtasticBandwidthSlots> selections, out string error)
     {
         selections = [];
+        if (!IsMeshtasticDiscoveryMode && !MeshtasticJpLongFastProfile.IsAutoSf(SelectedMeshtasticModemPreset))
+        {
+            MeshtasticLoRaProfile profile = MeshtasticJpLongFastProfile.GetProfile(SelectedMeshtasticModemPreset);
+            MeshtasticRegionProfile region = MeshtasticJpLongFastProfile.GetRegion(SelectedMeshtasticRegion);
+            int maxSlot = region.GetMaximumChannel(profile.BandwidthHz);
+            int slot = Math.Clamp(MeshtasticRadioChannel, 1, maxSlot);
+            selections.Add(new MeshtasticBandwidthSlots(profile.BandwidthHz, [slot]));
+            error = string.Empty;
+            return true;
+        }
+
         foreach (MeshtasticLoRaProfile profile in MeshtasticJpLongFastProfile.GetChannelProfiles(SelectedMeshtasticModemPreset))
         {
             string text = profile.BandwidthHz == 125_000 ? MeshtasticRadioChannels125 : MeshtasticRadioChannels250;
@@ -92,7 +108,8 @@ public partial class MeshtasticViewModel
     {
         frequencyHz = 0;
         bandwidthHz = 0;
-        if (IsMeshtasticDiscoveryMode ||
+        if (!IsAudioMonitorEnabled ||
+            IsMeshtasticDiscoveryMode ||
             MeshtasticJpLongFastProfile.IsAutoSf(SelectedMeshtasticModemPreset))
         {
             return false;
@@ -122,6 +139,7 @@ public partial class MeshtasticViewModel
         {
             RebuildMeshtasticSlotSelections(MeshtasticSlots250, 250_000, MeshtasticRadioChannels250);
             RebuildMeshtasticSlotSelections(MeshtasticSlots125, 125_000, MeshtasticRadioChannels125);
+            RebuildMeshtasticSpecifiedSlots();
             MeshtasticRadioChannels250 = FormatSelectedMeshtasticSlots(MeshtasticSlots250);
             MeshtasticRadioChannels125 = FormatSelectedMeshtasticSlots(MeshtasticSlots125);
         }
@@ -129,6 +147,39 @@ public partial class MeshtasticViewModel
         {
             _isUpdatingMeshtasticSlotSelection = false;
         }
+    }
+
+    private void RebuildMeshtasticSpecifiedSlots()
+    {
+        MeshtasticLoRaProfile profile = MeshtasticJpLongFastProfile.GetProfile(SelectedMeshtasticModemPreset);
+        MeshtasticRegionProfile region = MeshtasticJpLongFastProfile.GetRegion(SelectedMeshtasticRegion);
+        int bandwidthHz = profile.BandwidthHz;
+        int maxSlot = region.GetMaximumChannel(bandwidthHz);
+        int currentSlot = Math.Clamp(MeshtasticRadioChannel, 1, maxSlot);
+        if (MeshtasticRadioChannel != currentSlot)
+        {
+            MeshtasticRadioChannel = currentSlot;
+        }
+        if (!IsMeshtasticDiscoveryMode)
+        {
+            _lastSpecifiedRadioChannel = currentSlot;
+        }
+
+        bool needsRebuild = MeshtasticSpecifiedSlotOptions.Count != maxSlot ||
+            (MeshtasticSpecifiedSlotOptions.Count > 0 && MeshtasticSpecifiedSlotOptions[0].FrequencyHz != region.CalculateChannelFrequencyHz(1, bandwidthHz));
+
+        if (needsRebuild)
+        {
+            MeshtasticSpecifiedSlotOptions.Clear();
+            for (int slot = 1; slot <= maxSlot; slot++)
+            {
+                int freq = region.CalculateChannelFrequencyHz(slot, bandwidthHz);
+                MeshtasticSpecifiedSlotOptions.Add(new MeshtasticSpecifiedSlotOption(slot, freq));
+            }
+        }
+
+        OnPropertyChanged(nameof(SelectedMeshtasticSpecifiedSlotOption));
+        OnPropertyChanged(nameof(MeshtasticRadioChannel));
     }
 
     private void RebuildMeshtasticSlotSelections(ObservableCollection<MeshtasticSlotSelectionItem> target,

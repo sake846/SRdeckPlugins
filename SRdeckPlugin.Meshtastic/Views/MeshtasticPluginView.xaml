@@ -16,6 +16,27 @@
                 <Setter Property="ToolTipService.InitialShowDelay" Value="300" />
                 <Setter Property="ToolTipService.ShowDuration" Value="60000" />
             </Style>
+            <DataTemplate x:Key="MeshtasticDetailFieldsTemplate">
+                <ItemsControl ItemsSource="{Binding}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter">
+                            <Setter Property="MaxWidth" Value="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
+                        </Style>
+                    </ItemsControl.ItemContainerStyle>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Margin="0,1,12,3" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap">
+                                <Run Text="{Binding Name, Mode=OneWay}" Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" /><Run Text="{Binding Separator, Mode=OneWay}" Foreground="{DynamicResource TextDimBrush}" /><Run Text="{Binding Value, Mode=OneWay}" />
+                            </TextBlock>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DataTemplate>
         </ResourceDictionary>
     </UserControl.Resources>
     <Grid>
@@ -26,9 +47,10 @@
 
         <views:MeshtasticSettingsView Grid.Row="0" />
 
-        <Border Grid.Row="1" Style="{StaticResource MeshtasticPanelStyle}"
+        <Border x:Name="MeshtasticReceiverPanel" Grid.Row="1" Style="{StaticResource MeshtasticPanelStyle}"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                Margin="6,6,6,6" TextElement.FontSize="10">
+                Margin="6,0,6,6" TextElement.FontSize="10"
+                SizeChanged="OnReceiverPanelSizeChanged">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="36" />
@@ -73,12 +95,12 @@
 
                                                              <TextBlock Grid.Column="0" Text="{Binding LastSeenTime}" Foreground="{DynamicResource TextDimBrush}" FontSize="10" FontFamily="{DynamicResource DisplayFontFamily}" VerticalAlignment="Center" Margin="0,0,8,0" />
 
-                                                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
-                                                                 <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource PluginDisplayAccentTertiaryBrush}" FontSize="10" FontWeight="Bold" FontFamily="{DynamicResource MainFontFamily}" Margin="0,0,5,0" VerticalAlignment="Center" Style="{StaticResource OverflowTextStyle}" />
-                                                                 <TextBlock Text="{Binding NodeId}" Foreground="{DynamicResource TextDimBrush}" FontSize="9.5" FontFamily="{DynamicResource DisplayFontFamily}" VerticalAlignment="Center" Style="{StaticResource OverflowTextStyle}" />
-                                                             </StackPanel>
+                                                              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                                                                  <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource PluginDisplayAccentTertiaryBrush}" FontSize="10" FontWeight="Bold" FontFamily="{DynamicResource MainFontFamily}" Margin="0,0,5,0" VerticalAlignment="Center" Style="{StaticResource OverflowTextStyle}" />
+                                                                  <TextBlock Text="{Binding NodeId}" Foreground="{DynamicResource TextDimBrush}" FontSize="9.5" FontFamily="{DynamicResource DisplayFontFamily}" VerticalAlignment="Center" Style="{StaticResource OverflowTextStyle}" />
+                                                              </StackPanel>
 
-                                                             <TextBlock Grid.Column="2" Text="{Binding LastSummaryText}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10" FontFamily="{DynamicResource DisplayFontFamily}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding LastSummaryText}" />
+                                                             <TextBlock Grid.Column="2" Text="{Binding LastSummaryText}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10" FontFamily="{DynamicResource DisplayFontFamily}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                                          </Grid>
                                                      </DataTemplate>
                                                  </ListBox.ItemTemplate>
@@ -137,7 +159,7 @@
                                                                                 VerticalAlignment="Center">
                                                                             <TextBlock Text="💬" FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
                                                                         </Border>
-                                                                        <TextBlock Text="{Binding SenderName}" Foreground="{DynamicResource PluginDisplayAccentTertiaryBrush}" FontSize="10" FontWeight="Bold" FontFamily="{DynamicResource MainFontFamily}" Margin="0,0,5,0" Style="{StaticResource OverflowTextStyle}" />
+                                                                        <TextBlock Text="{Binding SenderName}" Foreground="{DynamicResource PluginDisplayAccentTertiaryBrush}" FontSize="10" FontWeight="Bold" FontFamily="{DynamicResource MainFontFamily}" Margin="0,0,5,0" VerticalAlignment="Center" Style="{StaticResource OverflowTextStyle}" />
                                                                         <TextBlock Text="{Binding Sender}" Foreground="{DynamicResource TextDimBrush}" FontSize="10" FontFamily="{DynamicResource DisplayFontFamily}" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource OverflowTextStyle}" />
                                                                     </StackPanel>
 
@@ -151,14 +173,14 @@
                                                                         <TextBlock Text="{Binding RelayText}" Foreground="{DynamicResource TextDimBrush}" FontSize="9" FontFamily="{DynamicResource DisplayFontFamily}" />
                                                                     </Border>
 
-                                                                    <Border Background="{DynamicResource InstrumentBaseBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="4,1" Margin="0,0,5,2" ToolTip="{Binding Radio}">
+                                                                    <Border Background="{DynamicResource InstrumentBaseBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="4,1" Margin="0,0,5,2">
                                                                         <StackPanel Orientation="Horizontal">
                                                                             <TextBlock Text="📻 " FontSize="8.5" VerticalAlignment="Center" />
                                                                             <TextBlock Text="{Binding SlotAndPresetText}" Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" FontSize="9" FontFamily="{DynamicResource DisplayFontFamily}" FontWeight="SemiBold" />
                                                                         </StackPanel>
                                                                     </Border>
 
-                                                                    <Border Background="{DynamicResource InstrumentBaseBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="4,1" Margin="0,0,5,2" ToolTip="{Binding Quality}">
+                                                                    <Border Background="{DynamicResource InstrumentBaseBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="4,1" Margin="0,0,5,2">
                                                                         <StackPanel Orientation="Horizontal">
                                                                             <TextBlock Text="⚡ " FontSize="8.5" VerticalAlignment="Center" />
                                                                             <TextBlock Text="{Binding SignalQualityText}" Foreground="{DynamicResource TextDimBrush}" FontSize="9" FontFamily="{DynamicResource DisplayFontFamily}" />
@@ -193,98 +215,151 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" MinHeight="0" />
                                     <RowDefinition Height="5" />
-                                    <RowDefinition Height="190" MinHeight="112" MaxHeight="280" />
+                                    <RowDefinition x:Name="MeshtasticNodeDetailRowDefinition" Height="190" MinHeight="0" />
                                 </Grid.RowDefinitions>
-                                <StackPanel Margin="8,6,8,4">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="ノード別" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}"
-                                                   FontSize="10" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="検索" Style="{DynamicResource PluginListSearchLabelStyle}" />
-                                        <TextBox Grid.Column="2"
-                                                 Text="{Binding MeshtasticNodeSearchText, UpdateSourceTrigger=PropertyChanged}"
-                                                 ToolTip="ノード名、Node ID、ハードウェア、役割を検索"
-                                                 Style="{DynamicResource PluginListSearchTextBoxStyle}" />
-                                    </Grid>
-                                    <Grid Margin="0,4,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <WrapPanel>
-                                            <CheckBox Content="活動中" IsChecked="{Binding MeshtasticNodesActiveOnly}"
-                                                      Style="{DynamicResource PluginCheckBoxStyle}" Margin="0,0,4,0" />
-                                            <CheckBox Content="直接受信あり" IsChecked="{Binding MeshtasticNodesDirectOnly}"
-                                                      Style="{DynamicResource PluginCheckBoxStyle}" Margin="0,0,4,0" />
-                                            <CheckBox Content="位置あり" IsChecked="{Binding MeshtasticNodesWithPositionOnly}"
-                                                      Style="{DynamicResource PluginCheckBoxStyle}" />
-                                        </WrapPanel>
-                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextDimBrush}"
-                                                   FontFamily="{DynamicResource DisplayFontFamily}" FontSize="10"
-                                                   VerticalAlignment="Center" Margin="8,0,0,0">
-                                            <Run Text="表示 "/><Run Text="{Binding FilteredMeshtasticNodes.Count, Mode=OneWay}"
-                                                                   Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"/><Run Text=" 件"/>
-                                        </TextBlock>
-                                    </Grid>
-                                </StackPanel>
+                                <Grid Margin="8,6,8,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <WrapPanel VerticalAlignment="Center">
+                                        <CheckBox Content="活動中" IsChecked="{Binding MeshtasticNodesActiveOnly}"
+                                                  Style="{DynamicResource PluginCheckBoxStyle}" Margin="0,0,4,0" />
+                                        <CheckBox Content="直接受信あり" IsChecked="{Binding MeshtasticNodesDirectOnly}"
+                                                  Style="{DynamicResource PluginCheckBoxStyle}" Margin="0,0,4,0" />
+                                        <CheckBox Content="位置あり" IsChecked="{Binding MeshtasticNodesWithPositionOnly}"
+                                                  Style="{DynamicResource PluginCheckBoxStyle}" />
+                                    </WrapPanel>
+                                    <TextBlock Grid.Column="1" Text="検索" Style="{DynamicResource PluginListSearchLabelStyle}" />
+                                    <TextBox Grid.Column="2"
+                                             Text="{Binding MeshtasticNodeSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{DynamicResource PluginListSearchTextBoxStyle}" />
+                                </Grid>
                                 <Border Grid.Row="1" Style="{DynamicResource PluginTimelineBorderStyle}">
                                     <Grid>
                                         <DataGrid x:Name="MeshtasticNodeDataGrid"
                                                   ItemsSource="{Binding FilteredMeshtasticNodes}"
                                                   SelectedItem="{Binding SelectedMeshtasticNode, Mode=TwoWay}"
                                                   Style="{DynamicResource PluginTimelineDataGridStyle}">
+                                            <DataGrid.RowStyle>
+                                                <Style TargetType="DataGridRow" BasedOn="{StaticResource PluginDataGridRowStyle}">
+                                                    <Setter Property="Tag"
+                                                            Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}" />
+                                                    <Setter Property="ContextMenu">
+                                                        <Setter.Value>
+                                                            <ContextMenu Style="{StaticResource PluginContextMenuStyle}">
+                                                                <MenuItem Header="削除"
+                                                                          Style="{DynamicResource PluginMenuItemStyle}"
+                                                                          Command="{Binding PlacementTarget.Tag.DeleteMeshtasticNodeCommand, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                                            </ContextMenu>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </DataGrid.RowStyle>
                                             <DataGrid.Columns>
-                                                <DataGridTemplateColumn Header="最終受信" Width="82" SortMemberPath="LastSeenAt" SortDirection="Descending"
-                                                                        CellStyle="{DynamicResource PluginTimelineTimestampCellStyle}">
-                                                    <DataGridTemplateColumn.CellTemplate>
-                                                        <DataTemplate>
-                                                            <StackPanel Margin="0,2,0,0">
-                                                                <TextBlock Text="{Binding LastSeenDateTimeText}"
-                                                                           Style="{DynamicResource PluginTimelineTimestampTextStyle}"
-                                                                           LineHeight="13" ToolTip="{Binding LastSeenDateTimeText}" />
-                                                                <TextBlock Text="{Binding ActivityStatus}"
-                                                                           Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0" />
-                                                            </StackPanel>
-                                                        </DataTemplate>
-                                                    </DataGridTemplateColumn.CellTemplate>
-                                                </DataGridTemplateColumn>
-                                                <DataGridTemplateColumn Header="ノード" Width="*" MinWidth="200" SortMemberPath="DisplayName">
-                                                    <DataGridTemplateColumn.CellTemplate>
-                                                        <DataTemplate>
-                                                            <Grid Margin="0,2,0,3" ToolTip="{Binding Details}"
-                                                                  TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
-                                                                <Grid.RowDefinitions>
-                                                                    <RowDefinition Height="Auto" />
-                                                                    <RowDefinition Height="Auto" />
-                                                                    <RowDefinition Height="Auto" />
-                                                                </Grid.RowDefinitions>
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="{Binding DisplayName}"
-                                                                               Style="{DynamicResource PluginTimelineIdentityTextStyle}"
-                                                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayName}" />
-                                                                    <TextBlock Grid.Column="1" Text="{Binding NodeId}" Margin="8,0,0,0"
-                                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                                                                </Grid>
-                                                                <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}"
-                                                                           Margin="0,2,0,0" TextTrimming="CharacterEllipsis"
-                                                                           ToolTip="{Binding Identity}">
-                                                                    <Run Text="{Binding Identity, Mode=OneWay}"/><Run Text="  /  "/><Run Text="{Binding Route, Mode=OneWay}"/>
-                                                                </TextBlock>
-                                                                <TextBlock Grid.Row="2" Text="{Binding LastSummaryText}" Margin="0,2,0,0"
-                                                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                                                           TextWrapping="Wrap" ToolTip="{Binding LastSummaryText}" />
-                                                            </Grid>
-                                                        </DataTemplate>
-                                                    </DataGridTemplateColumn.CellTemplate>
-                                                </DataGridTemplateColumn>
+                                                 <DataGridTemplateColumn Header="最終受信" Width="82" SortMemberPath="LastSeenAt" SortDirection="Descending"
+                                                                         CellStyle="{DynamicResource PluginTimelineTimestampCellStyle}">
+                                                     <DataGridTemplateColumn.CellTemplate>
+                                                         <DataTemplate>
+                                                             <StackPanel Margin="0">
+                                                                 <TextBlock Text="{Binding LastSeenDateTimeText}"
+                                                                            Style="{DynamicResource PluginTimelineTimestampTextStyle}"
+                                                                            LineHeight="13" />
+                                                                 <TextBlock Text="{Binding ActivityStatus}"
+                                                                            Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0" />
+                                                             </StackPanel>
+                                                         </DataTemplate>
+                                                     </DataGridTemplateColumn.CellTemplate>
+                                                 </DataGridTemplateColumn>
+                                                 <DataGridTemplateColumn Header="ノード" Width="*" MinWidth="200" SortMemberPath="DisplayName">
+                                                     <DataGridTemplateColumn.CellTemplate>
+                                                         <DataTemplate>
+                                                             <Grid Margin="0,2,0,2"
+                                                                   TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
+                                                                 <Grid.RowDefinitions>
+                                                                     <RowDefinition Height="Auto" />
+                                                                     <RowDefinition Height="Auto" />
+                                                                     <RowDefinition Height="Auto" />
+                                                                 </Grid.RowDefinitions>
+                                                                 <Grid>
+                                                                     <Grid.ColumnDefinitions>
+                                                                         <ColumnDefinition Width="*" />
+                                                                         <ColumnDefinition Width="Auto" />
+                                                                     </Grid.ColumnDefinitions>
+                                                                     <DockPanel LastChildFill="False">
+                                                                         <TextBlock DockPanel.Dock="Left" Text="{Binding DisplayName}"
+                                                                                    Style="{DynamicResource PluginTimelineIdentityTextStyle}"
+                                                                                    TextTrimming="CharacterEllipsis"
+                                                                                    VerticalAlignment="Center" />
+                                                                         <TextBlock DockPanel.Dock="Left" Text="{Binding NodeId}" Margin="8,0,0,0"
+                                                                                    Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                                    VerticalAlignment="Center" />
+                                                                     </DockPanel>
+                                                                     <TextBlock Grid.Column="1" Margin="12,0,0,0"
+                                                                                Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                                VerticalAlignment="Center">
+                                                                         <Run Text="直接 "/><Run Text="{Binding DirectReceptionCount, Mode=OneWay}"/><Run Text=" 回"/>
+                                                                         <Run Text="  中継 "/><Run Text="{Binding RelayedReceptionCount, Mode=OneWay}"/><Run Text=" 回"/>
+                                                                     </TextBlock>
+                                                                 </Grid>
+                                                                 <Grid Grid.Row="1" Margin="0,3,0,0">
+                                                                     <Grid.ColumnDefinitions>
+                                                                         <ColumnDefinition Width="*" />
+                                                                         <ColumnDefinition Width="Auto" />
+                                                                     </Grid.ColumnDefinitions>
+                                                                     <TextBlock Foreground="{DynamicResource TextDimBrush}"
+                                                                                TextTrimming="CharacterEllipsis"
+                                                                                VerticalAlignment="Center">
+                                                                         <Run Text="{Binding HardwareName, Mode=OneWay}" />
+                                                                         <Run Text=" ROLE" />
+                                                                         <Run Text="{Binding RoleName, Mode=OneWay}" />
+                                                                         <Run Text=" 初回受信" />
+                                                                         <Run Text="{Binding FirstSeenDateTimeText, Mode=OneWay}" />
+                                                                     </TextBlock>
+                                                                     <TextBlock Grid.Column="1" Text="{Binding SlotAndPresetText, Mode=OneWay}" Margin="8,0,0,0"
+                                                                                Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                                TextTrimming="CharacterEllipsis"
+                                                                                VerticalAlignment="Center" />
+                                                                 </Grid>
+                                                                 <ItemsControl Grid.Row="2" Margin="0,3,0,0"
+                                                                               ItemsSource="{Binding ApplicationTypes}">
+                                                                     <ItemsControl.ItemsPanel>
+                                                                         <ItemsPanelTemplate>
+                                                                             <WrapPanel Orientation="Horizontal" />
+                                                                         </ItemsPanelTemplate>
+                                                                     </ItemsControl.ItemsPanel>
+                                                                     <ItemsControl.ItemTemplate>
+                                                                         <DataTemplate>
+                                                                             <Border Background="{DynamicResource InstrumentBaseBrush}"
+                                                                                     BorderBrush="{DynamicResource ControlBorderBrush}"
+                                                                                     BorderThickness="1"
+                                                                                     CornerRadius="3"
+                                                                                     Padding="4,1"
+                                                                                     Margin="0,0,5,1">
+                                                                                 <TextBlock Text="{Binding Name}"
+                                                                                            FontFamily="{DynamicResource DisplayFontFamily}"
+                                                                                            FontSize="9">
+                                                                                     <TextBlock.Style>
+                                                                                         <Style TargetType="TextBlock">
+                                                                                             <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+                                                                                             <Style.Triggers>
+                                                                                                 <DataTrigger Binding="{Binding IsReceived}" Value="True">
+                                                                                                     <Setter Property="Foreground" Value="{DynamicResource PluginDisplayAccentPrimaryBrush}" />
+                                                                                                 </DataTrigger>
+                                                                                             </Style.Triggers>
+                                                                                         </Style>
+                                                                                     </TextBlock.Style>
+                                                                                 </TextBlock>
+                                                                             </Border>
+                                                                         </DataTemplate>
+                                                                     </ItemsControl.ItemTemplate>
+                                                                 </ItemsControl>
+                                                             </Grid>
+                                                         </DataTemplate>
+                                                     </DataGridTemplateColumn.CellTemplate>
+                                                 </DataGridTemplateColumn>
                                             </DataGrid.Columns>
                                         </DataGrid>
                                         <TextBlock Text="条件に一致するノードがありません。">
@@ -303,88 +378,109 @@
                                 </Border>
                                 <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch"
                                               Background="Transparent" ResizeDirection="Rows" />
-                                <controls:SelectionDetailPane Grid.Row="3" DetailContent="{Binding SelectedMeshtasticNode}"
-                                    EmptyText="一覧からノードを選択すると、識別情報と最近の受信内容が表示されます">
-                                    <controls:SelectionDetailPane.DetailContentTemplate>
+                                <controls:TimelineDetailPane x:Name="MeshtasticNodeDetailPane" Grid.Row="3" MinHeight="0" DetailContent="{Binding SelectedMeshtasticNode}"
+                                    EmptyText="一覧からノードを選択すると、ノード情報とAPPごとの最新値が表示されます">
+                                    <controls:TimelineDetailPane.DetailContentTemplate>
                                         <DataTemplate>
-                                            <Grid Margin="4,2">
-                                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="2*" MinWidth="120" />
-                                                    <ColumnDefinition Width="6" />
-                                                    <ColumnDefinition Width="3*" MinWidth="220" />
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,8,4">
-                                                    <TextBlock Text="{Binding DisplayName}" Style="{DynamicResource PluginIdentityTextStyle}" Margin="0,0,8,0"/>
-                                                    <TextBlock Text="{Binding NodeId}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                </StackPanel>
-                                                <TextBlock Grid.Column="2" Text="このノードの受信履歴"
-                                                           Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="8,0,0,4"/>
-                                                <GridSplitter Grid.Column="1" Grid.RowSpan="2"
-                                                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                                                              Background="Transparent" ResizeDirection="Columns"
-                                                              ResizeBehavior="PreviousAndNext" Cursor="SizeWE" />
-                                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                                    <StackPanel Margin="0,0,8,0">
-                                                        <TextBlock Text="識別" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/>
-                                                        <TextBlock Text="{Binding Identity}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap"/>
-                                                        <TextBlock Text="受信モード / 経路" Style="{DynamicResource PluginSelectionDetailLabelStyle}" Margin="0,5,0,0"/>
-                                                        <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap"><Run Text="{Binding Mode, Mode=OneWay}"/><Run Text="  /  "/><Run Text="{Binding Route, Mode=OneWay}"/></TextBlock>
-                                                        <TextBlock Text="位置 / テレメトリ" Style="{DynamicResource PluginSelectionDetailLabelStyle}" Margin="0,5,0,0"/>
-                                                        <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap"><Run Text="{Binding Position, Mode=OneWay}"/><Run Text="  /  "/><Run Text="{Binding Telemetry, Mode=OneWay}"/></TextBlock>
-                                                        <TextBlock Text="受信統計 / 信号品質" Style="{DynamicResource PluginSelectionDetailLabelStyle}" Margin="0,5,0,0"/>
-                                                        <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap"><Run Text="{Binding Counts, Mode=OneWay}"/><Run Text="  /  "/><Run Text="{Binding SignalQuality, Mode=OneWay}"/></TextBlock>
-                                                        <TextBlock Text="最新メッセージ" Style="{DynamicResource PluginSelectionDetailLabelStyle}" Margin="0,5,0,0"/>
-                                                        <TextBlock Text="{Binding LastMessage}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap"/>
-                                                    </StackPanel>
-                                                </ScrollViewer>
-                                                <ListBox Grid.Row="1" Grid.Column="2"
-                                                         ItemsSource="{Binding DataContext.SelectedMeshtasticNodeReceptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                         Background="{DynamicResource PanelBaseBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1,0,0,0"
-                                                         Foreground="{DynamicResource TextPrimaryBrush}" ScrollViewer.VerticalScrollBarVisibility="Auto">
-                                                    <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0"/><Setter Property="Focusable" Value="False"/></Style></ListBox.ItemContainerStyle>
-                                                    <ListBox.ItemTemplate><DataTemplate>
-                                                        <Grid Margin="7,3">
-                                                            <Grid.ColumnDefinitions><ColumnDefinition Width="58"/><ColumnDefinition Width="92"/><ColumnDefinition Width="76"/><ColumnDefinition Width="*" MinWidth="120"/></Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding ReceivedTime}" Foreground="{DynamicResource TextDimBrush}" FontSize="10" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                            <TextBlock Grid.Column="1" Text="{Binding Transmission}" Style="{StaticResource OverflowTextStyle}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10"/>
-                                                            <TextBlock Grid.Column="2" Text="{Binding Route}" Style="{StaticResource OverflowTextStyle}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                            <TextBlock Grid.Column="3" Text="{Binding Summary}" Style="{StaticResource OverflowTextStyle}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10"/>
-                                                        </Grid>
-                                                    </DataTemplate></ListBox.ItemTemplate>
-                                                </ListBox>
-                                            </Grid>
+                                            <StackPanel Margin="6,4">
+                                                <WrapPanel Margin="0,0,0,4">
+                                                    <TextBlock Text="{Binding DisplayName}" Style="{DynamicResource PluginIdentityTextStyle}" Margin="0,0,8,0" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding NodeId}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" />
+                                                </WrapPanel>
+                                                <WrapPanel Margin="0,0,0,8">
+                                                    <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                        <Run Text="識別 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" /><Run Text="{Binding Identity, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                    <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                        <Run Text="最終受信 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" /><Run Text="{Binding LastSeen, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                    <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                        <Run Text="受信モード " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" /><Run Text="{Binding Mode, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                    <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                        <Run Text="経路 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" /><Run Text="{Binding Route, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                    <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                        <Run Text="受信統計 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" /><Run Text="{Binding Counts, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                    <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                        <Run Text="信号品質 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" /><Run Text="{Binding SignalQuality, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                </WrapPanel>
+                                                <ItemsControl ItemsSource="{Binding DataContext.SelectedMeshtasticNodeLatestApplications, RelativeSource={RelativeSource AncestorType=views:MeshtasticPluginView}}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Margin="0,2,0,8">
+                                                                <WrapPanel Margin="0,0,0,4">
+                                                                    <TextBlock Text="{Binding Port}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontWeight="SemiBold" Margin="0,0,12,0" />
+                                                                    <TextBlock Text="{Binding ReceivedDateTimeSingleLineText}" Foreground="{DynamicResource TextDimBrush}" FontFamily="{DynamicResource DisplayFontFamily}" />
+                                                                </WrapPanel>
+                                                                <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" Margin="0,1,0,4">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock" BasedOn="{StaticResource PluginTimelineDetailValueStyle}">
+                                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsTextMessage}" Value="True">
+                                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                                <ContentControl Content="{Binding DisplayFields}" ContentTemplate="{StaticResource MeshtasticDetailFieldsTemplate}" HorizontalContentAlignment="Stretch">
+                                                                    <ContentControl.Style>
+                                                                        <Style TargetType="ContentControl">
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsTextMessage}" Value="True">
+                                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </ContentControl.Style>
+                                                                </ContentControl>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <TextBlock Text="このノードの復号済みAPPデータはありません。" Foreground="{DynamicResource TextDimBrush}" Margin="0,4" TextWrapping="Wrap">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding DataContext.SelectedMeshtasticNodeLatestApplications.Count, RelativeSource={RelativeSource AncestorType=views:MeshtasticPluginView}}" Value="0">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
                                         </DataTemplate>
-                                    </controls:SelectionDetailPane.DetailContentTemplate>
-                                </controls:SelectionDetailPane>
+                                    </controls:TimelineDetailPane.DetailContentTemplate>
+                                </controls:TimelineDetailPane>
                             </Grid>
                         </TabItem>
 
                         <TabItem x:Name="MeshtasticTimelineTab" Header="時系列">
                             <Grid>
-                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="5"/><RowDefinition Height="170" MinHeight="96" MaxHeight="280"/></Grid.RowDefinitions>
-                                <StackPanel Margin="8,6,8,4">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="時系列順" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}"
-                                                   FontSize="10" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="検索" Style="{DynamicResource PluginListSearchLabelStyle}" />
-                                        <TextBox Grid.Column="2"
-                                                 Text="{Binding MeshtasticHistorySearchText, UpdateSourceTrigger=PropertyChanged}"
-                                                 ToolTip="ノード名、Node ID、Packet ID、Port、内容を検索"
-                                                 Style="{DynamicResource PluginListSearchTextBoxStyle}" />
-                                    </Grid>
-                                    <WrapPanel Margin="0,4,0,0">
+                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*" MinHeight="0"/><RowDefinition Height="5"/><RowDefinition x:Name="MeshtasticTimelineDetailRowDefinition" Height="170" MinHeight="0"/></Grid.RowDefinitions>
+                                <Grid Margin="8,6,8,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <WrapPanel VerticalAlignment="Center">
                                         <CheckBox Content="復号済みのみ" IsChecked="{Binding MeshtasticHistoryDecodedOnly}"
                                                   Style="{DynamicResource PluginCheckBoxStyle}" Margin="0,0,4,0" />
                                         <CheckBox Content="直接受信のみ" IsChecked="{Binding MeshtasticHistoryDirectOnly}"
                                                   Style="{DynamicResource PluginCheckBoxStyle}" />
                                     </WrapPanel>
-                                </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="検索" Style="{DynamicResource PluginListSearchLabelStyle}" />
+                                    <TextBox Grid.Column="2"
+                                             Text="{Binding MeshtasticHistorySearchText, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{DynamicResource PluginListSearchTextBoxStyle}" />
+                                </Grid>
                                 <Border Grid.Row="1" Style="{DynamicResource PluginTimelineBorderStyle}">
                                     <Grid>
                                          <DataGrid x:Name="MeshtasticTimelineDataGrid"
@@ -399,19 +495,16 @@
                                                             <TextBlock Text="{Binding ReceivedDateTimeText}"
                                                                        Style="{DynamicResource PluginTimelineTimestampTextStyle}"
                                                                        LineHeight="13"
-                                                                       VerticalAlignment="Top" Margin="0,2,0,0"
-                                                                       ToolTip="{Binding ReceivedDateTimeText}" />
+                                                                       VerticalAlignment="Top" Margin="0" />
                                                         </DataTemplate>
                                                     </DataGridTemplateColumn.CellTemplate>
                                                 </DataGridTemplateColumn>
                                                 <DataGridTemplateColumn Header="受信イベント" Width="*" MinWidth="200" SortMemberPath="SenderName">
                                                     <DataGridTemplateColumn.CellTemplate>
                                                         <DataTemplate>
-                                                            <Grid Margin="0,2,0,3"
+                                                            <Grid Margin="0,2,0,2"
                                                                   TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
                                                                 <Grid.RowDefinitions>
-                                                                    <RowDefinition Height="Auto" />
-                                                                    <RowDefinition Height="Auto" />
                                                                     <RowDefinition Height="Auto" />
                                                                     <RowDefinition Height="Auto" />
                                                                 </Grid.RowDefinitions>
@@ -420,27 +513,37 @@
                                                                         <ColumnDefinition Width="*" />
                                                                         <ColumnDefinition Width="Auto" />
                                                                     </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="{Binding SenderName}"
-                                                                               Style="{DynamicResource PluginTimelineIdentityTextStyle}"
-                                                                               TextTrimming="CharacterEllipsis"
-                                                                               ToolTip="{Binding SenderName}" />
+                                                                    <DockPanel LastChildFill="False">
+                                                                        <TextBlock DockPanel.Dock="Left" Text="{Binding SenderName}"
+                                                                                   Style="{DynamicResource PluginTimelineIdentityTextStyle}"
+                                                                                   TextTrimming="CharacterEllipsis"
+                                                                                   VerticalAlignment="Center" />
+                                                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Sender}" Margin="8,0,0,0"
+                                                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                                   VerticalAlignment="Center" />
+                                                                    </DockPanel>
                                                                     <TextBlock Grid.Column="1" Text="{Binding RelayText}" Margin="8,0,0,0"
                                                                                Foreground="{DynamicResource TextSecondaryBrush}"
-                                                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding RelayText}" />
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               VerticalAlignment="Center" />
                                                                 </Grid>
-                                                                <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}"
-                                                                           Margin="0,2,0,0" TextWrapping="Wrap">
-                                                                    <Run Text="Node "/><Run Text="{Binding Sender, Mode=OneWay}" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                                    <Run Text="  /  Packet "/><Run Text="{Binding PacketIdText, Mode=OneWay}" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                                    <Run Text="  /  "/><Run Text="{Binding Port, Mode=OneWay}"/>
-                                                                </TextBlock>
-                                                                <TextBlock Grid.Row="2" Text="{Binding Summary}" Margin="0,2,0,0"
-                                                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                                                           TextWrapping="Wrap" ToolTip="{Binding Details}" />
-                                                                <TextBlock Grid.Row="3" Foreground="{DynamicResource TextDimBrush}"
-                                                                           Margin="0,2,0,0" TextWrapping="Wrap">
-                                                                    <Run Text="{Binding Radio, Mode=OneWay}"/><Run Text="  /  "/><Run Text="{Binding Quality, Mode=OneWay}"/>
-                                                                </TextBlock>
+                                                                <Grid Grid.Row="1" Margin="0,3,0,0">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*" />
+                                                                        <ColumnDefinition Width="Auto" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock Foreground="{DynamicResource TextDimBrush}"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               VerticalAlignment="Center">
+                                                                        <Run Text="Packet "/><Run Text="{Binding PacketIdText, Mode=OneWay}" FontFamily="{DynamicResource DisplayFontFamily}"/>
+                                                                        <Run Text="  "/><Run Text="{Binding QualityText, Mode=OneWay}"/>
+                                                                        <Run Text="  "/><Run Text="{Binding Port, Mode=OneWay}"/>
+                                                                    </TextBlock>
+                                                                    <TextBlock Grid.Column="1" Text="{Binding SlotAndPresetText}" Margin="8,0,0,0"
+                                                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               VerticalAlignment="Center" />
+                                                                </Grid>
                                                             </Grid>
                                                         </DataTemplate>
                                                     </DataGridTemplateColumn.CellTemplate>
@@ -462,24 +565,15 @@
                                     </Grid>
                                  </Border>
                                 <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows"/>
-                                <controls:TimelineDetailPane Grid.Row="3" DetailContent="{Binding SelectedTimelineMessage}"
+                                <controls:TimelineDetailPane x:Name="MeshtasticTimelineDetailPane" Grid.Row="3" MinHeight="0" DetailContent="{Binding SelectedTimelineMessage}"
                                     EmptyText="時系列のパケットを選択すると、経路・復号・無線条件の詳細が表示されます">
-                                    <controls:TimelineDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="4,2">
-                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="{Binding SenderName}" Style="{DynamicResource PluginIdentityTextStyle}"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding ReceivedDateTimeText}" Style="{DynamicResource PluginTimelineDetailTimestampStyle}"/>
-                                        </Grid>
-                                        <UniformGrid Columns="4" Margin="0,4,0,2">
-                                            <StackPanel><TextBlock Text="ノード / パケット" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding Sender, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding PacketIdText, Mode=OneWay}"/></TextBlock></StackPanel>
-                                            <StackPanel><TextBlock Text="Port / 経路" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding Port, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding RelayText, Mode=OneWay}"/></TextBlock></StackPanel>
-                                            <StackPanel><TextBlock Text="無線" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Text="{Binding SlotAndPresetText}" Style="{DynamicResource PluginTimelineDetailValueStyle}"/></StackPanel>
-                                            <StackPanel><TextBlock Text="品質 / CRC" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding Quality, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding PayloadCrcValid, Mode=OneWay}"/></TextBlock></StackPanel>
-                                        </UniformGrid>
-                                        <TextBlock Text="{Binding Details}" Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,4,0,0"/>
-                                        <Expander Header="ペイロード (HEX)" Style="{DynamicResource PluginTimelineExpanderStyle}">
-                                            <TextBlock Text="{Binding PayloadHex}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap"/>
-                                        </Expander>
-                                    </StackPanel></DataTemplate></controls:TimelineDetailPane.DetailContentTemplate>
+                                    <controls:TimelineDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="6,4">
+                                         <TextBlock Text="{Binding SenderName}" Style="{DynamicResource PluginIdentityTextStyle}" Margin="0,0,0,4"/>
+                                         <TextBlock Text="{Binding Port}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontWeight="SemiBold" Margin="0,2,0,4"/>
+                                         <ContentControl Content="{Binding DisplayFields}" ContentTemplate="{StaticResource MeshtasticDetailFieldsTemplate}" HorizontalContentAlignment="Stretch" Margin="0,0,0,8" />
+                                         <TextBlock Text="ペイロード" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="0,4,0,3"/>
+                                         <TextBlock Text="{Binding PayloadHex}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                     </StackPanel></DataTemplate></controls:TimelineDetailPane.DetailContentTemplate>
                                 </controls:TimelineDetailPane>
                             </Grid>
                         </TabItem>

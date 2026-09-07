@@ -524,4 +524,5 @@ tmp_*.cmd
 packages.lock.json
 
 /temp/
+/tmp/
 RELEASE_NOTES/

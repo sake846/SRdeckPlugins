@@ -3,7 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
              Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10">
-    <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+    <Grid>
+        <Border Style="{DynamicResource PluginSettingsPanelStyle}">
         <Grid>
             <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="*"/></Grid.RowDefinitions>
             <ContentControl Content="{Binding SettingStatus}" Tag="AIS"
@@ -144,5 +145,6 @@
                 </TabItem>
             </TabControl>
         </Grid>
-    </Border>
+        </Border>
+    </Grid>
 </UserControl>

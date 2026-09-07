@@ -16,19 +16,31 @@ public static class MeshtasticApplicationPayloadParser
         {
             payload = data.PortNumber switch
             {
+                1 => ParsePlaintext("TextMessage", data.Payload),
                 2 => ParseRemoteHardware(data.Payload),
                 3 => ParsePosition(data.Payload),
                 4 => ParseNodeInfo(data.Payload),
                 5 => ParseRouting(data.Payload),
+                8 => ParseWaypoint(data.Payload),
                 10 => ParseDetectionSensor(data.Payload),
+                11 => ParsePlaintext("Alert", data.Payload, "ALERT: "),
+                32 => ParsePlaintext("Reply", data.Payload),
+                36 => ParseNodeStatus(data.Payload),
                 65 => ParseGenericProtobuf("StoreForward", data.Payload),
+                66 => ParsePlaintext("RangeTest", data.Payload),
                 67 => ParseTelemetry(data.Payload),
                 70 => ParseRouteDiscovery(data.Payload, "Traceroute"),
                 71 => ParseNeighborInfo(data.Payload),
+                73 => ParseMapReport(data.Payload),
                 _ => null
             };
+            if (payload is null)
+            {
+                error = $"payload decoder is not implemented for {data.PortName} ({data.PortNumber})";
+                return false;
+            }
             error = string.Empty;
-            return payload is not null;
+            return true;
         }
         catch (Exception exception) when (exception is FormatException or OverflowException or ArgumentException)
         {
@@ -38,10 +50,78 @@ public static class MeshtasticApplicationPayloadParser
         }
     }
 
+    private static MeshtasticApplicationPayload ParsePlaintext(string type, ReadOnlySpan<byte> bytes, string prefix = "")
+    {
+        string text = Encoding.UTF8.GetString(bytes).TrimEnd('\0');
+        return new MeshtasticStructuredPayload(type, prefix + text, $"テキスト={text}");
+    }
+
+    private static MeshtasticApplicationPayload ParseWaypoint(ReadOnlySpan<byte> bytes)
+    {
+        uint id = 0, expire = 0, lockedTo = 0, icon = 0;
+        int latitudeI = 0, longitudeI = 0;
+        string? name = null, description = null;
+        var reader = new MeshtasticProtobufReader(bytes);
+        while (reader.TryReadField(out int field, out int wire))
+        {
+            switch (field)
+            {
+                case 1: id = checked((uint)reader.ReadVarint(wire)); break;
+                case 2: latitudeI = unchecked((int)reader.ReadVarint(wire)); break;
+                case 3: longitudeI = unchecked((int)reader.ReadVarint(wire)); break;
+                case 4: expire = reader.ReadFixed32(wire); break;
+                case 5: lockedTo = checked((uint)reader.ReadVarint(wire)); break;
+                case 6: name = ReadString(ref reader, wire); break;
+                case 7: description = ReadString(ref reader, wire); break;
+                case 8: icon = checked((uint)reader.ReadVarint(wire)); break;
+                default: reader.Skip(wire); break;
+            }
+        }
+        return new MeshtasticWaypoint(id, latitudeI * 1e-7, longitudeI * 1e-7, expire, lockedTo, name, description, icon);
+    }
+
+    private static MeshtasticApplicationPayload ParseNodeStatus(ReadOnlySpan<byte> bytes)
+    {
+        string? status = null;
+        var reader = new MeshtasticProtobufReader(bytes);
+        while (reader.TryReadField(out int field, out int wire))
+        {
+            if (field == 1) status = ReadString(ref reader, wire);
+            else reader.Skip(wire);
+        }
+        return new MeshtasticNodeStatus(status);
+    }
+
+    private static MeshtasticApplicationPayload ParseMapReport(ReadOnlySpan<byte> bytes)
+    {
+        string? longName = null, shortName = null, firmwareVersion = null;
+        uint role = 0, region = 0, modemPreset = 0, onlineNodes = 0;
+        bool hasDefaultChannel = false;
+        MeshtasticPosition? position = null;
+        var reader = new MeshtasticProtobufReader(bytes);
+        while (reader.TryReadField(out int field, out int wire))
+        {
+            switch (field)
+            {
+                case 1: longName = ReadString(ref reader, wire); break;
+                case 2: shortName = ReadString(ref reader, wire); break;
+                case 3: role = checked((uint)reader.ReadVarint(wire)); break;
+                case 4: position = ParsePosition(reader.ReadBytes(wire)); break;
+                case 5: firmwareVersion = ReadString(ref reader, wire); break;
+                case 6: region = checked((uint)reader.ReadVarint(wire)); break;
+                case 7: modemPreset = checked((uint)reader.ReadVarint(wire)); break;
+                case 8: hasDefaultChannel = reader.ReadVarint(wire) != 0; break;
+                case 9: onlineNodes = checked((uint)reader.ReadVarint(wire)); break;
+                default: reader.Skip(wire); break;
+            }
+        }
+        return new MeshtasticMapReport(longName, shortName, role, position, firmwareVersion, region, modemPreset, hasDefaultChannel, onlineNodes);
+    }
+
     private static MeshtasticApplicationPayload ParseDetectionSensor(ReadOnlySpan<byte> bytes)
     {
         string text = Encoding.UTF8.GetString(bytes).TrimEnd('\0');
-        return new MeshtasticStructuredPayload("DetectionSensor", text, $"notification={text}");
+        return new MeshtasticStructuredPayload("DetectionSensor", text, $"通知={text}");
     }
 
     private static MeshtasticApplicationPayload ParseRemoteHardware(ReadOnlySpan<byte> bytes)
@@ -60,7 +140,7 @@ public static class MeshtasticApplicationPayloadParser
         }
         string typeName = type switch { 1 => "WRITE_GPIOS", 2 => "WATCH_GPIOS", 3 => "GPIOS_CHANGED", 4 => "READ_GPIOS", 5 => "READ_GPIOS_REPLY", _ => "UNSET" };
         return new MeshtasticStructuredPayload("RemoteHardware", $"{typeName}: value=0x{gpioValue:X} mask=0x{gpioMask:X}",
-            $"type={typeName}({type}) gpioValue=0x{gpioValue:X16} gpioMask=0x{gpioMask:X16}");
+            $"種別={typeName}({type})  GPIO値=0x{gpioValue:X16}  GPIOマスク=0x{gpioMask:X16}");
     }
 
     private static MeshtasticApplicationPayload ParseRouting(ReadOnlySpan<byte> bytes)
@@ -77,11 +157,11 @@ public static class MeshtasticApplicationPayloadParser
             {
                 ulong error = reader.ReadVarint(wire);
                 string name = GetRoutingError(error);
-                return new MeshtasticStructuredPayload("Routing", $"Routing {name}", $"errorReason={name}({error})");
+                return new MeshtasticStructuredPayload("Routing", $"Routing {name}", $"エラー理由={name}({error})");
             }
             reader.Skip(wire);
         }
-        return new MeshtasticStructuredPayload("Routing", "Routing ACK", "variant=empty/ACK");
+        return new MeshtasticStructuredPayload("Routing", "Routing ACK", "種別=応答/ACK");
     }
 
     private static MeshtasticApplicationPayload ParseRouteDiscovery(ReadOnlySpan<byte> bytes, string type)
@@ -115,7 +195,7 @@ public static class MeshtasticApplicationPayloadParser
         string forward = FormatRoute(towards, snrTowards);
         string reverse = FormatRoute(back, snrBack);
         return new MeshtasticStructuredPayload(type, $"往路 {forward}" + (back.Count > 0 ? $" / 復路 {reverse}" : ""),
-            $"routeTowards={forward} routeBack={reverse}");
+            $"往路={forward}  復路={reverse}");
     }
 
     private static MeshtasticApplicationPayload ParseNeighborInfo(ReadOnlySpan<byte> bytes)
@@ -132,7 +212,7 @@ public static class MeshtasticApplicationPayloadParser
             else reader.Skip(wire);
         }
         return new MeshtasticStructuredPayload("NeighborInfo", $"Node !{nodeId:x8}: neighbor {neighbors.Count}",
-            $"nodeId=!{nodeId:x8} lastSentBy=!{lastSentBy:x8} interval={interval}s neighbors=[{string.Join(", ", neighbors)}]");
+            $"ノードID=!{nodeId:x8}  送信元=!{lastSentBy:x8}  送信間隔={interval}s  ネイバー=[{string.Join(", ", neighbors)}]");
     }
 
     private static string ParseNeighbor(ReadOnlySpan<byte> bytes)
@@ -147,7 +227,7 @@ public static class MeshtasticApplicationPayloadParser
             else if (field == 4) interval = checked((uint)reader.ReadVarint(wire));
             else reader.Skip(wire);
         }
-        return $"!{id:x8} snr={snr?.ToString("F1", CultureInfo.InvariantCulture) ?? "-"}dB lastRx={lastRx} interval={interval}s";
+        return $"!{id:x8} SNR={snr?.ToString("F1", CultureInfo.InvariantCulture) ?? "-"}dB 受信時刻={lastRx} 送信間隔={interval}s";
     }
 
     private static MeshtasticApplicationPayload ParseGenericProtobuf(string type, ReadOnlySpan<byte> bytes)
@@ -391,14 +471,194 @@ public static class MeshtasticApplicationPayloadParser
     private static string FormatMac(ReadOnlySpan<byte> bytes) =>
         string.Join(":", bytes.ToArray().Select(value => value.ToString("X2", CultureInfo.InvariantCulture)));
 
-    public static string GetHardwareName(uint value) => value switch
+    public static string GetHardwareName(uint value)
     {
-        0 => "UNSET", 1 => "TLORA_V2", 2 => "TLORA_V1", 3 => "TLORA_V2_1_1P6", 4 => "TBEAM",
-        5 => "HELTEC_V2_0", 6 => "TBEAM_V0P7", 7 => "T_ECHO", 8 => "TLORA_V1_1P3",
-        9 => "RAK4631", 10 => "HELTEC_V2_1", 12 => "LILYGO_TBEAM_S3_CORE", 13 => "RAK11200",
-        16 => "TLORA_T3_S3", 18 => "NANO_G2_ULTRA", 37 => "PORTDUINO", 38 => "ANDROID_SIM",
-        43 => "HELTEC_V3", 48 => "HELTEC_WIRELESS_TRACKER", 49 => "HELTEC_WIRELESS_PAPER",
-        50 => "T_DECK", 51 => "T_WATCH_S3", _ => $"HARDWARE_{value}"
+        if (MeshtasticHardwareCatalog.TryGetProductName(value, out string productName))
+            return productName;
+
+        return value switch
+        {
+        0 => "未設定",
+        1 => "T-LoRa V2",
+        2 => "T-LoRa V1",
+        3 => "T-LoRa V2.1-1.6",
+        4 => "T-Beam",
+        5 => "Heltec WiFi LoRa 32 V2.0",
+        6 => "T-Beam V0.7",
+        7 => "LilyGo T-Echo",
+        8 => "T-LoRa V1.1-1.3",
+        9 => "RAK4631 WisBlock",
+        10 => "Heltec WiFi LoRa 32 V2.1",
+        11 => "Heltec WiFi LoRa 32 V1",
+        12 => "LilyGo T-Beam S3 Core",
+        13 => "RAK11200 WisBlock",
+        14 => "Nano G1",
+        15 => "T-LoRa V2.1-1.8",
+        16 => "LilyGo T3-S3",
+        17 => "Nano G1 Explorer",
+        18 => "Nano G2 Ultra",
+        19 => "LoRaType",
+        20 => "Wiphone",
+        21 => "Seeed Wio Tracker WM1110",
+        22 => "RAK2560",
+        23 => "Heltec HRU-3601",
+        24 => "Heltec Wireless Bridge",
+        25 => "Station G1",
+        26 => "RAK11310",
+        27 => "Makerfabs Tracker",
+        28 => "Makerfabs",
+        29 => "CanaryOne",
+        30 => "Waveshare RP2040 LoRa",
+        31 => "Station G2",
+        32 => "LoRa Relay V1",
+        33 => "LilyGo T-Echo Plus",
+        34 => "PPR",
+        35 => "GenieBlocks",
+        36 => "nRF52 Unknown",
+        37 => "Portduino",
+        38 => "Android Simulator",
+        39 => "DIY V1",
+        40 => "nRF52840 PCA10059 Dongle",
+        41 => "Disaster Radio ESP32 V3",
+        42 => "M5Stack",
+        43 => "Heltec LoRa32 V3",
+        44 => "Heltec Wireless Stick Lite V3",
+        45 => "BetaFPV ELRS Micro TX 2.4G",
+        46 => "BetaFPV ExpressLRS Nano TX 900MHz",
+        47 => "Raspberry Pi Pico (W)",
+        48 => "Heltec Wireless Tracker",
+        49 => "Heltec Wireless Paper",
+        50 => "LilyGo T-Deck",
+        51 => "LilyGo T-Watch S3",
+        52 => "Bobricius Picomputer S3",
+        53 => "Heltec HT-CT62",
+        54 => "EBYTE EoRa-S3",
+        55 => "Waveshare ESP32-S3-PICO LoRa HAT",
+        56 => "CircuitMess Chatter 2",
+        57 => "Heltec Wireless Paper V1.0",
+        58 => "Heltec Wireless Tracker V1.0",
+        59 => "unPhone",
+        60 => "Teledatics TD-LORAC",
+        61 => "CDEBYTE EoRa-S3",
+        62 => "TWC Mesh V4",
+        63 => "nRF52 Pro Micro DIY",
+        64 => "RadioMaster 900 Bandit Nano",
+        65 => "Heltec Capsule Sensor V3",
+        66 => "Heltec Vision Master T190",
+        67 => "Heltec Vision Master E213",
+        68 => "Heltec Vision Master E290",
+        69 => "Heltec Mesh Node T114",
+        70 => "Seeed SenseCAP Indicator",
+        71 => "Seeed T1000-E",
+        72 => "RAK3172",
+        73 => "Seeed Wio-E5",
+        74 => "RadioMaster 900 Bandit",
+        75 => "Minewsemi ME25LS01",
+        76 => "Adafruit Feather RP2040 RFM95",
+        77 => "M5Stack Core Basic",
+        78 => "M5Stack Core2",
+        79 => "Raspberry Pi Pico 2",
+        80 => "M5Stack CoreS3",
+        81 => "Seeed XIAO S3",
+        82 => "MS24SF1",
+        83 => "LilyGo T-LoRa C6",
+        84 => "RAK WisMesh Tap",
+        85 => "Routastic",
+        86 => "Mesh-Tab",
+        87 => "LoraItalia MeshLink",
+        88 => "Seeed XIAO nRF52 Kit",
+        89 => "Elecrow ThinkNode M1",
+        90 => "Elecrow ThinkNode M2",
+        91 => "LilyGo T-ETH-Elite",
+        92 => "Heltec HRI-3621 Sensor Hub",
+        93 => "Muzi Works Muzi-Base",
+        94 => "Heltec Mesh Pocket",
+        95 => "Seeed Solar Node",
+        96 => "NomadStar Meteor Pro",
+        97 => "Elecrow CrowPanel",
+        98 => "LilyGo LINK32",
+        99 => "Seeed Wio Tracker L1",
+        100 => "Seeed Wio Tracker L1 EINK",
+        101 => "Muzi Works R1 Neo",
+        102 => "LilyGo T-Deck Pro",
+        103 => "LilyGo T-LoRa Pager",
+        104 => "M5Stack Reserved",
+        105 => "RAK WisMesh Tag",
+        106 => "RAK3312 WisBlock",
+        107 => "Elecrow ThinkNode M5",
+        108 => "Heltec MeshSolar",
+        109 => "LilyGo T-Echo Lite",
+        110 => "Heltec LoRa32 V4",
+        111 => "M5Stack C6L",
+        112 => "M5Stack Cardputer Adv",
+        113 => "Heltec Wireless Tracker V2",
+        114 => "LilyGo T-Watch Ultra",
+        115 => "Elecrow ThinkNode M3",
+        116 => "RAK WisMesh Tap V2",
+        117 => "RAK3401",
+        118 => "RAK6421 HAT+",
+        119 => "Elecrow ThinkNode M4",
+        120 => "Elecrow ThinkNode M6",
+        121 => "Elecrow MeshStick 1262",
+        122 => "LilyGo T-Beam 1W",
+        123 => "LilyGo T5 S3 ePaper Pro",
+        124 => "LilyGo T-Beam BPF",
+        125 => "LilyGo T-Mini ePaper S3 Kit",
+        126 => "LilyGo T-Display S3 Pro LR1121",
+        127 => "Heltec Mesh Node T096",
+        128 => "Seeed Mesh Tracker X1",
+        129 => "Elecrow ThinkNode M7",
+        130 => "Elecrow ThinkNode M8",
+        131 => "Elecrow ThinkNode M9",
+        132 => "Heltec V4 R8",
+        133 => "Heltec Mesh Node T1",
+        134 => "Station G3",
+        135 => "LilyGo T-Impulse-Plus",
+        136 => "LilyGo T-Echo Card",
+        137 => "Seeed Wio Tracker L2",
+        138 => "Elecrow CrowPanel Advance P4",
+        139 => "Heltec Mesh Tower V2",
+        140 => "Meshnology W10",
+        141 => "Heltec RC32",
+        142 => "Heltec RC52",
+        143 => "Heltec RCC6",
+        144 => "Seeed Wio Tracker L1 Pro 1W",
+        145 => "Meshnology W12",
+        146 => "Seeed MeshPager X2",
+        255 => "Private Hardware",
+        _ => $"不明なハードウェア ({value})"
+        };
+    }
+
+    public static string GetHardwareName(string? value) => value switch
+    {
+        null or "" => "-",
+        "UNSET" => "未設定",
+        "TLORA_V2" => "T-LoRa V2",
+        "TLORA_V1" => "T-LoRa V1",
+        "TLORA_V2_1_1P6" => "T-LoRa V2.1-1.6",
+        "TBEAM" => "T-Beam",
+        "HELTEC_V2_0" => "Heltec WiFi LoRa 32 V2.0",
+        "TBEAM_V0P7" => "T-Beam V0.7",
+        "T_ECHO" => "LilyGo T-Echo",
+        "TLORA_V1_1P3" => "T-LoRa V1.1-1.3",
+        "RAK4631" => "RAK4631 WisBlock",
+        "HELTEC_V2_1" => "Heltec WiFi LoRa 32 V2.1",
+        "LILYGO_TBEAM_S3_CORE" => "LilyGo T-Beam S3 Core",
+        "RAK11200" => "RAK11200 WisBlock",
+        "TLORA_T3_S3" => "LilyGo T3-S3",
+        "NANO_G2_ULTRA" => "Nano G2 Ultra",
+        "PORTDUINO" => "Portduino",
+        "ANDROID_SIM" => "Android Simulator",
+        "HELTEC_V3" => "Heltec LoRa32 V3",
+        "HELTEC_WIRELESS_TRACKER" => "Heltec Wireless Tracker",
+        "HELTEC_WIRELESS_PAPER" => "Heltec Wireless Paper",
+        "T_DECK" => "LilyGo T-Deck",
+        "T_WATCH_S3" => "LilyGo T-Watch S3",
+        _ when value.StartsWith("HARDWARE_", StringComparison.OrdinalIgnoreCase) &&
+               uint.TryParse(value["HARDWARE_".Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out uint hardwareId)
+            => GetHardwareName(hardwareId),
+        _ => value
     };
 
     public static string GetRoleName(uint value) => value switch

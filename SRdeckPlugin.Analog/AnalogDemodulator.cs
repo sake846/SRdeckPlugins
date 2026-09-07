@@ -44,11 +44,23 @@ internal sealed partial class AnalogDemodulator
     private float _fmDeemphasis;
     private float _fmDeemphasisL;
     private float _fmDeemphasisR;
-    private float _fmPilotPhase;
-    private float _fmPilotStep;
+    private float _fmPilotCosine = 1f;
+    private float _fmPilotSine;
+    private float _fmPilotStepCosine = 1f;
+    private float _fmPilotStepSine;
+    private float _fmPilotStepCorrection;
+    private int _fmPilotOscillatorSamples;
     private float _fmPilotI;
     private float _fmPilotQ;
     private float _fmPilotLevel;
+    private float _fmMpxPower;
+    private float _fmPilotPhaseErrorPower;
+    private float _fmPilotLoopGain;
+    private float _fmPilotMaximumStepCorrection;
+    private int _fmStereoAcquireSamples;
+    private int _fmStereoReleaseSamples;
+    private int _fmStereoQualifyingSamples;
+    private int _fmStereoMissingSamples;
     private float _dcDiffPreviousInput;
     private float _dcDiffPreviousOutput;
     private float _ssbCosine = 1f;
@@ -63,12 +75,31 @@ internal sealed partial class AnalogDemodulator
     private float _tunerStepCosine = 1f;
     private float _tunerStepSine;
     private int _tunerOscillatorSamples;
+    private float _amCarrierAlpha;
+    private float _ssbLevelAlpha;
+    private float _fmAfcAlpha;
+    private float _fmPilotAlpha;
+    private float _dcPole;
+    private float _dcDiffPole;
+    private float _fmDeemphasisAlpha;
+    private float _fmDeviationHz = 5_000f;
 
     public bool IsStereoDetected { get; private set; }
     public double DemodulationSampleRateHz => _processingSampleRateHz;
-    public double AfcCorrectionHz => _processingSampleRateHz > 0
-        ? -_fmFrequencyOffset * _processingSampleRateHz / TwoPi
-        : 0;
+    public double AfcCorrectionHz => -_fmFrequencyOffset * _fmDeviationHz;
+    public float InputLevelDbfs { get; private set; } = -120f;
+    public float ChannelLevelDbfs { get; private set; } = -120f;
+
+    public static int GetChannelOutputCapacity(
+        int inputSampleCount,
+        int inputSampleRateHz,
+        int bandwidthHz)
+    {
+        if (inputSampleCount < 0) throw new ArgumentOutOfRangeException(nameof(inputSampleCount));
+        if (inputSampleRateHz <= 0) throw new ArgumentOutOfRangeException(nameof(inputSampleRateHz));
+        int factor = SelectDecimationFactor(inputSampleRateHz, bandwidthHz);
+        return checked((inputSampleCount + factor - 1) / factor);
+    }
 
     public int Process(
         ReadOnlySpan<Complex32> input,
@@ -105,6 +136,36 @@ internal sealed partial class AnalogDemodulator
         long frequencyOffsetHz,
         bool isStereoEnabled)
     {
+        return Process(
+            input,
+            output,
+            out channels,
+            inputSampleRateHz,
+            profileId,
+            bandwidthHz,
+            isLowerSideband,
+            isAfcEnabled,
+            frequencyOffsetHz,
+            isStereoEnabled,
+            Span<Complex32>.Empty,
+            out _);
+    }
+
+    public int Process(
+        ReadOnlySpan<Complex32> input,
+        Span<float> output,
+        out int channels,
+        int inputSampleRateHz,
+        string profileId,
+        int bandwidthHz,
+        bool isLowerSideband,
+        bool isAfcEnabled,
+        long frequencyOffsetHz,
+        bool isStereoEnabled,
+        Span<Complex32> channelOutput,
+        out int channelOutputCount)
+    {
+        channelOutputCount = 0;
         if (inputSampleRateHz <= 0)
             throw new ArgumentOutOfRangeException(nameof(inputSampleRateHz));
         ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
@@ -126,17 +187,31 @@ internal sealed partial class AnalogDemodulator
         }
 
         bool isStereoCapable = profileId == "fm" && bandwidthHz > 50_000 && isStereoEnabled;
+        if (!isStereoCapable) ResetFmStereoDetection();
         // Keep the frame layout stable for a whole wide-FM block. Before the
         // pilot lock settles this is dual-mono; after lock it becomes stereo.
         channels = isStereoCapable ? 2 : 1;
 
         int outputCount = 0;
+        double inputPower = 0;
+        double channelPower = 0;
+        int channelSampleCount = 0;
         foreach (Complex32 inputSample in input)
         {
+            inputPower += inputSample.I * inputSample.I + inputSample.Q * inputSample.Q;
             Complex32 tuned = MixToReceiverBaseband(inputSample);
             if (!_inputDecimator.TryProcess(tuned.I, tuned.Q, out float reducedI, out float reducedQ)) continue;
             Complex32 sample = CompensateCic(new Complex32(reducedI, reducedQ));
             sample = FilterReceiverChannel(sample);
+            if (!channelOutput.IsEmpty)
+            {
+                if (channelSampleCount >= channelOutput.Length)
+                    throw new ArgumentException(
+                        "The channel output buffer is too small.", nameof(channelOutput));
+                channelOutput[channelSampleCount] = sample;
+            }
+            channelPower += sample.I * sample.I + sample.Q * sample.Q;
+            channelSampleCount++;
             float demodulated = profileId switch
             {
                 "am" => DemodulateAm(sample),
@@ -172,7 +247,6 @@ internal sealed partial class AnalogDemodulator
             {
                 monoSample = ProcessCascade(_audioLowPass, demodulated);
                 monoSample = RemoveDc(monoSample);
-                IsStereoDetected = false;
                 channels = 1;
             }
 
@@ -210,6 +284,9 @@ internal sealed partial class AnalogDemodulator
             }
         }
 
+        InputLevelDbfs = PowerToDbfs(inputPower, input.Length);
+        ChannelLevelDbfs = PowerToDbfs(channelPower, channelSampleCount);
+        channelOutputCount = channelSampleCount;
         return outputCount;
     }
 
@@ -223,14 +300,9 @@ internal sealed partial class AnalogDemodulator
         _fmDeemphasis = 0;
         _fmDeemphasisL = 0;
         _fmDeemphasisR = 0;
-        _fmPilotPhase = 0;
-        _fmPilotStep = 0;
-        _fmPilotI = 0;
-        _fmPilotQ = 0;
-        _fmPilotLevel = 0;
+        ResetFmStereoDetection();
         _dcDiffPreviousInput = 0;
         _dcDiffPreviousOutput = 0;
-        IsStereoDetected = false;
         _ssbCosine = 1f;
         _ssbSine = 0;
         _ssbOscillatorSamples = 0;
@@ -239,6 +311,8 @@ internal sealed partial class AnalogDemodulator
         _tunerCosine = 1f;
         _tunerSine = 0;
         _tunerOscillatorSamples = 0;
+        InputLevelDbfs = -120f;
+        ChannelLevelDbfs = -120f;
         _inputDecimator.Reset();
         if (_isAudioResamplerConfigured) _audioResampler.Reset();
         ResetFilters();
@@ -261,6 +335,18 @@ internal sealed partial class AnalogDemodulator
         int decimationFactor = SelectDecimationFactor(inputSampleRateHz, bandwidthHz);
         _processingSampleRateHz = inputSampleRateHz / decimationFactor;
         _inputDecimator.Configure(decimationFactor, stageCount: 5);
+        _amCarrierAlpha = OnePoleAlpha(20f, _processingSampleRateHz);
+        _ssbLevelAlpha = OnePoleAlpha(20f, _processingSampleRateHz);
+        _fmAfcAlpha = OnePoleAlpha(2f, _processingSampleRateHz);
+        _fmPilotAlpha = OnePoleAlpha(30f, _processingSampleRateHz);
+        _fmPilotLoopGain = TwoPi * 200f / _processingSampleRateHz;
+        _fmPilotMaximumStepCorrection = TwoPi * 25f / _processingSampleRateHz;
+        _fmStereoAcquireSamples = Math.Max(1, (int)MathF.Ceiling(_processingSampleRateHz * 0.100f));
+        _fmStereoReleaseSamples = Math.Max(1, (int)MathF.Ceiling(_processingSampleRateHz * 0.040f));
+        _dcPole = MathF.Exp(-TwoPi * 30f / _processingSampleRateHz);
+        _dcDiffPole = _dcPole;
+        _fmDeemphasisAlpha = 1f - MathF.Exp(-1f / (OutputSampleRateHz * 50e-6f));
+        _fmDeviationHz = profileId == "fm" && bandwidthHz > 50_000 ? 75_000f : 5_000f;
 
         float audioCutoffHz = profileId switch
         {
@@ -287,7 +373,9 @@ internal sealed partial class AnalogDemodulator
                 _audioDiffLowPass,
                 _processingSampleRateHz,
                 Math.Min(15_000f, _processingSampleRateHz * 0.20f));
-            _fmPilotStep = TwoPi * 19_000f / _processingSampleRateHz;
+            float pilotStep = TwoPi * 19_000f / _processingSampleRateHz;
+            _fmPilotStepCosine = MathF.Cos(pilotStep);
+            _fmPilotStepSine = MathF.Sin(pilotStep);
         }
 
         float channelCutoffHz = profileId switch
@@ -322,4 +410,11 @@ internal sealed partial class AnalogDemodulator
         _tunerStepSine = (float)Math.Sin(tunerStep);
         Reset();
     }
+
+    private static float OnePoleAlpha(float cutoffHz, float sampleRateHz) =>
+        1f - MathF.Exp(-TwoPi * cutoffHz / sampleRateHz);
+
+    private static float PowerToDbfs(double power, int sampleCount) => sampleCount <= 0
+        ? -120f
+        : 10f * MathF.Log10(MathF.Max((float)(power / sampleCount), 1e-12f));
 }

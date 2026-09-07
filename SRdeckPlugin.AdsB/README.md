@@ -5,7 +5,7 @@ Stable plugin ID: `adsb`. Receives 1090 MHz Mode S extended squitter.
 ## Receive path
 
 - Prefers a 1090 MHz standard channel with 1.85 MHz bandwidth and 4 MS/s output.
-- Requires at least 2 MS/s from the host input and rejects insufficient tuning requests.
+- Requires at least 2 MS/s from the host input. When selected as the primary plugin, the host raises an insufficient SDR rate to the lowest supported rate that meets the requirement, restarting reception if needed. Playback rates cannot be changed.
 - Detects Mode S preambles, demodulates PPM, and validates the CRC.
 - Successive interference cancellation (SIC) can be disabled; when disabled, the receiver does not retain complex IQ history for SIC.
 

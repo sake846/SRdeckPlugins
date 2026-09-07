@@ -2,7 +2,8 @@
               xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
               xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf">
-    <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+    <Grid>
+        <Border Style="{DynamicResource PluginSettingsPanelStyle}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="36"/>
@@ -112,7 +113,7 @@
                                 <TextBlock Text="受信中に直前3秒のIQデータを保存します。"
                                            Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,0,16,0" />
                                 <Button Grid.Column="1" Content="IQ 録音 (直前3秒)" Command="{Binding TriggerCaptureCommand}"
-                                        Style="{DynamicResource PluginButtonStyle}" Width="130" Height="22" />
+                                        Style="{DynamicResource PluginButtonStyle}" Width="130" />
                                 <TextBlock Grid.Column="2" Text="{Binding CaptureStatus}" Style="{DynamicResource PluginSettingsActionStatusStyle}"
                                            VerticalAlignment="Center" Margin="10,0,0,0" />
                             </Grid>
@@ -122,5 +123,6 @@
 
             </TabControl>
         </Grid>
-    </Border>
+        </Border>
+    </Grid>
 </UserControl>

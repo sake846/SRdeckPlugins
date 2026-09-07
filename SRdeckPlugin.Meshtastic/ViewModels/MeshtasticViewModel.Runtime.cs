@@ -36,16 +36,12 @@ public partial class MeshtasticViewModel
         MeshtasticLoRaProfile profile = MeshtasticJpLongFastProfile.GetProfile(SelectedMeshtasticModemPreset);
         long lowerEdgeHz = _tuningTargets.Min(band => band.FrequencyHz - band.BandwidthHz / 2L);
         long upperEdgeHz = _tuningTargets.Max(band => band.FrequencyHz + band.BandwidthHz / 2L);
-        int minimumSampleRateHz = checked((int)Math.Clamp(
-            Math.Ceiling((upperEdgeHz - lowerEdgeHz) / 0.9),
-            1_000_000,
-            int.MaxValue));
         PluginTuningResult result = await _hostContext.Tuning.RequestAsync(new PluginTuningRequest(
             SelectedMeshtasticModemPreset.ToString().ToLowerInvariant(),
             profile.Name,
             _tuningTargets.Select(band => new TuningTarget(band.FrequencyHz, band.BandwidthHz)).ToArray(),
             lowerEdgeHz + (upperEdgeHz - lowerEdgeHz) / 2,
-            minimumSampleRateHz,
+            1_000_000,
             profile.BandwidthHz / 2,
             true,
             IsMeshtasticDiscoveryMode,
@@ -170,7 +166,7 @@ public partial class MeshtasticViewModel
 
     private void HandleMeshtasticPreambleDetected(LoRaPreambleDetection detection)
     {
-        string status = $"最終信号: プリアンブル余裕 {detection.PeakToAverageDb:F1} dB / dechirpピーク {detection.DechirpedPeakHz:F1} Hz";
+        string status = $"最終信号: {FormatMeshtasticSignal(detection.EstimatedSnrDb, detection.EstimatedRssiDbfs)}（推定） / dechirpピーク {detection.DechirpedPeakHz:F1} Hz";
         _hostContext?.Dispatcher.Post(() => MeshtasticLastSignalStatus = status);
         RefreshMeshtasticStatistics();
     }
@@ -178,9 +174,18 @@ public partial class MeshtasticViewModel
     private void HandleMeshtasticFrameSynchronized(LoRaFrameSynchronization synchronization)
     {
         string status = FormatMeshtasticFrequencyCorrection(synchronization);
-        _hostContext?.Dispatcher.Post(() => MeshtasticFrequencyCorrectionText = status);
+        string signal = FormatMeshtasticSignal(synchronization.EstimatedSnrDb, synchronization.EstimatedRssiDbfs);
+        _hostContext?.Dispatcher.Post(() =>
+        {
+            MeshtasticFrequencyCorrectionText = status;
+            MeshtasticLastSignalStatus = $"最終信号: {signal}（推定）";
+        });
         RefreshMeshtasticStatistics();
     }
+
+    private string FormatMeshtasticSignal(float? snr, float? rssiDbfs) =>
+        MeshtasticLoRaReceptionQuality.FormatSignal(snr, rssiDbfs,
+            MeshtasticLoRaReceptionQuality.CalibrateRssi(rssiDbfs, _hostContext?.ReceiverTelemetry));
 
     internal static string FormatMeshtasticFrequencyCorrection(LoRaFrameSynchronization synchronization) =>
         synchronization.CompensationApplied
@@ -206,16 +211,21 @@ public partial class MeshtasticViewModel
     private void HandleMeshtasticPacketReceived(MeshtasticPacketReception reception)
     {
         Interlocked.Exchange(ref _lastMeshtasticSuccessfulPayloadTicks, DateTimeOffset.UtcNow.Ticks);
-        _hostContext?.Notifications.PlayReceptionAlarm(TimeSpan.FromMilliseconds(500));
+        if (BuzzerEnabled)
+        {
+            _hostContext?.Notifications.PlayReceptionAlarm(TimeSpan.FromMilliseconds(500));
+        }
         RefreshMeshtasticStatistics();
         if (reception.IsDataDecoded) return;
+
+        reception = reception with { Quality = reception.Quality.WithReceiverCalibration(_hostContext?.ReceiverTelemetry) };
 
         _hostContext?.Dispatcher.Post(() =>
         {
             string transmission = reception.Packet.WasRelayed switch
             {
                 false => "直接",
-                true => $"中継 0x{reception.Packet.RelayNode:X2}",
+                true => $"中継 {reception.Packet.RelayNode:x2}",
                 null => "経路不明"
             };
             var item = new MeshtasticDisplayItem(
@@ -231,12 +241,15 @@ public partial class MeshtasticViewModel
                 Convert.ToHexString(reception.Packet.EncryptedPayload))
             {
                 Radio = reception.Radio.Summary,
+                RegionName = reception.Radio.Region != default ? reception.Radio.Region.ToString() : SelectedMeshtasticRegion.ToString(),
                 PacketId = reception.Packet.PacketId,
                 IsDecoded = false,
                 ModemPresetName = ResolveMeshtasticPresetName(reception.Radio),
                 RadioSlot = reception.Radio.RadioChannel,
                 ReceivedAt = reception.Packet.ReceivedAt,
-                PreambleMarginDb = reception.Quality.PreambleMarginDb,
+                EstimatedSnrDb = reception.Quality.EstimatedSnrDb,
+                EstimatedRssiDbfs = reception.Quality.EstimatedRssiDbfs,
+                EstimatedRssiDbm = reception.Quality.EstimatedRssiDbm,
                 PayloadCrcValid = reception.Quality.PayloadCrcValid,
                 HopLimit = reception.Packet.HopLimit,
                 HopStart = reception.Packet.HopStart,
@@ -245,8 +258,6 @@ public partial class MeshtasticViewModel
             };
             MeshtasticMessages.Insert(0, item);
             AppendMeshtasticHistory(item);
-            if (SelectedMeshtasticNode?.NodeNumber == reception.Packet.From)
-                RefreshSelectedMeshtasticNodeReceptions();
             while (MeshtasticMessages.Count > MeshtasticHistoryDisplayLimit)
                 MeshtasticMessages.RemoveAt(MeshtasticMessages.Count - 1);
             SelectedTimelineMessage ??= item;
@@ -259,7 +270,7 @@ public partial class MeshtasticViewModel
                 MeshtasticNodes.Insert(0, node);
                 SelectedMeshtasticNode ??= node;
             }
-            node.Observe(reception, item.Summary);
+            node.Observe(reception, item.Summary, item.ModemPresetName);
             if (node.HasPosition) UpdateMeshtasticMapPoint(node);
             int nodeIndex = MeshtasticNodes.IndexOf(node);
             if (nodeIndex > 0) MeshtasticNodes.Move(nodeIndex, 0);

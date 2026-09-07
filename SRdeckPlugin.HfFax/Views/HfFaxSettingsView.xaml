@@ -1,0 +1,181 @@
+<UserControl x:Class="SRdeckPlugin.HfFax.Views.HfFaxSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+             Foreground="{DynamicResource TextPrimaryBrush}"
+             FontSize="10">
+    <Grid>
+        <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="36" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <ContentControl Content="{Binding SettingStatus}"
+                            Tag="HF-FAX"
+                            ToolTip="{Binding SettingStatus}"
+                            Style="{DynamicResource PluginSettingsHeaderStyle}" />
+
+            <TabControl Grid.Row="1" Style="{DynamicResource PluginSettingsTabControlStyle}">
+                <TabItem Header="受信設定">
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <Grid Margin="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="140" />
+                                <ColumnDefinition Width="210" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="局・周波数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <ComboBox Grid.Column="1" Grid.ColumnSpan="2"
+                                      ItemsSource="{Binding Stations}"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedValuePath="Id"
+                                      SelectedValue="{Binding SelectedStationId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      Width="300" HorizontalAlignment="Left" Height="22" />
+
+                            <TextBlock Grid.Row="1" Text="カスタム周波数 (Hz)"
+                                       Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <TextBox Grid.Row="1" Grid.Column="1"
+                                     Text="{Binding CenterFrequencyHz, UpdateSourceTrigger=LostFocus}"
+                                     IsEnabled="{Binding IsCustomStation}"
+                                     Style="{DynamicResource PluginTextBoxStyle}"
+                                     Width="200" HorizontalAlignment="Left" />
+                            <TextBlock Grid.Row="1" Grid.Column="2" Text="割当周波数をHzで入力"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+                            <TextBlock Grid.Row="2" Text="IOC" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding IocOptions}"
+                                      DisplayMemberPath="DisplayName" SelectedValuePath="Value"
+                                      SelectedValue="{Binding Ioc, Mode=TwoWay}"
+                                      Width="100" HorizontalAlignment="Left" Height="22" />
+                            <TextBlock Grid.Row="2" Grid.Column="2" Text="576: 標準 / 288: 小型画像"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+                            <TextBlock Grid.Row="3" Text="走査速度 (LPM)" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding LinesPerMinuteOptions}"
+                                      DisplayMemberPath="DisplayName" SelectedValuePath="Value"
+                                      SelectedValue="{Binding LinesPerMinute, Mode=TwoWay}"
+                                      Width="100" HorizontalAlignment="Left" Height="22" />
+                            <TextBlock Grid.Row="3" Grid.Column="2" Text="通常は120 lines/min"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+                            <TextBlock Grid.Row="4" Text="APT同期" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <CheckBox Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2"
+                                      Content="開始・停止信号を自動検出"
+                                      IsChecked="{Binding AutomaticStartStop, Mode=TwoWay}"
+                                      VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                            <TextBlock Grid.Row="5" Text="画像極性" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <CheckBox Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2"
+                                      Content="白黒を反転"
+                                      IsChecked="{Binding InvertImage, Mode=TwoWay}"
+                                      VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                            <TextBlock Grid.Row="6" Text="VBW" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <ComboBox Grid.Row="6" Grid.Column="1" ItemsSource="{Binding VideoBandwidthOptions}"
+                                      DisplayMemberPath="DisplayName" SelectedValuePath="Value"
+                                      SelectedValue="{Binding VideoBandwidthHz, Mode=TwoWay}"
+                                      Width="100" HorizontalAlignment="Left" Height="22" />
+                            <TextBlock Grid.Row="6" Grid.Column="2" Text="FM復調後の映像帯域 / 狭いほど粒状ノイズを低減"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+                            <TextBlock Grid.Row="7" Text="モニター音声" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <CheckBox Grid.Row="7" Grid.Column="1"
+                                      Content="有効にする"
+                                      IsChecked="{Binding MonitorAudioEnabled, Mode=TwoWay}"
+                                      VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <Slider Grid.Row="7" Grid.Column="2" Minimum="0" Maximum="100"
+                                    TickFrequency="5" IsSnapToTickEnabled="True"
+                                    Value="{Binding MonitorAudioVolume, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    Width="150" HorizontalAlignment="Left" />
+
+                            <TextBlock Grid.Row="8" Text="最大ライン数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <TextBox Grid.Row="8" Grid.Column="1"
+                                     Text="{Binding MaximumLines, UpdateSourceTrigger=LostFocus}"
+                                     Style="{DynamicResource PluginTextBoxStyle}"
+                                     Width="100" HorizontalAlignment="Left" />
+                            <TextBlock Grid.Row="8" Grid.Column="2" Text="200～4000（既定2400）"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+                            <TextBlock Grid.Row="9" Grid.ColumnSpan="3" TextWrapping="Wrap" Margin="0,8,0,2"
+                                       Text="割当周波数を中心に3.0 kHzのIQ帯域を切り出します。一般的なUSB受信機で音声入力する場合のダイヤル周波数とは異なり、本プラグインはIQから直接復調します。"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" />
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="プラグイン設定">
+                    <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+                        <Grid Margin="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="横位置補正 (pixel)" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <TextBox Grid.Column="1" Text="{Binding HorizontalShiftPixels, UpdateSourceTrigger=PropertyChanged, Delay=300}"
+                                     Style="{DynamicResource PluginTextBoxStyle}" Width="100" HorizontalAlignment="Left" />
+                            <TextBlock Grid.Column="2" Text="正数で右、負数で左へ循環移動（受信中も反映）"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+                            <TextBlock Grid.Row="1" Text="ライン毎同期補正" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <CheckBox Grid.Row="1" Grid.Column="1" Content="有効にする"
+                                      IsChecked="{Binding PerLineSynchronizationEnabled, Mode=TwoWay}"
+                                      VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Grid.Row="1" Grid.Column="2" Text="受信中の同期パルスでライン位置と傾きを追従"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+                            <TextBlock Grid.Row="2" Text="画像境界の自動整列" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <CheckBox Grid.Row="2" Grid.Column="1" Content="自動で揃える"
+                                      IsChecked="{Binding AutomaticHorizontalAlignmentEnabled, Mode=TwoWay}"
+                                      VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Grid.Row="2" Grid.Column="2" Text="画像内の連続した境界帯を検出し、受信ごとの横原点を統一"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+                            <TextBlock Grid.Row="3" Text="傾き補正 (ppm)" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding SlantCorrectionPpm, UpdateSourceTrigger=LostFocus}"
+                                     Style="{DynamicResource PluginTextBoxStyle}" Width="100" HorizontalAlignment="Left" />
+                            <TextBlock Grid.Row="3" Grid.Column="2" Text="-2000～2000 / 自動追従後のライン長へ加算"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+                            <TextBlock Grid.Row="4" Text="履歴保存数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding MaximumHistory, UpdateSourceTrigger=LostFocus}"
+                                     Style="{DynamicResource PluginTextBoxStyle}" Width="100" HorizontalAlignment="Left" />
+                            <TextBlock Grid.Row="4" Grid.Column="2" Text="1～50件 / 新しい画像から保持"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+                            <TextBlock Grid.Row="5" Grid.ColumnSpan="3" TextWrapping="Wrap" Margin="0,8,0,12"
+                                       Text="画像境界の自動整列は64ライン以降に反映し、既存履歴も表示時に補正します。手動ppmを変更すると現在の画像を完了し、次の画像から適用します。"
+                                       Style="{DynamicResource PluginSettingsHintStyle}" />
+                            <controls:PluginResetView Grid.Row="6" Grid.ColumnSpan="3" />
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Grid>
+        </Border>
+    </Grid>
+</UserControl>

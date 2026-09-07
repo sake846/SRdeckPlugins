@@ -220,6 +220,7 @@ public sealed class MeshtasticPluginModule(
 
         lock (fmMonitorGate)
         {
+            fmMonitor.IsSquelchEnabled = viewModel.IsSquelchEnabled;
             bool streamChanged = fmMonitorStreamId != metadata.StreamId ||
                                  fmMonitorGeneration != metadata.Generation ||
                                  metadata.Discontinuity != IqDiscontinuity.None;

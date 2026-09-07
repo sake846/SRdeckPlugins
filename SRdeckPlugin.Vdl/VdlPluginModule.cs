@@ -23,7 +23,10 @@ public sealed partial class VdlPluginModule : PluginModuleBase, IIqBlockConsumer
     IPluginViewProvider, IPluginResultProvider, IPluginExportProvider,
     IPluginProcessingDiagnosticsProvider, IPluginProcessingWarmup
 {
-    public sealed record Channel(string Id, string Name, long FrequencyHz);
+    public sealed record Channel(string Id, string Name, long FrequencyHz)
+    {
+        public string DisplayName => Name;
+    }
     public static IReadOnlyList<Channel> Channels { get; } =
     [
         new("136725", "VDL2 136.725 MHz", 136_725_000),

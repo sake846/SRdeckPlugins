@@ -23,6 +23,7 @@ public sealed partial class HfdlPluginModule : PluginModuleBase, IIqBlockConsume
     IPluginProcessingDiagnosticsProvider, IPluginProcessingWarmup
 {
     public const int SignalOffsetHz = 1_440;
+    private const int IqCaptureDurationSeconds = 20;
     public const string DefaultChannelId = "gs06-10066";
     public sealed record GroundStation(int Id, string Slug, string Region, string Name,
         string Country, double Latitude, double Longitude, IReadOnlyList<int> FrequenciesKHz)
@@ -83,7 +84,7 @@ public sealed partial class HfdlPluginModule : PluginModuleBase, IIqBlockConsume
     private readonly HfdlViewModel viewModel = new();
     private readonly List<HfdlReception> history = [];
     private PluginJsonLinesHistoryWriter<HfdlReception>? historyWriter;
-    private readonly PackedIqHistoryBuffer pretriggerBuffer = new(3);
+    private readonly PackedIqHistoryBuffer pretriggerBuffer = new(IqCaptureDurationSeconds);
     private readonly IqStreamContinuityTracker continuity = new();
     private IPluginHostContext? host;
     private HfdlSettings settings = new();
@@ -292,7 +293,7 @@ public sealed partial class HfdlPluginModule : PluginModuleBase, IIqBlockConsume
             audioSequence = 0;
             lastDiagnosticsUpdateMilliseconds = 0;
         }
-        viewModel.CaptureStatus = "IQ録音: 直前3秒を常時保持中";
+        viewModel.CaptureStatus = "IQ録音: 直前20秒を常時保持中";
         SetStatus("受信中");
         return ValueTask.CompletedTask;
     }

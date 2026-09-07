@@ -119,7 +119,7 @@
                                         <DataGridTemplateColumn Header="最終受信" Width="82" SortMemberPath="LastSeen" SortDirection="Descending"
                                                                 CellStyle="{DynamicResource PluginTimelineTimestampCellStyle}">
                                             <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                                                <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13" VerticalAlignment="Top" Margin="0,2,0,0">
+                                                <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13" VerticalAlignment="Top" Margin="0">
                                                     <Run Text="{Binding LastSeen, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd}}"/><LineBreak/>
                                                     <Run Text="{Binding LastSeen, Mode=OneWay, StringFormat={}{0:HH:mm:ss}}"/>
                                                 </TextBlock>
@@ -127,23 +127,23 @@
                                         </DataGridTemplateColumn>
                                         <DataGridTemplateColumn Header="船舶・局" Width="*" MinWidth="200" SortMemberPath="DisplayName">
                                             <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                                                <Grid Margin="0,2,0,3" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
+                                                <Grid Margin="0,2,0,2" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
                                                     <Grid.RowDefinitions>
                                                         <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                                                         <RowDefinition Height="Auto"/>
                                                     </Grid.RowDefinitions>
                                                     <Grid>
                                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                                        <TextBlock Text="{Binding DisplayName}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis"/>
-                                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0">
+                                                        <TextBlock Text="{Binding DisplayName}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0" VerticalAlignment="Center">
                                                             <Run Text="MMSI "/><Run Text="{Binding MmsiText, Mode=OneWay}"/>
                                                         </TextBlock>
                                                     </Grid>
-                                                    <TextBlock Grid.Row="1" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,2,0,0" TextWrapping="Wrap">
+                                                    <TextBlock Grid.Row="1" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap">
                                                         <Run Text="航海状態 "/><Run Text="{Binding NavigationStatusText, Mode=OneWay}"/>
                                                         <Run Text="  /  船種 "/><Run Text="{Binding ShipTypeText, Mode=OneWay}"/>
                                                     </TextBlock>
-                                                    <TextBlock Grid.Row="2" Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0" TextWrapping="Wrap">
+                                                    <TextBlock Grid.Row="2" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0" TextWrapping="Wrap">
                                                         <Run Text="速度 "/><Run Text="{Binding SpeedKnots, Mode=OneWay, StringFormat={}{0:F1} kt, TargetNullValue=-}"/>
                                                         <Run Text="  /  針路 "/><Run Text="{Binding CourseDegrees, Mode=OneWay, StringFormat={}{0:F1}°, TargetNullValue=-}"/>
                                                         <Run Text="  /  受信 "/><Run Text="{Binding Messages, Mode=OneWay, StringFormat=N0}"/><Run Text=" 件"/>
@@ -245,7 +245,7 @@
                                                                 CellStyle="{DynamicResource PluginTimelineTimestampCellStyle}">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13" VerticalAlignment="Top" Margin="0,2,0,0">
+                                                    <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13" VerticalAlignment="Top" Margin="0">
                                                         <Run Text="{Binding ReceivedAt, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd}}"/><LineBreak/>
                                                         <Run Text="{Binding ReceivedAt, Mode=OneWay, StringFormat={}{0:HH:mm:ss}}"/>
                                                     </TextBlock>
@@ -255,22 +255,22 @@
                                         <DataGridTemplateColumn Header="受信イベント" Width="*" MinWidth="200" SortMemberPath="Name">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <Grid Margin="0,2,0,3" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
+                                                    <Grid Margin="0,2,0,2" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
                                                         <Grid.RowDefinitions>
                                                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                                                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                                                         </Grid.RowDefinitions>
                                                         <Grid>
                                                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding Name}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis"/>
-                                                            <TextBlock Grid.Column="1" Text="{Binding Kind}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0"/>
+                                                            <TextBlock Text="{Binding Name}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="1" Text="{Binding Kind}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
                                                         </Grid>
-                                                        <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0" TextWrapping="Wrap">
+                                                        <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0" TextWrapping="Wrap">
                                                             <Run Text="MMSI "/><Run Text="{Binding Mmsi, Mode=OneWay, StringFormat={}{0:000000000}}"/>
                                                             <Run Text="  /  Type "/><Run Text="{Binding MessageType, Mode=OneWay}"/><Run Text="  /  CH "/><Run Text="{Binding Channel, Mode=OneWay}"/>
                                                         </TextBlock>
-                                                        <TextBlock Grid.Row="2" Text="{Binding Summary}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,2,0,0" TextWrapping="Wrap"/>
-                                                        <TextBlock Grid.Row="3" Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0" TextWrapping="Wrap">
+                                                        <TextBlock Grid.Row="2" Text="{Binding Summary}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                                                        <TextBlock Grid.Row="3" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0" TextWrapping="Wrap">
                                                             <Run Text="SOG "/><Run Text="{Binding SpeedKnots, Mode=OneWay, StringFormat={}{0:F1} kt, TargetNullValue=-}"/>
                                                             <Run Text="  /  COG "/><Run Text="{Binding CourseDegrees, Mode=OneWay, StringFormat={}{0:F1}°, TargetNullValue=-}"/>
                                                         </TextBlock>

@@ -21,6 +21,7 @@ internal sealed partial class LoRaPreambleDetector
             float.IsFinite(peak.PeakToAverageDb)));
         if (!decision.Accepted)
         {
+            _snrEstimator.BreakSequence();
             RegisterSearchMiss();
             return;
         }
@@ -33,8 +34,12 @@ internal sealed partial class LoRaPreambleDetector
         {
             if (_metrics is not null && _consecutiveSymbols > 0)
                 _metrics.SearchCandidateRejects++;
+            _snrEstimator.Reset();
             _consecutiveSymbols = 1;
         }
+        // Even before fine alignment, consecutive preamble windows repeat at
+        // exactly one-symbol spacing. Retain these pairs for late acquisition.
+        _snrEstimator.Observe(_ring.AsSpan(_writeIndex, _symbolSamples));
         _lastPeakBin = peak.Bin;
         _missedSymbols = 0;
 
@@ -45,7 +50,11 @@ internal sealed partial class LoRaPreambleDetector
             DateTimeOffset.UtcNow,
             peak.PeakToAverageDb,
             peak.FrequencyHz - _expectedCenterOffsetHz,
-            _consecutiveSymbols));
+            _consecutiveSymbols)
+        {
+            EstimatedSnrDb = _snrEstimator.EstimatedSnrDb,
+            EstimatedRssiDbfs = _snrEstimator.EstimatedRssiDbfs
+        });
 
         // A cyclic time shift of an up-chirp appears as a dechirped tone. Preserve
         // the interpolated FFT position here: at 500 kS/s one chip is two samples,
@@ -90,6 +99,8 @@ internal sealed partial class LoRaPreambleDetector
         }
 
         _preamblePeakBin = peak.InterpolatedBin;
+        _snrEstimator.BreakSequence();
+        _snrEstimator.Observe(_ring.AsSpan(_writeIndex, _symbolSamples));
         _lastPeakBin = peak.Bin;
         _missedSymbols = 0;
         _state = AcquisitionState.Preamble;
@@ -106,6 +117,7 @@ internal sealed partial class LoRaPreambleDetector
     {
         if (peak.PeakToAverageDb < UpChirpThresholdDb)
         {
+            _snrEstimator.BreakSequence();
             RegisterFrameMiss("SYNC1", "Up-chirp margin fell below threshold while waiting for sync word", peak, null, expectedSymbol: 16);
             return;
         }
@@ -113,6 +125,7 @@ internal sealed partial class LoRaPreambleDetector
         float delta = SymbolDelta(peak.InterpolatedBin, _preamblePeakBin);
         if (Math.Abs(delta) <= PeakBinTolerance)
         {
+            _snrEstimator.Observe(_ring.AsSpan(_writeIndex, _symbolSamples));
             _missedSymbols = 0;
             return;
         }
@@ -129,6 +142,7 @@ internal sealed partial class LoRaPreambleDetector
         }
 
         int observedDelta = (int)MathF.Round(delta);
+        _snrEstimator.BreakSequence();
         ReportDiagnostic("SYNC1", "Candidate did not match first sync-word symbol", peak, observedDelta, expectedHigh, true);
         RegisterFrameMiss("SYNC1", "Repeated first sync-word mismatch; acquisition reset", peak, observedDelta, expectedHigh);
     }
@@ -209,7 +223,11 @@ internal sealed partial class LoRaPreambleDetector
             carrierFrequencyOffsetHz,
             timingCorrectionSamples,
             compensationApplied,
-            compensationRequired));
+            compensationRequired)
+        {
+            EstimatedSnrDb = _snrEstimator.EstimatedSnrDb,
+            EstimatedRssiDbfs = _snrEstimator.EstimatedRssiDbfs
+        });
         ReportDiagnostic(
             "CFO",
             compensationApplied
@@ -421,6 +439,11 @@ internal sealed partial class LoRaPreambleDetector
             if (frame.IsPayloadCrcValid is true) _metrics.PayloadCrcValid++;
             else if (frame.IsPayloadCrcValid is false) _metrics.PayloadCrcInvalid++;
         }
+        frame = frame with
+        {
+            EstimatedSnrDb = _snrEstimator.EstimatedSnrDb,
+            EstimatedRssiDbfs = _snrEstimator.EstimatedRssiDbfs
+        };
         PayloadDecoded?.Invoke(frame);
         ResetAcquisition();
         return true;

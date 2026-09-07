@@ -115,6 +115,7 @@ public partial class MeshtasticViewModel
         RuntimeDiagnostics = hostContext.RuntimeDiagnostics;
         if (Interlocked.Exchange(ref _initialized, 1) != 0) return;
         _meshtasticSettingsService.Attach(hostContext);
+        MeshtasticHardwareCatalog.ConfigureDataDirectory(_meshtasticSettingsService.PluginDataDirectory);
         RegisterMeshtasticReceiver();
         LoadMeshtasticSettings();
         _meshtasticHistoryWriter = CreateMeshtasticHistoryWriter(hostContext);
@@ -141,14 +142,9 @@ public partial class MeshtasticViewModel
     {
         var writer = new PluginJsonLinesHistoryWriter<MeshtasticDisplayItem>(
             MeshtasticHistoryPath,
-            () => new PluginJsonLinesHistoryPolicy(
-                0,
-                TimeSpan.FromDays(Math.Clamp(MeshtasticHistoryRetentionDays, 1, 3650))),
-            static item => item.ReceivedAt,
-            new System.Text.Json.JsonSerializerOptions
-            {
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            });
+            GetMeshtasticHistoryPolicy,
+            MeshtasticHistoryTimestamp,
+            MeshtasticHistoryJsonOptions);
         writer.SaveFailed += exception => context.Logger.Log(
             PluginLogLevel.Warning, "meshtastic.history.save-failed",
             "Meshtastic reception history could not be saved.", exception);
@@ -191,6 +187,30 @@ public partial class MeshtasticViewModel
         get
         {
             MeshtasticRegionProfile region = MeshtasticJpLongFastProfile.GetRegion(SelectedMeshtasticRegion);
+            if (!IsMeshtasticDiscoveryMode && !MeshtasticJpLongFastProfile.IsAutoSf(SelectedMeshtasticModemPreset))
+            {
+                MeshtasticLoRaProfile profile = MeshtasticJpLongFastProfile.GetProfile(SelectedMeshtasticModemPreset);
+                int bandwidthHz = profile.BandwidthHz;
+                return MeshtasticSpecifiedSlotOptions.Select(item =>
+                {
+                    bool isSelected = item.Slot == MeshtasticRadioChannel;
+                    return new FrequencyOverlayItem(
+                        $"meshtastic-{bandwidthHz}-{item.Slot}",
+                        item.FrequencyHz,
+                        bandwidthHz,
+                        item.Slot.ToString(),
+                        isSelected,
+                        isSelected ? (bandwidthHz == 125_000
+                            ? PluginReceiverBandColors.WithAlpha(0x48, PluginReceiverBandColors.Secondary)
+                            : PluginReceiverBandColors.WithAlpha(0x50, PluginReceiverBandColors.Primary)) : "#00000000",
+                        bandwidthHz == 125_000
+                            ? PluginReceiverBandColors.WithAlpha(0x90, PluginReceiverBandColors.Secondary)
+                            : PluginReceiverBandColors.WithAlpha(0x80, PluginReceiverBandColors.Primary),
+                        "#FFFFFFFF",
+                        bandwidthHz == 125_000 ? 1 : 0);
+                }).ToArray();
+            }
+
             return MeshtasticJpLongFastProfile.GetChannelProfiles(SelectedMeshtasticModemPreset)
                 .Select(profile => profile.BandwidthHz)
                 .Distinct()
@@ -216,7 +236,18 @@ public partial class MeshtasticViewModel
 
     private string MeshtasticStatePath => _meshtasticSettingsService.StatePath;
     private string MeshtasticHistoryPath => _meshtasticSettingsService.HistoryPath;
-    private static readonly object MeshtasticHistorySync = new();
+    private const int MaximumMeshtasticHistoryEntries = 100_000;
+    private const long MaximumMeshtasticHistoryBytes = 128L * 1024 * 1024;
+    private static readonly Func<MeshtasticDisplayItem, DateTimeOffset> MeshtasticHistoryTimestamp = static item => item.ReceivedAt;
+    private static readonly System.Text.Json.JsonSerializerOptions MeshtasticHistoryJsonOptions = new()
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
+    private PluginJsonLinesHistoryPolicy GetMeshtasticHistoryPolicy() => new(
+        MaximumMeshtasticHistoryEntries,
+        TimeSpan.FromDays(Math.Clamp(MeshtasticHistoryRetentionDays, 1, 3650)),
+        MaximumMeshtasticHistoryBytes);
     private DispatcherTimer? _meshtasticDerivedRefreshTimer;
     private DispatcherTimer? _meshtasticSnapshotSaveTimer;
     private long _meshtasticLastStatisticsUpdateMs;
@@ -226,7 +257,7 @@ public partial class MeshtasticViewModel
     public ObservableCollection<MeshtasticDisplayItem> MeshtasticTextMessages { get; } = new();
     public ObservableCollection<MeshtasticPacketGroupItem> MeshtasticPacketGroups { get; } = new();
     public ObservableCollection<MeshtasticReceptionAggregateItem> MeshtasticReceptionAggregates { get; } = new();
-    public ObservableCollection<MeshtasticDisplayItem> SelectedMeshtasticNodeReceptions { get; } = new();
+    public ObservableCollection<MeshtasticDisplayItem> SelectedMeshtasticNodeLatestApplications { get; } = new();
     public ObservableCollection<MeshtasticNodeDisplayItem> MeshtasticNodes { get; } = new();
     public ObservableCollection<MeshtasticNodeDisplayItem> FilteredMeshtasticNodes { get; } = new();
     public ObservableCollection<MeshtasticMapPoint> MeshtasticMapPoints { get; } = new();
@@ -273,7 +304,7 @@ public partial class MeshtasticViewModel
     partial void OnMeshtasticMapDirectOnlyChanged(bool value) => RefreshMeshtasticMapMarkers();
     partial void OnSelectedMeshtasticNodeChanged(MeshtasticNodeDisplayItem? value)
     {
-        RefreshSelectedMeshtasticNodeReceptions();
+        RefreshSelectedMeshtasticNodeLatestApplications();
         foreach (MeshtasticMapPoint point in MeshtasticMapPoints)
             point.IsSelected = point.NodeNumber == value?.NodeNumber;
         RefreshMeshtasticMapMarkers();
@@ -286,20 +317,42 @@ public partial class MeshtasticViewModel
     }
 
     [RelayCommand]
+    private void DeleteMeshtasticNode(MeshtasticNodeDisplayItem? node)
+    {
+        if (node is null || !MeshtasticNodes.Contains(node)) return;
+
+        bool wasSelected = ReferenceEquals(SelectedMeshtasticNode, node);
+        MeshtasticNodes.Remove(node);
+        if (_meshtasticNodesById.TryGetValue(node.NodeNumber, out MeshtasticNodeDisplayItem? cachedNode) &&
+            ReferenceEquals(cachedNode, node))
+        {
+            _meshtasticNodesById.Remove(node.NodeNumber);
+        }
+
+        if (_meshtasticMapPointsById.Remove(node.NodeNumber, out MeshtasticMapPoint? mapPoint))
+            MeshtasticMapPoints.Remove(mapPoint);
+
+        if (wasSelected) SelectedMeshtasticNode = null;
+        RefreshFilteredMeshtasticNodes();
+        if (wasSelected) SelectedMeshtasticNode = FilteredMeshtasticNodes.FirstOrDefault();
+        RefreshMeshtasticMapMarkers();
+        ScheduleMeshtasticSnapshotSave();
+    }
+
+    [RelayCommand]
     private void SelectMeshtasticMapMarker(string? markerId)
     {
         if (uint.TryParse(markerId, NumberStyles.None, CultureInfo.InvariantCulture, out uint nodeNumber))
             SelectMeshtasticNode(nodeNumber);
     }
 
-    private void RefreshSelectedMeshtasticNodeReceptions()
+    private void RefreshSelectedMeshtasticNodeLatestApplications()
     {
-        SelectedMeshtasticNodeReceptions.Clear();
+        SelectedMeshtasticNodeLatestApplications.Clear();
         if (SelectedMeshtasticNode is null) return;
-        IEnumerable<MeshtasticDisplayItem> nodeMessages = MeshtasticMessages
-            .Where(item => string.Equals(item.Sender, SelectedMeshtasticNode.NodeId, StringComparison.OrdinalIgnoreCase));
-        foreach (MeshtasticDisplayItem item in _meshtasticHistoryAnalyzer.PreferDirectReceptions(nodeMessages))
-            SelectedMeshtasticNodeReceptions.Add(item);
+        foreach (MeshtasticDisplayItem item in _meshtasticHistoryAnalyzer.GetLatestApplications(
+                     MeshtasticMessages, SelectedMeshtasticNode.NodeId))
+            SelectedMeshtasticNodeLatestApplications.Add(item);
     }
 
     private void RefreshMeshtasticPacketGroups()
@@ -342,7 +395,7 @@ public partial class MeshtasticViewModel
             () =>
             {
                 RefreshMeshtasticPacketGroups();
-                RefreshSelectedMeshtasticNodeReceptions();
+                RefreshSelectedMeshtasticNodeLatestApplications();
                 RefreshFilteredMeshtasticNodes();
             });
         if (!_meshtasticDerivedRefreshTimer.IsEnabled) _meshtasticDerivedRefreshTimer.Start();
@@ -371,6 +424,7 @@ public partial class MeshtasticViewModel
         {
             _meshtasticDerivedRefreshTimer.Stop();
             RefreshMeshtasticPacketGroups();
+            RefreshSelectedMeshtasticNodeLatestApplications();
             RefreshFilteredMeshtasticNodes();
         }
         if (_meshtasticSnapshotSaveTimer?.IsEnabled == true)

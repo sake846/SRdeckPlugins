@@ -47,6 +47,7 @@ public partial class MeshtasticViewModel
     public IReadOnlyList<MeshtasticRegion> MeshtasticRegions { get; } = Enum.GetValues<MeshtasticRegion>();
     [ObservableProperty] private MeshtasticModemPreset _selectedMeshtasticModemPreset = MeshtasticModemPreset.LongFast;
     private MeshtasticModemPreset _lastSpecifiedMeshtasticPreset = MeshtasticModemPreset.LongFast;
+    private int _lastSpecifiedRadioChannel = MeshtasticJpLongFastProfile.DefaultChannel;
     [ObservableProperty] private bool _meshtasticDiscoveryUses250Khz = true;
     [ObservableProperty] private bool _meshtasticDiscoveryUses125Khz = true;
     private bool _isUpdatingMeshtasticDiscoveryBandwidths;
@@ -94,9 +95,26 @@ public partial class MeshtasticViewModel
     public bool MeshtasticUses125Khz => MeshtasticJpLongFastProfile.GetChannelProfiles(SelectedMeshtasticModemPreset).Any(value => value.BandwidthHz == 125_000);
     public string Meshtastic250SlotRange => $"slot 1～{MeshtasticJpLongFastProfile.GetRegion(SelectedMeshtasticRegion).GetMaximumChannel(250_000)}";
     public string Meshtastic125SlotRange => $"slot 1～{MeshtasticJpLongFastProfile.GetRegion(SelectedMeshtasticRegion).GetMaximumChannel(125_000)}";
-    [ObservableProperty] private string _meshtasticChannelSettingStatus = "LongFast既定チャンネル";
+    public ObservableCollection<MeshtasticSpecifiedSlotOption> MeshtasticSpecifiedSlotOptions { get; } = new();
+    public MeshtasticSpecifiedSlotOption? SelectedMeshtasticSpecifiedSlotOption
+    {
+        get => MeshtasticSpecifiedSlotOptions.FirstOrDefault(opt => opt.Slot == MeshtasticRadioChannel);
+        set
+        {
+            if (value is not null && MeshtasticRadioChannel != value.Slot)
+            {
+                MeshtasticRadioChannel = value.Slot;
+            }
+            OnPropertyChanged(nameof(SelectedMeshtasticSpecifiedSlotOption));
+        }
+    }
+    [ObservableProperty] private bool _isAudioMonitorEnabled = true;
+    [ObservableProperty] private bool _isSquelchEnabled = true;
+    [ObservableProperty] private bool _buzzerEnabled = true;
+    [ObservableProperty] private string _meshtasticChannelSettingStatus = "条件指定 モード, 方式: LongFast, スロット: 20";
     private bool _isLoadingMeshtasticSettings;
     private bool _isUpdatingMeshtasticSlotSelection;
+    private bool _isSwitchingMeshtasticMode;
 
     private PersistedPluginSettings LoadPersistedPluginSettings() => _meshtasticSettingsService.Load();
 
@@ -113,7 +131,10 @@ public partial class MeshtasticViewModel
             Math.Clamp(MeshtasticHistoryDisplayLimit, 100, 100_000),
             Math.Clamp(MeshtasticHistoryRetentionDays, 1, 3650),
             _lastSpecifiedMeshtasticPreset,
-            GeoMapStateStore.GetState("meshtastic"));
+            GeoMapStateStore.GetState("meshtastic"),
+            IsAudioMonitorEnabled,
+            IsSquelchEnabled,
+            BuzzerEnabled);
         _meshtasticSettingsService.Save(settings);
     }
 
@@ -142,10 +163,14 @@ public partial class MeshtasticViewModel
                 _lastSpecifiedMeshtasticPreset = SelectedMeshtasticModemPreset;
         }
         MeshtasticRadioChannel = settings.RadioChannel;
+        _lastSpecifiedRadioChannel = settings.RadioChannel;
         MeshtasticRadioChannels250 = settings.RadioChannels250;
         MeshtasticRadioChannels125 = settings.RadioChannels125;
         MeshtasticHistoryDisplayLimit = Math.Clamp(settings.HistoryDisplayLimit, 100, 100_000);
         MeshtasticHistoryRetentionDays = Math.Clamp(settings.HistoryRetentionDays, 1, 3650);
+        IsAudioMonitorEnabled = settings.IsAudioMonitorEnabled;
+        IsSquelchEnabled = settings.IsSquelchEnabled;
+        BuzzerEnabled = settings.BuzzerEnabled;
         RebuildMeshtasticSlotSelections();
         _isLoadingMeshtasticSettings = false;
         ApplyMeshtasticChannelSettings();
@@ -173,7 +198,7 @@ public partial class MeshtasticViewModel
             MeshtasticHistoryRetentionDays = clamped;
             _isLoadingMeshtasticSettings = false;
         }
-        PruneMeshtasticHistoryFile();
+        _ = PruneMeshtasticHistoryFileAsync();
         SaveMeshtasticHistorySettings();
     }
 
@@ -182,7 +207,28 @@ public partial class MeshtasticViewModel
         if (_isLoadingMeshtasticSettings) return;
         SaveMeshtasticSettings();
     }
-    partial void OnMeshtasticRadioChannelChanged(int value) => ApplyMeshtasticChannelSettings();
+    partial void OnMeshtasticRadioChannelChanged(int value)
+    {
+        if (!IsMeshtasticDiscoveryMode && !_isSwitchingMeshtasticMode)
+        {
+            _lastSpecifiedRadioChannel = value;
+        }
+        OnPropertyChanged(nameof(SelectedMeshtasticSpecifiedSlotOption));
+        ApplyMeshtasticChannelSettings();
+    }
+    partial void OnIsAudioMonitorEnabledChanged(bool value)
+    {
+        SaveMeshtasticSettings();
+        ApplyMeshtasticChannelSettings();
+    }
+    partial void OnIsSquelchEnabledChanged(bool value)
+    {
+        SaveMeshtasticSettings();
+    }
+    partial void OnBuzzerEnabledChanged(bool value)
+    {
+        SaveMeshtasticSettings();
+    }
     partial void OnMeshtasticRadioChannels250Changed(string value)
     {
         if (_isUpdatingMeshtasticSlotSelection) return;
@@ -205,29 +251,44 @@ public partial class MeshtasticViewModel
         OnPropertyChanged(nameof(SelectedMeshtasticSpecifiedModemPreset));
         if (_isLoadingMeshtasticSettings) return;
 
-        if (value)
+        _isSwitchingMeshtasticMode = true;
+        try
         {
-            if (!MeshtasticJpLongFastProfile.IsAutoSf(SelectedMeshtasticModemPreset))
-                _lastSpecifiedMeshtasticPreset = SelectedMeshtasticModemPreset;
-
-            EnsureValidDiscoverySlotSelections();
-
-            MeshtasticModemPreset discoveryPreset = (MeshtasticDiscoveryUses250Khz, MeshtasticDiscoveryUses125Khz) switch
+            if (value)
             {
-                (true, true) => MeshtasticModemPreset.AutoSf250And125,
-                (true, false) => MeshtasticModemPreset.AutoSf250,
-                _ => MeshtasticModemPreset.AutoSf125
-            };
+                if (!MeshtasticJpLongFastProfile.IsAutoSf(SelectedMeshtasticModemPreset))
+                {
+                    _lastSpecifiedMeshtasticPreset = SelectedMeshtasticModemPreset;
+                    _lastSpecifiedRadioChannel = MeshtasticRadioChannel;
+                }
 
-            SelectedMeshtasticModemPreset = discoveryPreset;
+                EnsureValidDiscoverySlotSelections();
+
+                MeshtasticModemPreset discoveryPreset = (MeshtasticDiscoveryUses250Khz, MeshtasticDiscoveryUses125Khz) switch
+                {
+                    (true, true) => MeshtasticModemPreset.AutoSf250And125,
+                    (true, false) => MeshtasticModemPreset.AutoSf250,
+                    _ => MeshtasticModemPreset.AutoSf125
+                };
+
+                SelectedMeshtasticModemPreset = discoveryPreset;
+            }
+            else
+            {
+                MeshtasticRadioChannel = _lastSpecifiedRadioChannel;
+                SelectedMeshtasticModemPreset = _lastSpecifiedMeshtasticPreset;
+                EnsureValidSpecifiedSlotSelection();
+                RebuildMeshtasticSpecifiedSlots();
+            }
+
+            OnPropertyChanged(nameof(Meshtastic250SlotRange));
+            OnPropertyChanged(nameof(Meshtastic125SlotRange));
         }
-        else
+        finally
         {
-            SelectedMeshtasticModemPreset = _lastSpecifiedMeshtasticPreset;
+            _isSwitchingMeshtasticMode = false;
         }
 
-        OnPropertyChanged(nameof(Meshtastic250SlotRange));
-        OnPropertyChanged(nameof(Meshtastic125SlotRange));
         ApplyMeshtasticChannelSettings();
     }
 
@@ -300,6 +361,17 @@ public partial class MeshtasticViewModel
         MeshtasticDiscoveryUses125Khz = preset is MeshtasticModemPreset.AutoSf250And125 or MeshtasticModemPreset.AutoSf125;
         _isUpdatingMeshtasticDiscoveryBandwidths = false;
     }
+    private void EnsureValidSpecifiedSlotSelection()
+    {
+        MeshtasticLoRaProfile profile = MeshtasticJpLongFastProfile.GetProfile(SelectedMeshtasticModemPreset);
+        int maxSlot = MeshtasticJpLongFastProfile.GetRegion(SelectedMeshtasticRegion).GetMaximumChannel(profile.BandwidthHz);
+        int clamped = Math.Clamp(MeshtasticRadioChannel, 1, maxSlot);
+        if (MeshtasticRadioChannel != clamped)
+        {
+            MeshtasticRadioChannel = clamped;
+        }
+    }
+
     partial void OnSelectedMeshtasticRegionChanged(MeshtasticRegion value)
     {
         MeshtasticLoRaProfile profile = MeshtasticJpLongFastProfile.GetProfile(SelectedMeshtasticModemPreset);
@@ -318,8 +390,16 @@ public partial class MeshtasticViewModel
     }
     partial void OnSelectedMeshtasticModemPresetChanged(MeshtasticModemPreset value)
     {
-        if (!MeshtasticJpLongFastProfile.IsAutoSf(value)) _lastSpecifiedMeshtasticPreset = value;
-        else SyncMeshtasticDiscoveryBandwidths(value);
+        if (!MeshtasticJpLongFastProfile.IsAutoSf(value))
+        {
+            _lastSpecifiedMeshtasticPreset = value;
+            EnsureValidSpecifiedSlotSelection();
+            RebuildMeshtasticSpecifiedSlots();
+        }
+        else
+        {
+            SyncMeshtasticDiscoveryBandwidths(value);
+        }
         OnPropertyChanged(nameof(SelectedMeshtasticSpecifiedModemPreset));
         OnPropertyChanged(nameof(MeshtasticUses250Khz));
         OnPropertyChanged(nameof(MeshtasticUses125Khz));

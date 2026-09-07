@@ -51,10 +51,11 @@ public static partial class HfdlPhysicalLayer
         int state = 0;
         for (int index = 0; index < input.Length; index++)
         {
-            int full = ((state << 1) | (input[index] ? 1 : 0)) & 0x7f;
+            int bit = input[index] ? 1 : 0;
+            int full = (bit << 6) | state;
             output[index * 2] = Parity(full & 0x5b);
             output[index * 2 + 1] = Parity(full & 0x79);
-            state = full & 0x3f;
+            state = (bit << 5) | (state >> 1);
         }
         return output;
     }
@@ -103,7 +104,7 @@ public static partial class HfdlPhysicalLayer
                         double candidate = metrics[state] + distance;
                         if (candidate >= next[nextState]) continue;
                         next[nextState] = candidate;
-                        if ((state & 32) != 0) survivors[time] |= 1UL << nextState;
+                        if ((state & 1) != 0) survivors[time] |= 1UL << nextState;
                         else survivors[time] &= ~(1UL << nextState);
                     }
                 }
@@ -118,9 +119,9 @@ public static partial class HfdlPhysicalLayer
             var output = new bool[outputBits];
             for (int time = outputBits - 1; time >= 0; time--)
             {
-                output[time] = (finalState & 1) != 0;
-                bool highPredecessor = (survivors[time] & (1UL << finalState)) != 0;
-                finalState = (finalState >> 1) | (highPredecessor ? 32 : 0);
+                output[time] = (finalState & 32) != 0;
+                bool oddPredecessor = (survivors[time] & (1UL << finalState)) != 0;
+                finalState = ((finalState << 1) & 0x3f) | (oddPredecessor ? 1 : 0);
             }
             return output;
         }
@@ -192,16 +193,21 @@ public static partial class HfdlPhysicalLayer
     private static byte[] CreateViterbiNextStates()
     {
         var output = new byte[128];
-        for (int transition = 0; transition < output.Length; transition++)
-            output[transition] = (byte)(transition & 0x3f);
+        for (int state = 0; state < 64; state++)
+            for (int bit = 0; bit < 2; bit++)
+                output[state * 2 + bit] = (byte)((bit << 5) | (state >> 1));
         return output;
     }
 
     private static sbyte[] CreateViterbiSigns(int polynomial)
     {
         var output = new sbyte[128];
-        for (int transition = 0; transition < output.Length; transition++)
-            output[transition] = Parity(transition & polynomial) ? (sbyte)-1 : (sbyte)1;
+        for (int state = 0; state < 64; state++)
+            for (int bit = 0; bit < 2; bit++)
+            {
+                int register = (bit << 6) | state;
+                output[state * 2 + bit] = Parity(register & polynomial) ? (sbyte)-1 : (sbyte)1;
+            }
         return output;
     }
 

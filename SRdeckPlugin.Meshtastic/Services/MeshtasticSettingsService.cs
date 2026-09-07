@@ -18,7 +18,10 @@ internal sealed record PersistedPluginSettings(
     int HistoryDisplayLimit,
     int HistoryRetentionDays,
     MeshtasticModemPreset LastSpecifiedModemPreset = MeshtasticModemPreset.LongFast,
-    GeoMapState? MapState = null);
+    GeoMapState? MapState = null,
+    bool IsAudioMonitorEnabled = true,
+    bool IsSquelchEnabled = true,
+    bool BuzzerEnabled = true);
 
 /// <summary>
 /// Owns Meshtastic settings persistence and data-file locations.
@@ -28,9 +31,20 @@ internal sealed class MeshtasticSettingsService
 {
     private IPluginHostContext? _hostContext;
 
-    public string PluginDataDirectory => _hostContext?.Settings.DataDirectory ?? AppContext.BaseDirectory;
+    public string PluginDataDirectory => _hostContext?.Settings.DataDirectory ?? DefaultPluginDataDirectory;
     public string StatePath => Path.Combine(PluginDataDirectory, "state.json");
     public string HistoryPath => Path.Combine(PluginDataDirectory, "meshtastic-history.jsonl");
+
+    private static string DefaultPluginDataDirectory
+    {
+        get
+        {
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return string.IsNullOrWhiteSpace(appData)
+                ? Path.Combine(AppContext.BaseDirectory, "SRdeck", "plugins", "meshtastic")
+                : Path.Combine(appData, "SRdeck", "plugins", "meshtastic");
+        }
+    }
 
     public void Attach(IPluginHostContext hostContext) => _hostContext = hostContext;
 

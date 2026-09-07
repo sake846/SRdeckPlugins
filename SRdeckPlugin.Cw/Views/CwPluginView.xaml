@@ -1,0 +1,458 @@
+<UserControl x:Class="SRdeckPlugin.Cw.Views.CwPluginView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:SRdeckPlugin.Cw.Views"
+             xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+             MinWidth="540" MinHeight="300">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <views:CwSettingsView Grid.Row="0" />
+
+        <Border Grid.Row="1"
+                Style="{DynamicResource PluginFlatOuterPanelStyle}"
+                Margin="6,0,6,6">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="36" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Style="{DynamicResource PluginStatusHeaderStyle}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Style="{DynamicResource PluginStatusIndicatorStyle}"
+                                     Tag="{Binding OverallStatusKind}" />
+                            <TextBlock Text="受信状態"
+                                       Style="{DynamicResource PluginStatusHeaderTitleStyle}" />
+                        </StackPanel>
+
+                        <Button Grid.Column="2"
+                                Content="クリア"
+                                Command="{Binding ClearCommand}"
+                                Style="{DynamicResource PluginButtonStyle}" />
+                    </Grid>
+                </Border>
+
+                <UniformGrid Grid.Row="1" Columns="4" Margin="10,4,10,14">
+                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="追尾信号" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding ActiveSignals, StringFormat=N0}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
+                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="復号文字（累計）" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding DecodedCharacters, StringFormat=N0}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
+                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="代表 S/N" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding RepresentativeSnrText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
+                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="代表速度" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding RepresentativeSpeedText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
+                </UniformGrid>
+
+                <TabControl Grid.Row="2" Style="{DynamicResource PluginTabControlStyle}">
+                    <TabItem x:Name="CwOverviewTab" Header="概要" IsSelected="True">
+                        <Grid Margin="10,8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="最近受信したCW信号"
+                                       Style="{DynamicResource PluginPrimarySectionHeaderStyle}"
+                                       Margin="2,2,0,5" />
+                            <ListBox x:Name="CwRecentSignalList"
+                                     Grid.Row="1"
+                                     ItemsSource="{Binding RecentSignals}"
+                                     Style="{DynamicResource PluginCompactListStyle}"
+                                     VerticalAlignment="Stretch">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{DynamicResource ControlBorderBrush}"
+                                                BorderThickness="0,0,0,1"
+                                                Padding="6,5">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="64" />
+                                                    <ColumnDefinition Width="92" />
+                                                    <ColumnDefinition Width="66" />
+                                                    <ColumnDefinition Width="66" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding TimeDisplay}"
+                                                           Foreground="{DynamicResource TextDimBrush}"
+                                                           FontFamily="{DynamicResource DisplayFontFamily}" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding FrequencyDisplay}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           FontFamily="{DynamicResource DisplayFontFamily}" />
+                                                <TextBlock Grid.Column="2"
+                                                           Text="{Binding SignalToNoiseDb, StringFormat={}{0:F1} dB}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           FontFamily="{DynamicResource DisplayFontFamily}" />
+                                                <TextBlock Grid.Column="3"
+                                                           Text="{Binding SpeedWpm, StringFormat={}{0} WPM}"
+                                                           Foreground="{DynamicResource TextDimBrush}"
+                                                           FontFamily="{DynamicResource DisplayFontFamily}" />
+                                                <TextBlock Grid.Column="4"
+                                                           Text="{Binding LatestText}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           FontFamily="{DynamicResource DisplayFontFamily}"
+                                                           TextWrapping="Wrap"
+                                                           TextTrimming="None"
+                                                           ToolTip="{Binding Text}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="一覧">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="5" />
+                                <RowDefinition Height="150" MinHeight="96" MaxHeight="240" />
+                            </Grid.RowDefinitions>
+                            <Grid Margin="8,6,8,4">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="追尾中のCW信号を比較します" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="検索" Style="{DynamicResource PluginListSearchLabelStyle}"/>
+                                <TextBox Grid.Column="2" Text="{Binding ListSearchText, UpdateSourceTrigger=PropertyChanged}" Style="{DynamicResource PluginListSearchTextBoxStyle}"/>
+                                <TextBlock Grid.Column="3" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center">
+                                    <Run Text="{Binding FilteredRows.Count, Mode=OneWay, StringFormat=N0}"/><Run Text=" 信号"/>
+                                </TextBlock>
+                            </Grid>
+                            <Border Grid.Row="1" Style="{DynamicResource PluginTimelineBorderStyle}">
+                                <DataGrid x:Name="CwSignalDataGrid"
+                                          Style="{DynamicResource PluginTimelineDataGridStyle}"
+                                          ItemsSource="{Binding FilteredRows}"
+                                          SelectedItem="{Binding SelectedSignalRow, Mode=TwoWay}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="時刻" Binding="{Binding TimeDisplay}" Width="64"
+                                                            CellStyle="{DynamicResource PluginTimelineTimestampCellStyle}"
+                                                            ElementStyle="{DynamicResource PluginTimelineTimestampTextStyle}" />
+                                        <DataGridTextColumn Header="周波数" Binding="{Binding FrequencyDisplay}" Width="92"
+                                                            ElementStyle="{DynamicResource PluginTimelineCellTextStyle}" />
+                                        <DataGridTextColumn Header="S/N" Binding="{Binding SignalToNoiseDb, StringFormat={}{0:F1} dB}" Width="66"
+                                                            ElementStyle="{DynamicResource PluginTimelineCellTextStyle}" />
+                                        <DataGridTextColumn Header="速度" Binding="{Binding SpeedWpm, StringFormat={}{0} WPM}" Width="66"
+                                                            ElementStyle="{DynamicResource PluginTimelineCellTextStyle}" />
+                                        <DataGridTemplateColumn Header="復号テキスト" Width="*" SortMemberPath="Text">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding LatestText}"
+                                                               Style="{DynamicResource PluginTimelineCellTextStyle}"
+                                                               TextWrapping="Wrap"
+                                                               TextTrimming="None"
+                                                               ToolTip="{Binding Text}" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Border>
+                            <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch"
+                                          Background="Transparent" ResizeDirection="Rows" />
+                            <controls:SelectionDetailPane Grid.Row="3" DetailContent="{Binding SelectedSignalRow}"
+                                EmptyText="一覧から信号を選択すると、追尾条件と復号全文が表示されます">
+                                <controls:SelectionDetailPane.DetailContentTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="4,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="2*"/>
+                                                <ColumnDefinition Width="3*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="CW 追尾信号" Style="{DynamicResource PluginSelectionDetailHeaderStyle}"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding ReceivedAt, StringFormat={}{0:yyyy/MM/dd HH:mm:ss.fff}}" Style="{DynamicResource PluginTimelineDetailTimestampStyle}"/>
+                                                </Grid>
+                                                <UniformGrid Columns="2" Margin="0,4,0,0">
+                                                    <StackPanel><TextBlock Text="Track ID" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/><TextBlock Text="{Binding TrackId}" Style="{DynamicResource PluginTimelineDetailValueStyle}"/></StackPanel>
+                                                    <StackPanel><TextBlock Text="周波数" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/><TextBlock Text="{Binding FrequencyDisplay}" Style="{DynamicResource PluginTimelineDetailValueStyle}"/></StackPanel>
+                                                </UniformGrid>
+                                                <UniformGrid Columns="2" Margin="0,4,0,0">
+                                                    <StackPanel><TextBlock Text="S/N" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/><TextBlock Text="{Binding SignalToNoiseDb, StringFormat={}{0:F1} dB}" Style="{DynamicResource PluginTimelineDetailValueStyle}"/></StackPanel>
+                                                    <StackPanel><TextBlock Text="速度" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/><TextBlock Text="{Binding SpeedWpm, StringFormat={}{0} WPM}" Style="{DynamicResource PluginTimelineDetailValueStyle}"/></StackPanel>
+                                                </UniformGrid>
+                                            </StackPanel>
+                                            <Border Grid.Column="1" BorderBrush="{DynamicResource ControlBorderBrush}"
+                                                    BorderThickness="1,0,0,0" Padding="8,0,0,0" Margin="8,0,0,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="受信履歴" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,4"/>
+                                                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                                        <ItemsControl ItemsSource="{Binding History}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Grid Margin="0,1">
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="58"/>
+                                                                            <ColumnDefinition Width="78"/>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <TextBlock Text="{Binding ReceivedAt, StringFormat=HH:mm:ss}" Foreground="{DynamicResource TextDimBrush}" FontFamily="{DynamicResource DisplayFontFamily}"/>
+                                                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis">
+                                                                            <Run Text="{Binding FrequencyDisplay, Mode=OneWay}"/>
+                                                                        </TextBlock>
+                                                                        <TextBlock Grid.Column="2" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text}">
+                                                                            <Run Text="{Binding SignalToNoiseDb, Mode=OneWay, StringFormat={}{0:+0.0;-0.0;0.0} dB}"/><Run Text="  "/><Run Text="{Binding LatestText, Mode=OneWay}"/>
+                                                                        </TextBlock>
+                                                                    </Grid>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </ScrollViewer>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </DataTemplate>
+                                </controls:SelectionDetailPane.DetailContentTemplate>
+                            </controls:SelectionDetailPane>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem x:Name="CwTimelineTab" Header="時系列">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="5" />
+                                <RowDefinition Height="150" MinHeight="96" MaxHeight="240" />
+                            </Grid.RowDefinitions>
+                            <Grid Margin="8,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="時系列順"
+                                           Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="検索" Style="{DynamicResource PluginListSearchLabelStyle}"/>
+                                <TextBox Grid.Column="2" Text="{Binding TimelineSearchText, UpdateSourceTrigger=PropertyChanged}" Style="{DynamicResource PluginListSearchTextBoxStyle}"/>
+                                <TextBlock Grid.Column="3"
+                                           Foreground="{DynamicResource TextDimBrush}"
+                                           VerticalAlignment="Center">
+                                    <Run Text="{Binding FilteredTimeline.Count, Mode=OneWay, StringFormat=N0}" /><Run Text=" 文" />
+                                </TextBlock>
+                            </Grid>
+                            <Border Grid.Row="1" Style="{DynamicResource PluginTimelineBorderStyle}">
+                                <DataGrid x:Name="CwTimelineDataGrid"
+                                          ItemsSource="{Binding FilteredTimeline}"
+                                          SelectedItem="{Binding SelectedTimelineRow, Mode=TwoWay}"
+                                          Style="{DynamicResource PluginTimelineDataGridStyle}">
+                                    <DataGrid.Columns>
+                                        <DataGridTemplateColumn Header="日時" Width="82" SortMemberPath="LocalReceivedAt"
+                                                                CellStyle="{DynamicResource PluginTimelineTimestampCellStyle}">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}"
+                                                               LineHeight="13" VerticalAlignment="Top" Margin="0">
+                                                        <Run Text="{Binding LocalReceivedAt, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd}}" /><LineBreak />
+                                                        <Run Text="{Binding LocalReceivedAt, Mode=OneWay, StringFormat={}{0:HH:mm:ss}}" />
+                                                    </TextBlock>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="復号文" Width="*" MinWidth="220" SortMemberPath="Text">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,2,0,2" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                        </Grid.RowDefinitions>
+                                                        <TextBlock Text="{Binding Text, Mode=OneWay}" Style="{DynamicResource PluginTimelineIdentityTextStyle}"
+                                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0">
+                                                            <Run Text="{Binding FrequencyDisplay, Mode=OneWay}" /><Run Text="  /  S/N " />
+                                                            <Run Text="{Binding SignalDisplay, Mode=OneWay}" /><Run Text="  /  " />
+                                                            <Run Text="{Binding SpeedDisplay, Mode=OneWay}" />
+                                                        </TextBlock>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Border>
+                            <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows" />
+                            <controls:TimelineDetailPane Grid.Row="3" DetailContent="{Binding SelectedTimelineRow}"
+                                EmptyText="時系列の復号文を選択すると、受信条件と全文が表示されます">
+                                <controls:TimelineDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="4,2">
+                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="CW 復号文" Style="{DynamicResource PluginSecondarySectionHeaderStyle}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding LocalReceivedAt, StringFormat={}{0:yyyy/MM/dd HH:mm:ss.fff}}" Style="{DynamicResource PluginTimelineDetailTimestampStyle}"/>
+                                    </Grid>
+                                    <UniformGrid Columns="3" Margin="0,4,0,4">
+                                        <StackPanel><TextBlock Text="周波数" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Text="{Binding FrequencyDisplay}" Style="{DynamicResource PluginTimelineDetailValueStyle}"/></StackPanel>
+                                        <StackPanel><TextBlock Text="S/N" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Text="{Binding SignalDisplay}" Style="{DynamicResource PluginTimelineDetailValueStyle}"/></StackPanel>
+                                        <StackPanel><TextBlock Text="速度 / 追尾ID" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding SpeedDisplay, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding TrackId, Mode=OneWay}"/></TextBlock></StackPanel>
+                                    </UniformGrid>
+                                    <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" />
+                                </StackPanel></DataTemplate></controls:TimelineDetailPane.DetailContentTemplate>
+                            </controls:TimelineDetailPane>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="診断">
+                        <DockPanel Margin="12,10" LastChildFill="True">
+                            <controls:DiagnosticsOverview DockPanel.Dock="Top"
+                                StatusKind="{Binding OverallStatusKind}"
+                                StatusText="{Binding Status}"
+                                PhaseText="段階: 入力 → FFT → 信号追尾 → モールス復号"
+                                LastUpdatedText="{Binding LastDiagnosticsUpdated, StringFormat=更新 {0}}"
+                                SummaryText="{Binding SettingStatus}"
+                                RecommendationText="確認: SDR入力、中心周波数、選択した受信帯域、S/Nしきい値を確認してください"
+                                RuntimeDiagnostics="{Binding RuntimeDiagnostics}"
+                                ChannelText="{Binding ChannelDisplay, Mode=OneWay}" />
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel MaxWidth="760">
+                                    <Expander Header="リアルタイム処理"
+                                              Style="{DynamicResource PluginDiagnosticsSectionStyle}">
+                                        <controls:RuntimeDiagnosticsDetails RuntimeDiagnostics="{Binding RuntimeDiagnostics}" />
+                                    </Expander>
+
+                                    <Expander Header="入力・選局"
+                                              Style="{DynamicResource PluginDiagnosticsSectionStyle}">
+                                        <Border Style="{DynamicResource PluginMetricCardStyle}" Margin="0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="170" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="22" />
+                                                    <RowDefinition Height="22" />
+                                                    <RowDefinition Height="22" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Text="選局" Foreground="{DynamicResource TextDimBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding CenterFrequencyDisplay}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           FontFamily="{DynamicResource DisplayFontFamily}" />
+                                                <TextBlock Grid.Row="1" Text="対象帯域" Foreground="{DynamicResource TextDimBrush}" />
+                                                <TextBlock Grid.Row="1" Grid.Column="1"
+                                                           Text="{Binding ReceiveBandwidthDisplay, Mode=OneWay, StringFormat={}{0} 複素ベースバンド}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                <TextBlock Grid.Row="2" Text="処理サンプルレート" Foreground="{DynamicResource TextDimBrush}" />
+                                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding OutputSampleRateDisplay, Mode=OneWay}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           FontFamily="{DynamicResource DisplayFontFamily}" />
+                                                <TextBlock Grid.Row="3" Text="IQ入力 → 中間 → 復調レート"
+                                                           Foreground="{DynamicResource TextDimBrush}" />
+                                                <TextBlock Grid.Row="3" Grid.Column="1"
+                                                           Text="{Binding OutputSampleRateDisplay, Mode=OneWay, StringFormat=入力 → {0} → CW復号}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           TextWrapping="Wrap" />
+                                            </Grid>
+                                        </Border>
+                                    </Expander>
+
+                                    <Expander Header="信号・チャネル"
+                                              Style="{DynamicResource PluginDiagnosticsSectionStyle}">
+                                        <Border Style="{DynamicResource PluginMetricCardStyle}" Margin="0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="170" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="22" />
+                                                    <RowDefinition Height="22" />
+                                                    <RowDefinition Height="22" />
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Text="アクティブ信号" Foreground="{DynamicResource TextDimBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding ActiveSignals, StringFormat={}{0} 信号}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           FontFamily="{DynamicResource DisplayFontFamily}" />
+                                                <TextBlock Grid.Row="1" Text="最小 S/N" Foreground="{DynamicResource TextDimBrush}" />
+                                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding MinimumSnrDb, StringFormat={}{0:F1} dB}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           FontFamily="{DynamicResource DisplayFontFamily}" />
+                                                <TextBlock Grid.Row="2" Text="最大同時信号数" Foreground="{DynamicResource TextDimBrush}" />
+                                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MaximumSignals}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           FontFamily="{DynamicResource DisplayFontFamily}" />
+                                            </Grid>
+                                        </Border>
+                                    </Expander>
+
+                                    <Expander Header="検出・同期・復調"
+                                              Style="{DynamicResource PluginDiagnosticsSectionStyle}">
+                                        <Border Style="{DynamicResource PluginMetricCardStyle}" Margin="0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="170" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="22" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Text="処理済みFFTフレーム" Foreground="{DynamicResource TextDimBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding ProcessedFrames}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           FontFamily="{DynamicResource DisplayFontFamily}" />
+                                                <TextBlock Grid.Row="1" Text="処理経路" Foreground="{DynamicResource TextDimBrush}" />
+                                                <TextBlock Grid.Row="1" Grid.Column="1"
+                                                           Text="512点FFT / 128サンプルホップ / 信号追尾 / 適応モールス復号"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           TextWrapping="Wrap" />
+                                            </Grid>
+                                        </Border>
+                                    </Expander>
+
+                                    <Expander Header="検証・復号"
+                                              Style="{DynamicResource PluginDiagnosticsSectionStyle}">
+                                        <Border Style="{DynamicResource PluginMetricCardStyle}" Margin="0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="170" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="22" />
+                                                    <RowDefinition Height="22" />
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Text="復号文字数" Foreground="{DynamicResource TextDimBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding DecodedCharacters}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           FontFamily="{DynamicResource DisplayFontFamily}" />
+                                                <TextBlock Grid.Row="1" Text="表示行数上限" Foreground="{DynamicResource TextDimBrush}" />
+                                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding MaximumRows}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           FontFamily="{DynamicResource DisplayFontFamily}" />
+                                            </Grid>
+                                        </Border>
+                                    </Expander>
+
+                                    <Expander Header="詳細・デバッグ"
+                                              Style="{DynamicResource PluginDiagnosticsSectionStyle}"
+                                              IsExpanded="False">
+                                        <StackPanel Margin="8,5">
+                                            <TextBlock Foreground="{DynamicResource TextDimBrush}">
+                                                <Run Text="{Binding ProcessingParametersDisplay, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock Foreground="{DynamicResource TextDimBrush}" Margin="0,4,0,0">
+                                                <Run Text="モニター音声: " />
+                                                <Run Text="{Binding MonitorAudioEnabled, StringFormat={}{0}}" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Expander>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </TabItem>
+                </TabControl>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

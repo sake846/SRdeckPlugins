@@ -43,10 +43,10 @@ public sealed partial class HfdlReceiver
                 };
                 Complex32[] symbols = SliceTrackedSymbols(trial, requiredSymbols);
                 CorrectCarrier(symbols, trial.CarrierStep, trial.Channel);
-                ReadOnlySpan<Complex32> data = symbols.AsSpan(HfdlPhysicalLayer.PreambleSymbols);
-                ReadOnlySpan<bool> shiftedM1 = HfdlPhysicalLayer.ShiftedM1(trial.Mode.M1Shift);
-                bool[] decoded = HfdlPhysicalLayer.DecodeDataSymbols(data, trial.Mode,
-                    shiftedM1[..HfdlPhysicalLayer.ProbeSymbolsPerFrame], out double trialQuality);
+                ReadOnlySpan<bool> training = HfdlPhysicalLayer.T[..HfdlPhysicalLayer.ProbeSymbolsPerFrame];
+                bool[] decoded = HfdlPhysicalLayer.DecodeBurstSymbols(symbols, trial.Mode,
+                    training, out double trialQuality);
+                dataQuality = Math.Max(dataQuality, trialQuality);
                 if (!HfdlPhysicalLayer.TryExtractMpdu(decoded, out byte[] trialMpdu)) continue;
                 acceptedCandidate = trial;
                 dataQuality = trialQuality;
@@ -580,7 +580,7 @@ public sealed partial class HfdlReceiver
         Complex32[] preamble = SliceFractionalSymbols(
             candidate.SampleOffset, HfdlPhysicalLayer.PreambleSymbols);
         preamble.CopyTo(output, 0);
-        ReadOnlySpan<bool> probe = HfdlPhysicalLayer.ShiftedM1(candidate.Mode.M1Shift);
+        ReadOnlySpan<bool> probe = HfdlPhysicalLayer.T[..HfdlPhysicalLayer.ProbeSymbolsPerFrame];
         double timingAdjustment = 0;
         for (int frame = 0; frame < candidate.Mode.FrameCount; frame++)
         {
@@ -618,6 +618,13 @@ public sealed partial class HfdlReceiver
     private void RemoveWorking(int count)
     {
         if (count <= 0) return;
+        if (pendingCandidate is { } candidate)
+        {
+            double adjustedSampleOffset = candidate.SampleOffset - count;
+            pendingCandidate = adjustedSampleOffset >= 0
+                ? candidate with { SampleOffset = adjustedSampleOffset }
+                : null;
+        }
         working.RemoveFirst(count);
         preambleSearchSampleOffset = Math.Max(0, preambleSearchSampleOffset - count);
         workingSampleStart += (long)Math.Round(count * (double)inputSampleRate / WorkingSampleRate);
@@ -657,7 +664,7 @@ public sealed partial class HfdlReceiver
 
 
     /// <summary>
-    /// Converts zero-IF HFDL channel IQ back to the conventional 1,440 Hz
+    /// Converts zero-IF HFDL channel IQ back to the conventional USB 1,440 Hz
     /// receiver tone and applies a slow, modulation-preserving monitor AGC.
     /// </summary>
     internal sealed class AudioMonitor
@@ -665,15 +672,21 @@ public sealed partial class HfdlReceiver
         private const double MonitorCenterHz = 1_440;
         private static readonly double RotationI = Math.Cos(2 * Math.PI * MonitorCenterHz / WorkingSampleRate);
         private static readonly double RotationQ = Math.Sin(2 * Math.PI * MonitorCenterHz / WorkingSampleRate);
+        private readonly ComplexIqLowPassFilter usbLowPass = new();
         private double oscillatorI = 1;
         private double oscillatorQ;
         private int normalizationCounter;
         private double signalPower;
 
+        public AudioMonitor() => usbLowPass.Configure(WorkingSampleRate, MonitorCenterHz);
+
         public float Process(float inputI, float inputQ)
         {
-            signalPower += 0.001 * (inputI * inputI + inputQ * inputQ - signalPower);
-            double audio = inputI * oscillatorI - inputQ * oscillatorQ;
+            usbLowPass.Process(inputI, inputQ, out float filteredI, out float filteredQ);
+            signalPower += 0.001 * (filteredI * filteredI + filteredQ * filteredQ - signalPower);
+            // Re{(I+jQ) * exp(+j*2*pi*1440*t)} is the USB orientation:
+            // positive IQ modulation remains above the dial frequency.
+            double audio = filteredI * oscillatorI - filteredQ * oscillatorQ;
             double nextI = oscillatorI * RotationI - oscillatorQ * RotationQ;
             oscillatorQ = oscillatorI * RotationQ + oscillatorQ * RotationI;
             oscillatorI = nextI;
@@ -691,6 +704,7 @@ public sealed partial class HfdlReceiver
 
         public void Reset()
         {
+            usbLowPass.Reset();
             oscillatorI = 1;
             oscillatorQ = 0;
             normalizationCounter = 0;

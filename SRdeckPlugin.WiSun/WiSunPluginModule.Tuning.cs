@@ -213,19 +213,8 @@ public sealed partial class WiSunPluginModule
             requests[^1].CenterFrequencyHz) / 2;
     }
 
-    private static int RequiredSourceSampleRateHz(WiSunSettings settings)
-    {
-        PluginChannelRequest[] requests = CreateChannelRequests(settings).ToArray();
-        int tuningBandwidthHz = TuningBandwidthHz(settings.PhyProfile);
-        long lowerEdge = requests.Min(value =>
-            value.CenterFrequencyHz - tuningBandwidthHz / 2L);
-        long upperEdge = requests.Max(value =>
-            value.CenterFrequencyHz + tuningBandwidthHz / 2L);
-        long occupiedSpan = upperEdge - lowerEdge;
-        int workingRate = WiSunDemodulator.WorkingSampleRateHz(settings.PhyProfile, settings.CustomBitRateBps);
-        return checked((int)Math.Max(workingRate,
-            ((occupiedSpan + 99_999) / 100_000) * 100_000));
-    }
+    private static int RequiredSourceSampleRateHz(WiSunSettings settings) =>
+        WiSunDemodulator.WorkingSampleRateHz(settings.PhyProfile, settings.CustomBitRateBps);
 
     private static bool TryReduceChannelsToFitHostSampleRate(
         WiSunSettings settings,

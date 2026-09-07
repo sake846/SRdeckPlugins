@@ -21,6 +21,8 @@ public partial class AnalogSettingsView : UserControl
     private bool _isSynchronizing;
     private bool _isFrequencyEditing;
     private bool _isSubscribed;
+    private string? _bandwidthProfileId;
+    private int _bandwidthSelection = -1;
 
     public AnalogSettingsView()
     {
@@ -47,6 +49,8 @@ public partial class AnalogSettingsView : UserControl
             _isSubscribed = false;
         }
         _plugin = plugin;
+        _bandwidthProfileId = null;
+        _bandwidthSelection = -1;
         ProfileComboBox.ItemsSource = plugin.Profiles;
         if (IsLoaded && !_isSubscribed)
         {
@@ -246,7 +250,7 @@ public partial class AnalogSettingsView : UserControl
         if (_plugin is null) return;
         if (!FrequencyInputParser.TryParseSquelchThreshold(SquelchThresholdTextBox.Text, out float threshold))
         {
-            StatusTextBlock.Text = "SQしきい値を-150～0 dBm（例: -80 や 80）で入力してください。";
+            StatusTextBlock.Text = "SQしきい値を-150～0 dBm（未校正時はdBFS、例: -80 や 80）で入力してください。";
             SynchronizeControls(forceSquelchText: true);
             return;
         }
@@ -333,7 +337,15 @@ public partial class AnalogSettingsView : UserControl
 
     private void SetBandwidthOptions(int selectedBandwidth)
     {
-        IReadOnlyList<NumericOption> options = _plugin?.SelectedProfileId switch
+        string? profileId = _plugin?.SelectedProfileId;
+        if (profileId == _bandwidthProfileId && selectedBandwidth == _bandwidthSelection &&
+            BandwidthComboBox.ItemsSource is not null)
+        {
+            BandwidthComboBox.SelectedValue = selectedBandwidth;
+            return;
+        }
+
+        IReadOnlyList<NumericOption> options = profileId switch
         {
             "am" => [new(6_000, "6 kHz"), new(10_000, "10 kHz"), new(15_000, "15 kHz")],
             "fm" => [new(12_500, "12.5 kHz"), new(15_000, "15 kHz"), new(200_000, "200 kHz")],
@@ -342,6 +354,8 @@ public partial class AnalogSettingsView : UserControl
         };
         if (!options.Any(option => option.Value == selectedBandwidth))
             options = [.. options, new(selectedBandwidth, $"{selectedBandwidth:N0} Hz")];
+        _bandwidthProfileId = profileId;
+        _bandwidthSelection = selectedBandwidth;
         BandwidthComboBox.ItemsSource = options;
         BandwidthComboBox.SelectedValue = selectedBandwidth;
     }

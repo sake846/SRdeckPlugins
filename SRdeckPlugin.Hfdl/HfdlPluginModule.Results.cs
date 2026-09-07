@@ -274,7 +274,7 @@ public sealed partial class HfdlPluginModule
         Channel selectedChannel = SelectedChannel();
         IqBlockMetadata? metadata = lastCaptureMetadata;
         HfdlReceiver.DiagnosticsSnapshot diagnostics = receiver.GetDiagnostics();
-        viewModel.CaptureStatus = "IQ録音: 直前3秒を保存中…";
+        viewModel.CaptureStatus = "IQ録音: 直前20秒を保存中…";
         _ = Task.Run(() => SavePretriggerCapture(context, selectedChannel, metadata, diagnostics));
     }
 
@@ -290,7 +290,8 @@ public sealed partial class HfdlPluginModule
             string basePath = Path.Combine(directory,
                 $"hfdl-analysis-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}-{selectedChannel.FrequencyHz}");
             string path = $"{basePath}.wav";
-            using (var capture = new HfdlIqCapture(path, snapshot.SampleRateHz, TimeSpan.FromSeconds(3)))
+            using (var capture = new HfdlIqCapture(path, snapshot.SampleRateHz,
+                TimeSpan.FromSeconds(IqCaptureDurationSeconds)))
             {
                 capture.WritePcm(snapshot.RawInterleaved);
             }
@@ -298,7 +299,7 @@ public sealed partial class HfdlPluginModule
             {
                 Format = "SRdeck HFDL analysis capture v1",
                 SavedAt = DateTimeOffset.Now,
-                CaptureMode = "3-second rolling pre-trigger",
+                CaptureMode = "20-second rolling pre-trigger",
                 SelectedChannel = selectedChannel,
                 GroundStation = StationFor(selectedChannel),
                 RawIqFile = Path.GetFileName(path),

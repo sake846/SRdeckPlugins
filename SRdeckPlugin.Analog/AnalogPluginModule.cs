@@ -36,15 +36,18 @@ public sealed partial class AnalogPluginModule :
     private string _selectedProfileId = "am";
     private AnalogReceiverOptions _receiverOptions = new();
     private readonly AnalogDemodulator _demodulator = new();
+    private readonly ThirdOctaveSpectrumAnalyzer _thirdOctaveAnalyzer = new();
     private readonly PackedIqHistoryBuffer _pretriggerBuffer = new(3);
     private int _captureSaveInProgress;
     private IqBlockMetadata? _lastCaptureMetadata;
-    private string _captureStatus = "IQ録音: 直前3秒を常時保持中";
+    private string _captureStatus = "IQ録音: 復調チャネルの直前3秒を常時保持中";
     private Guid _streamId;
     private long _streamGeneration = -1;
     private int _inputSampleRateHz;
     private long _audioSequence;
     private float _signalLevelDbfs = -120f;
+    private float _signalLevelDbm = -150f;
+    private bool _hasCalibratedSignalLevelDbm;
     private long _lastInputMeasuredUtcTicks;
     private long _lastAudioOutputUtcTicks;
     private float _lastAudioRms;
@@ -54,6 +57,7 @@ public sealed partial class AnalogPluginModule :
     private string _tuningStatus = "受信周波数を設定してください。";
     private readonly SemaphoreSlim _profileGate = new(1, 1);
     private readonly SemaphoreSlim _receiverGate = new(1, 1);
+    private readonly SemaphoreSlim _settingsSaveGate = new(1, 1);
 
     public AnalogPluginModule() => RegisterStreamReset(_pretriggerBuffer.Reset);
 
@@ -118,7 +122,8 @@ public sealed partial class AnalogPluginModule :
         AnalogReceiverOptions options = Volatile.Read(ref _receiverOptions);
         if (!options.IsReceiverEnabled || options.FrequencyHz <= 0) return;
 
-        PluginTuningResult? result = await ApplyTuningAsync(options, cancellationToken)
+        PluginTuningResult? result = await ApplyTuningAsync(
+                options, _selectedProfileId, cancellationToken)
             .ConfigureAwait(false);
         if (result?.Outcome == PluginTuningOutcome.Rejected)
             throw new PluginActivationRejectedException(
@@ -156,7 +161,8 @@ public sealed partial class AnalogPluginModule :
             if (State is PluginLifecycleState.Active or PluginLifecycleState.Streaming &&
                 proposed.IsReceiverEnabled && proposed.FrequencyHz > 0)
             {
-                PluginTuningResult? result = await ApplyTuningAsync(proposed, cancellationToken).ConfigureAwait(false);
+                PluginTuningResult? result = await ApplyTuningAsync(
+                    proposed, profileId, cancellationToken).ConfigureAwait(false);
                 if (result?.Outcome == PluginTuningOutcome.Rejected)
                     throw new InvalidOperationException($"Analog profile tuning was rejected: {result.Message}");
             }
@@ -227,17 +233,15 @@ public sealed partial class AnalogPluginModule :
                 NotifyReceiverStateChanged(force: true);
             }
 
-            UpdateSignalLevel(block.Samples.Span, options);
             if (!options.IsReceiverEnabled)
             {
                 NotifyReceiverStateChanged();
                 return ValueTask.CompletedTask;
             }
-            _lastCaptureMetadata = block.Metadata;
-            _pretriggerBuffer.Write(block.Samples.Span, inputRate);
             if (RequiresReset(block.Metadata))
             {
                 _demodulator.Reset();
+                _thirdOctaveAnalyzer.Reset();
                 _pretriggerBuffer.Reset();
                 _hostContext.Audio.Reset();
             }
@@ -247,7 +251,10 @@ public sealed partial class AnalogPluginModule :
 
             int capacity = checked((int)Math.Ceiling(
                 block.Samples.Length * (double)AnalogDemodulator.OutputSampleRateHz / inputRate) + 2) * 2;
+            int channelCapacity = AnalogDemodulator.GetChannelOutputCapacity(
+                block.Samples.Length, inputRate, options.BandwidthHz);
             float[] audio = ArrayPool<float>.Shared.Rent(capacity);
+            Complex32[] channelSamples = ArrayPool<Complex32>.Shared.Rent(channelCapacity);
             try
             {
                 int outputCount = _demodulator.Process(
@@ -260,8 +267,24 @@ public sealed partial class AnalogPluginModule :
                     options.IsLowerSideband,
                     options.IsAfcEnabled,
                     options.FrequencyHz - block.Metadata.CenterFrequencyHz,
-                    options.IsStereoEnabled);
-                byte[] pcm = new byte[outputCount * sizeof(short)];
+                    options.IsStereoEnabled,
+                    channelSamples.AsSpan(0, channelCapacity),
+                    out int channelSampleCount);
+                if (channelSampleCount > 0)
+                {
+                    int channelSampleRateHz = checked((int)Math.Round(
+                        _demodulator.DemodulationSampleRateHz));
+                    _lastCaptureMetadata = block.Metadata;
+                    _pretriggerBuffer.Write(
+                        channelSamples.AsSpan(0, channelSampleCount), channelSampleRateHz);
+                }
+                UpdateSignalLevel(
+                    _demodulator.InputLevelDbfs,
+                    _demodulator.ChannelLevelDbfs,
+                    block.Samples.Length / (double)inputRate,
+                    options);
+                bool submitAudio = outputCount > 0 && !options.IsMuted && _isSquelchOpen;
+                byte[]? pcm = submitAudio ? new byte[outputCount * sizeof(short)] : null;
                 double audioPower = 0;
                 float audioPeak = 0;
                 for (int index = 0; index < outputCount; index++)
@@ -269,17 +292,23 @@ public sealed partial class AnalogPluginModule :
                     float sample = audio[index];
                     audioPower += sample * sample;
                     audioPeak = Math.Max(audioPeak, Math.Abs(sample));
-                    short value = (short)MathF.Round(audio[index] * short.MaxValue);
-                    BinaryPrimitives.WriteInt16LittleEndian(
-                        pcm.AsSpan(index * sizeof(short), sizeof(short)),
-                        value);
+                    if (pcm is not null)
+                    {
+                        short value = (short)MathF.Round(sample * short.MaxValue);
+                        BinaryPrimitives.WriteInt16LittleEndian(
+                            pcm.AsSpan(index * sizeof(short), sizeof(short)),
+                            value);
+                    }
                 }
                 Volatile.Write(ref _lastAudioRms, outputCount > 0 ? (float)Math.Sqrt(audioPower / outputCount) : 0);
                 Volatile.Write(ref _lastAudioPeak, audioPeak);
+                if (outputCount > 0)
+                    _thirdOctaveAnalyzer.Process(
+                        audio.AsSpan(0, outputCount), channels, AnalogDemodulator.OutputSampleRateHz);
 
-                if (outputCount > 0 && !options.IsMuted && _isSquelchOpen)
+                if (pcm is not null)
                 {
-                    _hostContext.Audio.TrySubmit(new PcmAudioFrame(
+                    bool accepted = _hostContext.Audio.TrySubmit(new PcmAudioFrame(
                         _hostContext.PluginId,
                         block.Metadata.StreamId,
                         Interlocked.Increment(ref _audioSequence),
@@ -288,11 +317,13 @@ public sealed partial class AnalogPluginModule :
                         PcmSampleFormat.Signed16LittleEndian,
                         pcm,
                         block.Metadata.Discontinuity != IqDiscontinuity.None));
-                    Interlocked.Exchange(ref _lastAudioOutputUtcTicks, DateTime.UtcNow.Ticks);
+                    if (accepted)
+                        Interlocked.Exchange(ref _lastAudioOutputUtcTicks, DateTime.UtcNow.Ticks);
                 }
             }
             finally
             {
+                ArrayPool<Complex32>.Shared.Return(channelSamples);
                 ArrayPool<float>.Shared.Return(audio);
             }
             NotifyReceiverStateChanged();
@@ -375,6 +406,7 @@ public sealed partial class AnalogPluginModule :
     private void ResetDemodulatorState()
     {
         _demodulator.Reset();
+        _thirdOctaveAnalyzer.Reset();
         _streamId = Guid.Empty;
         _streamGeneration = -1;
         _inputSampleRateHz = 0;

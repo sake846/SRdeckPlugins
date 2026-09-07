@@ -1,0 +1,61 @@
+<UserControl x:Class="SRdeckPlugin.MaritimeVhf.Views.MaritimeVhfSettingsView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf">
+ <UserControl.Resources>
+ <ResourceDictionary>
+   <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="pack://application:,,,/SRdeckPlugin.Wpf;component/Themes/PluginControls.xaml"/>
+   </ResourceDictionary.MergedDictionaries>
+ </ResourceDictionary>
+ </UserControl.Resources>
+ <Grid>
+  <Border Style="{DynamicResource PluginSettingsPanelStyle}" Margin="6">
+  <Grid>
+   <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+   <ContentControl Content="{Binding SettingStatus}" Tag="国際VHF"
+                   ToolTip="{Binding SettingStatus}"
+                   Style="{DynamicResource PluginSettingsHeaderStyle}" />
+   <TabControl Grid.Row="1" Style="{DynamicResource PluginSettingsTabControlStyle}">
+    <TabItem Header="受信設定">
+    <Grid Margin="10,8">
+     <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <TextBlock Text="音声チャンネル" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+     <ComboBox Grid.Column="1" ItemsSource="{Binding Channels}" SelectedItem="{Binding SelectedChannel}" DisplayMemberPath="DisplayName" Style="{DynamicResource PluginComboBoxStyle}"/>
+     <TextBlock Grid.Column="2" Text="受信側" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+     <ComboBox Grid.Column="3" ItemsSource="{Binding ReceiveSides}" SelectedItem="{Binding SelectedReceiveSide}" DisplayMemberPath="DisplayName" Style="{DynamicResource PluginComboBoxStyle}"/>
+     <CheckBox Grid.Row="1" Grid.ColumnSpan="2" Content="モニター音声" IsChecked="{Binding MonitorAudioEnabled}" Margin="0,8,0,4"/>
+     <StackPanel Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,5,0,2">
+      <TextBlock Text="音量" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Width="50"/>
+      <Slider Minimum="0" Maximum="100" Value="{Binding MonitorAudioVolume}" Width="135"/>
+      <TextBlock Text="{Binding MonitorAudioVolume, StringFormat={}{0}%}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+     </StackPanel>
+     <CheckBox Grid.Row="2" Grid.ColumnSpan="2" Content="スケルチ" IsChecked="{Binding SquelchEnabled}" Margin="0,6,0,4"/>
+     <StackPanel Grid.Row="2" Grid.Column="2" Grid.ColumnSpan="2" Orientation="Horizontal">
+      <TextBlock Text="しきい値" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Width="62"/>
+      <TextBox Text="{Binding SquelchThresholdDbm, UpdateSourceTrigger=LostFocus}" Style="{DynamicResource PluginTextBoxStyle}" Width="74"/>
+      <TextBlock Text="dBm" Margin="6,0,0,0" VerticalAlignment="Center"/>
+     </StackPanel>
+     <TextBlock Grid.Row="3" Grid.ColumnSpan="4" Text="国際VHFの25 kHzチャンネル表を使用します。CH 70はDSC専用で、AIS 1/2はこのプラグインの対象外です。" Style="{DynamicResource PluginSettingsHintStyle}" TextWrapping="Wrap" Margin="0,7,0,0"/>
+    </Grid>
+    </TabItem>
+    <TabItem Header="DSC・自動追尾">
+    <Grid Margin="10,8">
+     <Grid.ColumnDefinitions><ColumnDefinition Width="155"/><ColumnDefinition Width="*"/><ColumnDefinition Width="145"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <CheckBox Grid.ColumnSpan="2" Content="CH 70 DSCを同時監視" IsChecked="{Binding DscWatchEnabled}"/>
+     <CheckBox Grid.Column="2" Grid.ColumnSpan="2" Content="有効なDSCの作業チャンネルを自動追尾" IsChecked="{Binding AutoFollowEnabled}"/>
+     <TextBlock Grid.Row="1" Text="自局MMSI（任意）" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+     <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding OwnMmsi, UpdateSourceTrigger=LostFocus}" MaxLength="9" Style="{DynamicResource PluginTextBoxStyle}"/>
+     <TextBlock Grid.Row="1" Grid.Column="2" Text="無信号後の自動復帰" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+     <StackPanel Grid.Row="1" Grid.Column="3" Orientation="Horizontal"><TextBox Text="{Binding AutoReturnSeconds, UpdateSourceTrigger=LostFocus}" Width="65" Style="{DynamicResource PluginTextBoxStyle}"/><TextBlock Text="秒（0=無効）" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel>
+     <TextBlock Grid.Row="2" Grid.ColumnSpan="4" Text="MMSIを設定すると、全局・遭難呼出に加えて自局宛の呼出だけを追尾します。空欄では受信した有効な呼出を追尾します。追尾は受信専用で、DSC確認応答の送信は行いません。" Style="{DynamicResource PluginSettingsHintStyle}" TextWrapping="Wrap" Margin="0,8,0,4"/>
+     <controls:PluginResetView Grid.Row="3" Grid.ColumnSpan="4"/>
+    </Grid>
+    </TabItem>
+   </TabControl>
+  </Grid>
+  </Border>
+ </Grid>
+</UserControl>

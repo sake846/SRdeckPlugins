@@ -5,37 +5,51 @@ namespace SRdeckPlugin.Analog;
 
 internal sealed partial class AnalogDemodulator
 {
+    // Quadrature mixing halves the pilot's peak amplitude. Leave margin below
+    // the nominal 8-10% modulation while rejecting weak incidental 19 kHz energy.
+    private const float FmPilotAcquireLevel = 0.035f;
+    private const float FmPilotReleaseLevel = 0.025f;
+
     private float DemodulateFmStereoDiff(float mpx)
     {
-        float baseStep = TwoPi * 19_000f / _processingSampleRateHz;
-        _fmPilotPhase += _fmPilotStep != 0 ? _fmPilotStep : baseStep;
-        if (_fmPilotPhase >= TwoPi) _fmPilotPhase -= TwoPi;
-
-        float cos19 = MathF.Cos(_fmPilotPhase);
-        float sin19 = MathF.Sin(_fmPilotPhase);
+        AdvanceFmPilotOscillator();
+        float cos19 = _fmPilotCosine;
+        float sin19 = _fmPilotSine;
 
         float i19 = mpx * cos19;
         float q19 = -mpx * sin19;
 
-        float alpha = 1f - MathF.Exp(-TwoPi * 30f / _processingSampleRateHz);
-        _fmPilotI += alpha * (i19 - _fmPilotI);
-        _fmPilotQ += alpha * (q19 - _fmPilotQ);
+        _fmPilotI += _fmPilotAlpha * (i19 - _fmPilotI);
+        _fmPilotQ += _fmPilotAlpha * (q19 - _fmPilotQ);
 
         float magnitude = MathF.Sqrt(_fmPilotI * _fmPilotI + _fmPilotQ * _fmPilotQ);
-        _fmPilotLevel += alpha * (magnitude - _fmPilotLevel);
+        _fmPilotLevel += _fmPilotAlpha * (magnitude - _fmPilotLevel);
+        _fmMpxPower += _fmPilotAlpha * (mpx * mpx - _fmMpxPower);
 
-        float threshold = IsStereoDetected ? 0.018f : 0.025f;
-        IsStereoDetected = _fmPilotLevel > threshold;
-
-        if (IsStereoDetected)
+        // Acquire phase before enabling stereo. Bound the PLL to +/-25 Hz so
+        // it cannot follow nearby interference, independent of the sample rate.
+        float error = MathF.PI;
+        if (_fmPilotLevel > FmPilotReleaseLevel)
         {
-            float error = MathF.Atan2(_fmPilotQ, _fmPilotI);
-            _fmPilotStep = baseStep + error * 0.01f;
+            error = MathF.Atan2(_fmPilotQ, _fmPilotI);
+            _fmPilotStepCorrection = Math.Clamp(error * _fmPilotLoopGain,
+                -_fmPilotMaximumStepCorrection, _fmPilotMaximumStepCorrection);
         }
         else
         {
-            _fmPilotStep = baseStep;
+            _fmPilotStepCorrection = 0;
         }
+
+        _fmPilotPhaseErrorPower += _fmPilotAlpha * (error * error - _fmPilotPhaseErrorPower);
+        float levelThreshold = IsStereoDetected ? FmPilotReleaseLevel : FmPilotAcquireLevel;
+        // An 8% pilot still clears this ratio with full-level (90%) mono audio.
+        // Broadband discriminator noise must not qualify on absolute level alone.
+        float minimumPowerRatio = IsStereoDetected ? 0.003f : 0.005f;
+        float maximumPhaseErrorPower = IsStereoDetected ? 0.09f : 0.04f;
+        bool pilotQualified = _fmPilotLevel > levelThreshold &&
+            2f * _fmPilotLevel * _fmPilotLevel > minimumPowerRatio * _fmMpxPower &&
+            _fmPilotPhaseErrorPower < maximumPhaseErrorPower;
+        UpdateFmStereoDetection(pilotQualified);
 
         float sin38 = 2f * sin19 * cos19;
         float rawDiff = -mpx * sin38 * 2.0f;
@@ -44,10 +58,74 @@ internal sealed partial class AnalogDemodulator
         return RemoveDcDiff(filteredDiff);
     }
 
+    private void UpdateFmStereoDetection(bool pilotQualified)
+    {
+        // Count processing samples, not IQ blocks or wall-clock time: qualification
+        // must behave identically during live reception, replay and decimation.
+        if (pilotQualified)
+        {
+            _fmStereoMissingSamples = 0;
+            if (!IsStereoDetected && ++_fmStereoQualifyingSamples >= _fmStereoAcquireSamples)
+            {
+                IsStereoDetected = true;
+                _fmStereoQualifyingSamples = 0;
+            }
+        }
+        else
+        {
+            _fmStereoQualifyingSamples = 0;
+            if (IsStereoDetected && ++_fmStereoMissingSamples >= _fmStereoReleaseSamples)
+            {
+                IsStereoDetected = false;
+                _fmStereoMissingSamples = 0;
+            }
+        }
+    }
+
+    private void ResetFmStereoDetection()
+    {
+        _fmPilotCosine = 1f;
+        _fmPilotSine = 0;
+        _fmPilotStepCorrection = 0;
+        _fmPilotOscillatorSamples = 0;
+        _fmPilotI = 0;
+        _fmPilotQ = 0;
+        _fmPilotLevel = 0;
+        _fmMpxPower = 0;
+        _fmPilotPhaseErrorPower = MathF.PI * MathF.PI;
+        _fmStereoQualifyingSamples = 0;
+        _fmStereoMissingSamples = 0;
+        IsStereoDetected = false;
+    }
+
+    private void AdvanceFmPilotOscillator()
+    {
+        // The PLL correction is limited to a small fraction of a radian. Applying
+        // its small-angle rotation to the precomputed 19 kHz step avoids two
+        // transcendental calls for every multiplex sample.
+        float correction = _fmPilotStepCorrection;
+        float correctionCosine = 1f - 0.5f * correction * correction;
+        float correctionSine = correction;
+        float stepCosine = _fmPilotStepCosine * correctionCosine -
+            _fmPilotStepSine * correctionSine;
+        float stepSine = _fmPilotStepSine * correctionCosine +
+            _fmPilotStepCosine * correctionSine;
+        float cosine = _fmPilotCosine;
+        float sine = _fmPilotSine;
+        _fmPilotCosine = cosine * stepCosine - sine * stepSine;
+        _fmPilotSine = sine * stepCosine + cosine * stepSine;
+        if ((++_fmPilotOscillatorSamples & 4095) == 0)
+        {
+            float inverseMagnitude = 1f / MathF.Sqrt(
+                _fmPilotCosine * _fmPilotCosine + _fmPilotSine * _fmPilotSine);
+            _fmPilotCosine *= inverseMagnitude;
+            _fmPilotSine *= inverseMagnitude;
+        }
+    }
+
     private float RemoveDcDiff(float input)
     {
-        float pole = MathF.Exp(-TwoPi * 30f / _processingSampleRateHz);
-        float output = input - _dcDiffPreviousInput + pole * _dcDiffPreviousOutput;
+        float output = input - _dcDiffPreviousInput + _dcDiffPole * _dcDiffPreviousOutput;
         _dcDiffPreviousInput = input;
         _dcDiffPreviousOutput = output;
         return output;
@@ -55,19 +133,16 @@ internal sealed partial class AnalogDemodulator
 
     private (float Left, float Right) ApplyBroadcastFmDeemphasisStereo(float leftInput, float rightInput)
     {
-        const float timeConstantSeconds = 50e-6f;
-        float alpha = 1f - MathF.Exp(-1f / (OutputSampleRateHz * timeConstantSeconds));
-        _fmDeemphasisL += alpha * (leftInput - _fmDeemphasisL);
-        _fmDeemphasisR += alpha * (rightInput - _fmDeemphasisR);
+        _fmDeemphasisL += _fmDeemphasisAlpha * (leftInput - _fmDeemphasisL);
+        _fmDeemphasisR += _fmDeemphasisAlpha * (rightInput - _fmDeemphasisR);
         return (_fmDeemphasisL, _fmDeemphasisR);
     }
 
     private float DemodulateAm(Complex32 sample)
     {
         float magnitude = MathF.Sqrt(sample.I * sample.I + sample.Q * sample.Q);
-        float alpha = 1f - MathF.Exp(-TwoPi * 20f / _processingSampleRateHz);
         if (_amCarrierLevel == 0) _amCarrierLevel = magnitude;
-        _amCarrierLevel += alpha * (magnitude - _amCarrierLevel);
+        _amCarrierLevel += _amCarrierAlpha * (magnitude - _amCarrierLevel);
         float normalizationGain = MathF.Min(32f, 1f / MathF.Max(_amCarrierLevel, 1e-6f));
         return (magnitude - _amCarrierLevel) * normalizationGain * 1.5f;
     }
@@ -84,13 +159,12 @@ internal sealed partial class AnalogDemodulator
         float cross = sample.Q * _fmPrevious.I - sample.I * _fmPrevious.Q;
         float dot = sample.I * _fmPrevious.I + sample.Q * _fmPrevious.Q;
         _fmPrevious = sample;
-        float deviationHz = _bandwidthHz > 50_000 ? 75_000f : 5_000f;
-        float discriminator = MathF.Atan2(cross, dot) * _processingSampleRateHz / (TwoPi * deviationHz);
+        float discriminator = MathF.Atan2(cross, dot) * _processingSampleRateHz /
+            (TwoPi * _fmDeviationHz);
 
-        float afcAlpha = 1f - MathF.Exp(-TwoPi * 2f / _processingSampleRateHz);
         if (_isAfcEnabled)
         {
-            _fmFrequencyOffset += afcAlpha * (discriminator - _fmFrequencyOffset);
+            _fmFrequencyOffset += _fmAfcAlpha * (discriminator - _fmFrequencyOffset);
             discriminator -= _fmFrequencyOffset;
         }
         return discriminator;
@@ -99,9 +173,8 @@ internal sealed partial class AnalogDemodulator
     private float DemodulateSsb(Complex32 sample)
     {
         float magnitude = MathF.Sqrt(sample.I * sample.I + sample.Q * sample.Q);
-        float levelAlpha = 1f - MathF.Exp(-TwoPi * 20f / _processingSampleRateHz);
         if (_ssbSignalLevel == 0) _ssbSignalLevel = magnitude;
-        _ssbSignalLevel += levelAlpha * (magnitude - _ssbSignalLevel);
+        _ssbSignalLevel += _ssbLevelAlpha * (magnitude - _ssbSignalLevel);
 
         float cosine = _ssbCosine;
         float sine = _ssbSine;
@@ -167,9 +240,7 @@ internal sealed partial class AnalogDemodulator
 
     private float ApplyBroadcastFmDeemphasis(float input)
     {
-        const float timeConstantSeconds = 50e-6f;
-        float alpha = 1f - MathF.Exp(-1f / (OutputSampleRateHz * timeConstantSeconds));
-        _fmDeemphasis += alpha * (input - _fmDeemphasis);
+        _fmDeemphasis += _fmDeemphasisAlpha * (input - _fmDeemphasis);
         return _fmDeemphasis;
     }
 
@@ -196,8 +267,7 @@ internal sealed partial class AnalogDemodulator
 
     private float RemoveDc(float input)
     {
-        float pole = MathF.Exp(-TwoPi * 30f / _processingSampleRateHz);
-        float output = input - _dcPreviousInput + pole * _dcPreviousOutput;
+        float output = input - _dcPreviousInput + _dcPole * _dcPreviousOutput;
         _dcPreviousInput = input;
         _dcPreviousOutput = output;
         return output;

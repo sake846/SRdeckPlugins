@@ -128,7 +128,7 @@ public sealed partial class Ft8PluginModule : PluginModuleBase, IIqBlockConsumer
 
     public override PluginDescriptor Descriptor { get; } = new(
         "ft8",
-        "FT8",
+        "FT8 / FT4",
         "Multi-signal FT8, FT4, and JT65 weak-signal receiver and decoder",
         new Version(1, 1, 0),
         new Version(1, 0),

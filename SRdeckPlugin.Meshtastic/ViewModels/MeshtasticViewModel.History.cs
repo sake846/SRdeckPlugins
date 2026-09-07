@@ -27,6 +27,7 @@ public partial class MeshtasticViewModel
 {
     private void HandleMeshtasticDataReceived(MeshtasticDataReception reception)
     {
+        reception = reception with { Quality = reception.Quality.WithReceiverCalibration(_hostContext?.ReceiverTelemetry) };
         RefreshMeshtasticStatistics();
         MeshtasticDisplayItem item = new(
             reception.Packet.ReceivedAt.ToLocalTime().ToString("HH:mm:ss"),
@@ -41,12 +42,15 @@ public partial class MeshtasticViewModel
             Convert.ToHexString(reception.Data.Payload))
         {
             Radio = reception.Radio.Summary,
+            RegionName = reception.Radio.Region != default ? reception.Radio.Region.ToString() : SelectedMeshtasticRegion.ToString(),
             PacketId = reception.Packet.PacketId,
             IsDecoded = true,
             ModemPresetName = ResolveMeshtasticPresetName(reception.Radio),
             RadioSlot = reception.Radio.RadioChannel,
             ReceivedAt = reception.Packet.ReceivedAt,
-            PreambleMarginDb = reception.Quality.PreambleMarginDb,
+            EstimatedSnrDb = reception.Quality.EstimatedSnrDb,
+            EstimatedRssiDbfs = reception.Quality.EstimatedRssiDbfs,
+            EstimatedRssiDbm = reception.Quality.EstimatedRssiDbm,
             PayloadCrcValid = reception.Quality.PayloadCrcValid,
             HopLimit = reception.Packet.HopLimit,
             HopStart = reception.Packet.HopStart,
@@ -66,12 +70,12 @@ public partial class MeshtasticViewModel
                 }
             }
             AppendMeshtasticHistory(item);
-            if (SelectedMeshtasticNode?.NodeNumber == reception.Packet.From)
-                RefreshSelectedMeshtasticNodeReceptions();
             while (MeshtasticMessages.Count > MeshtasticHistoryDisplayLimit)
             {
                 MeshtasticMessages.RemoveAt(MeshtasticMessages.Count - 1);
             }
+            if (SelectedMeshtasticNode?.NodeNumber == reception.Packet.From)
+                RefreshSelectedMeshtasticNodeLatestApplications();
             SelectedTimelineMessage ??= item;
             ScheduleMeshtasticDerivedRefresh();
 
@@ -82,7 +86,7 @@ public partial class MeshtasticViewModel
                 MeshtasticNodes.Insert(0, node);
                 SelectedMeshtasticNode ??= node;
             }
-            node.Update(reception, item.Summary);
+            node.Update(reception, item.Summary, item.ModemPresetName, item.RegionName);
             if (reception.Data.DecodedPayload is MeshtasticNodeInfo)
             {
                 RefreshMeshtasticSenderNames(reception.Packet.From, node.DisplayName);
@@ -122,7 +126,7 @@ public partial class MeshtasticViewModel
             if (string.Equals(item.Sender, sender, StringComparison.OrdinalIgnoreCase) && item.SenderName != displayName)
                 MeshtasticTextMessages[index] = item with { SenderName = displayName };
         }
-        RefreshSelectedMeshtasticNodeReceptions();
+        RefreshSelectedMeshtasticNodeLatestApplications();
         RefreshMeshtasticPacketGroups();
     }
 
@@ -165,6 +169,7 @@ public partial class MeshtasticViewModel
                     }
                 }
             }
+            RestoreMeshtasticAppTypesFromHistory();
             RefreshMeshtasticSenderNamesFromNodeCache();
             RefreshMeshtasticPacketGroups();
             RefreshFilteredMeshtasticNodes();
@@ -176,6 +181,20 @@ public partial class MeshtasticViewModel
             SetMeshtasticReceiverStatus(
                 $"受信履歴の復元に失敗しました: {exception.Message}",
                 OverallStatusKind.Error);
+        }
+    }
+
+    private void RestoreMeshtasticAppTypesFromHistory()
+    {
+        foreach (MeshtasticDisplayItem item in MeshtasticMessages)
+        {
+            if (string.IsNullOrWhiteSpace(item.Sender) || item.Sender[0] != '!' ||
+                !uint.TryParse(item.Sender.AsSpan(1), NumberStyles.HexNumber,
+                    CultureInfo.InvariantCulture, out uint nodeNumber))
+                continue;
+
+            if (_meshtasticNodesById.TryGetValue(nodeNumber, out MeshtasticNodeDisplayItem? node))
+                node.RecordReceivedAppType(item.Port);
         }
     }
 
@@ -209,7 +228,11 @@ public partial class MeshtasticViewModel
                 node.Telemetry, node.LastMessage, node.SignalQuality, node.Details, node.Latitude, node.Longitude,
                 node.AltitudeMeters, node.PacketCount, node.ReceptionCount, node.DirectReceptionCount,
                 node.RelayedReceptionCount, node.UnknownRouteReceptionCount, node.FirstSeenAt, node.LastSeenAt,
-                node.Mode, node.LastReceivedContent, node.LongName, node.ShortName)).ToList();
+                node.Mode, node.LastReceivedContent, node.LongName, node.ShortName,
+                node.PreferredReceptionRoutes, node.HasCompletePreferredReceptionRoutes,
+                node.HardwareName, node.RoleName, node.RadioSlot, node.ModemPresetName,
+                node.MinimumRssiDbfs, node.MaximumRssiDbfs, node.MinimumRssiDbm, node.MaximumRssiDbm,
+                node.MinimumSnrDb, node.MaximumSnrDb, node.ReceivedAppTypesText, node.RegionName)).ToList();
             string currentModeSummary = IsMeshtasticDiscoveryMode
                 ? $"探索 ({SelectedMeshtasticRegion})"
                 : $"条件指定 ({SelectedMeshtasticRegion} / {SelectedMeshtasticModemPreset})";

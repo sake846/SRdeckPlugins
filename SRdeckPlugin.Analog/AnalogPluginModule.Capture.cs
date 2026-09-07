@@ -53,6 +53,7 @@ public sealed partial class AnalogPluginModule
                 Format = "SRdeck Analog analysis capture v1",
                 SavedAt = DateTimeOffset.Now,
                 CaptureMode = "3-second rolling pre-trigger",
+                CaptureSignal = "Post-channel-filter complex IQ",
                 Profile = SelectedProfileId,
                 FrequencyHz = snapshot.FrequencyHz,
                 BandwidthHz = snapshot.BandwidthHz,
@@ -85,7 +86,6 @@ public sealed partial class AnalogPluginModule
     internal AnalogReceiverSnapshot GetReceiverSnapshot()
     {
         AnalogReceiverOptions options = Volatile.Read(ref _receiverOptions);
-        float? calibratedDbm = _hostContext?.ReceiverTelemetry?.SignalLevelDbm;
         long measuredTicks = Interlocked.Read(ref _lastInputMeasuredUtcTicks);
         long audioTicks = Interlocked.Read(ref _lastAudioOutputUtcTicks);
         return new AnalogReceiverSnapshot(
@@ -102,14 +102,15 @@ public sealed partial class AnalogPluginModule
             options.IsStereoEnabled,
             _demodulator.IsStereoDetected,
             Volatile.Read(ref _signalLevelDbfs),
-            calibratedDbm ?? -150f,
+            Volatile.Read(ref _signalLevelDbm),
             Volatile.Read(ref _isSquelchOpen),
             Volatile.Read(ref _tuningStatus),
-            calibratedDbm is not null && float.IsFinite(calibratedDbm.Value),
+            Volatile.Read(ref _hasCalibratedSignalLevelDbm),
             measuredTicks > 0 ? new DateTimeOffset(measuredTicks, TimeSpan.Zero) : default,
             audioTicks > 0 ? new DateTimeOffset(audioTicks, TimeSpan.Zero) : null,
             Volatile.Read(ref _lastAudioRms),
             Volatile.Read(ref _lastAudioPeak),
+            _thirdOctaveAnalyzer.GetLevelsDb(),
             _demodulator.AfcCorrectionHz,
             _demodulator.DemodulationSampleRateHz);
     }

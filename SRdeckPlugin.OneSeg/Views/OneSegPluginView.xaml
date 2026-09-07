@@ -1,0 +1,268 @@
+﻿<UserControl x:Class="SRdeckPlugin.OneSeg.Views.OneSegPluginView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:views="clr-namespace:SRdeckPlugin.OneSeg.Views"
+ xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+ xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
+ xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf">
+ <Grid>
+  <Grid.RowDefinitions>
+   <RowDefinition Height="Auto"/>
+   <RowDefinition Height="*"/>
+  </Grid.RowDefinitions>
+
+  <views:OneSegSettingsView Grid.Row="0"/>
+
+  <Border Grid.Row="1" Style="{DynamicResource PluginFlatOuterPanelStyle}" Margin="6,0,6,6">
+   <Grid>
+     <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <Border Style="{DynamicResource PluginStatusHeaderStyle}">
+     <Grid>
+      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <Ellipse Style="{DynamicResource PluginStatusIndicatorStyle}" Tag="{Binding DiagnosticStatusKind}"/>
+        <TextBlock Text="受信状態" Style="{DynamicResource PluginStatusHeaderTitleStyle}" VerticalAlignment="Center"/>
+       </StackPanel>
+       <CheckBox Grid.Column="2" Content="TS保存" IsChecked="{Binding Recording}" ToolTip="{Binding RecordingStatus}" VerticalAlignment="Center"/>
+     </Grid>
+    </Border>
+
+   <UniformGrid Grid.Row="1" Columns="4" Margin="10,4,10,14">
+     <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="OFDM同期" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding OfdmLockStatus}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
+     <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="TMCC同期" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding TmccLockStatus}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
+     <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="MER" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding MerStatus}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
+     <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="RS品質（累計）" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding RsQualityStatus}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
+    </UniformGrid>
+
+    <TabControl Grid.Row="2" Style="{DynamicResource PluginTabControlStyle}" Padding="0" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10">
+    <TabItem Header="概要">
+     <Grid Margin="10,8">
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+       <Border Grid.Row="0" Margin="0,0,0,6" Padding="8,5" Visibility="{Binding EmergencyVisibility}"
+              Background="{DynamicResource PluginStatusErrorBackgroundBrush}" BorderBrush="{DynamicResource PluginStatusErrorBorderBrush}" BorderThickness="1" CornerRadius="3">
+       <TextBlock Text="{Binding EmergencyStatus}" Foreground="{DynamicResource PluginStatusErrorForegroundBrush}" FontWeight="SemiBold"/>
+      </Border>
+       <Grid Grid.Row="1">
+        <Grid.RowDefinitions><RowDefinition Height="320"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <vlc:VideoView x:Name="VideoSurface" Grid.Row="0" MediaPlayer="{Binding MediaPlayer}" VerticalAlignment="Stretch"/>
+        <Border x:Name="CaptionOverlay" Grid.Row="1" Height="{Binding CaptionAreaHeight}" VerticalAlignment="Bottom"
+                Background="{DynamicResource InstrumentBaseBrush}"
+                BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="0,1,0,0"
+                Padding="10,6" Visibility="{Binding CaptionAreaVisibility}">
+         <TextBlock x:Name="CaptionText" Text="{Binding Caption}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="{Binding CaptionFontSize}" TextAlignment="Center" TextWrapping="Wrap" VerticalAlignment="Center"/>
+        </Border>
+      </Grid>
+       <Border Grid.Row="2" Background="{DynamicResource InstrumentBaseBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="0,1,0,0" Padding="10,6">
+       <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <TextBlock Text="{Binding CurrentProgramTitle}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+        <TextBlock Grid.Column="1" Text="{Binding CurrentProgramTime}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" Margin="8,0,0,0"/>
+        <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Minimum="0" Maximum="100" Value="{Binding ProgramProgress, Mode=OneWay}" Height="4" Margin="0,5,0,4"/>
+        <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding NextProgramText}" Foreground="{DynamicResource TextDimBrush}" TextTrimming="CharacterEllipsis"/>
+       </Grid>
+      </Border>
+       <DataGrid x:Name="OverviewProgramGuide" Grid.Row="3" ItemsSource="{Binding Events}"
+                Style="{DynamicResource PluginDataGridStyle}" EnableRowVirtualization="True" EnableColumnVirtualization="True">
+       <DataGrid.Columns>
+        <DataGridTextColumn Header="時間" Binding="{Binding TimeRangeText}" Width="100"/>
+        <DataGridTextColumn Header="番組名" Binding="{Binding Title}" Width="180"/>
+        <DataGridTextColumn Header="内容" Binding="{Binding FullDescription}" Width="*"/>
+        <DataGridTextColumn Header="属性" Binding="{Binding Attributes}" Width="160"/>
+       </DataGrid.Columns>
+      </DataGrid>
+     </Grid>
+    </TabItem>
+
+   <TabItem Header="局一覧">
+    <DataGrid ItemsSource="{Binding Stations}" SelectedItem="{Binding SelectedStation}" Style="{DynamicResource PluginDataGridStyle}" EnableRowVirtualization="True" EnableColumnVirtualization="True">
+     <DataGrid.Columns>
+       <DataGridTextColumn Header="CH" Binding="{Binding RemoteControlKeyText}" Width="50"/>
+      <DataGridTextColumn Header="放送局" Binding="{Binding ServiceName}" Width="*"/>
+      <DataGridTextColumn Header="物理CH" Binding="{Binding ChannelNumber, StringFormat={}{0}ch}" Width="50"/>
+      <DataGridTextColumn Header="受信品質" Binding="{Binding QualityText}" Width="230"/>
+     </DataGrid.Columns>
+    </DataGrid>
+   </TabItem>
+
+   <TabItem Header="番組表">
+    <Grid>
+     <Grid.RowDefinitions><RowDefinition Height="2*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+     <DataGrid ItemsSource="{Binding Events}" Style="{DynamicResource PluginDataGridStyle}" EnableRowVirtualization="True" EnableColumnVirtualization="True">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="時間" Binding="{Binding TimeRangeText}" Width="126"/>
+       <DataGridTextColumn Header="番組名" Binding="{Binding Title}" Width="180"/>
+       <DataGridTextColumn Header="内容" Binding="{Binding FullDescription}" Width="*"/>
+       <DataGridTextColumn Header="属性" Binding="{Binding Attributes}" Width="160"/>
+      </DataGrid.Columns>
+     </DataGrid>
+     <DataGrid Grid.Row="1" ItemsSource="{Binding Programs}" Style="{DynamicResource PluginDataGridStyle}" EnableRowVirtualization="True">
+      <DataGrid.Columns>
+       <DataGridTextColumn Header="Service" Binding="{Binding ServiceId}" Width="58"/>
+       <DataGridTextColumn Header="局名" Binding="{Binding ServiceName}" Width="*"/>
+       <DataGridTextColumn Header="提供" Binding="{Binding ProviderName}" Width="*"/>
+       <DataGridTextColumn Header="PMT PID" Binding="{Binding PmtPid}" Width="65"/>
+      </DataGrid.Columns>
+     </DataGrid>
+    </Grid>
+   </TabItem>
+
+   <TabItem Header="放送情報">
+    <Grid>
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+     <StackPanel Margin="8,6">
+      <TextBlock Text="{Binding BroadcastClockStatus}" Foreground="{DynamicResource TextPrimaryBrush}"/>
+      <TextBlock Text="{Binding NetworkStatus}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0"/>
+      <TextBlock Text="{Binding PcrStatus}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0"/>
+     </StackPanel>
+     <DataGrid Grid.Row="1" ItemsSource="{Binding Networks}" Style="{DynamicResource PluginDataGridStyle}" EnableRowVirtualization="True">
+      <DataGrid.Columns>
+       <DataGridTextColumn Header="Network ID" Binding="{Binding NetworkId}" Width="78"/>
+       <DataGridTextColumn Header="ネットワーク名" Binding="{Binding DisplayName}" Width="*" ElementStyle="{DynamicResource PluginIdentityTextStyle}"/>
+       <DataGridTextColumn Header="TS数" Binding="{Binding Transports.Count}" Width="50"/>
+      </DataGrid.Columns>
+     </DataGrid>
+     <DataGrid Grid.Row="2" ItemsSource="{Binding ConditionalAccess}" Style="{DynamicResource PluginDataGridStyle}" EnableRowVirtualization="True">
+      <DataGrid.Columns>
+       <DataGridTextColumn Header="限定受信・アクセス制御" Binding="{Binding DisplayText}" Width="*"/>
+       <DataGridTextColumn Header="Private" Binding="{Binding PrivateData}" Width="120"/>
+      </DataGrid.Columns>
+     </DataGrid>
+     <DataGrid Grid.Row="3" ItemsSource="{Binding Broadcasters}" Style="{DynamicResource PluginDataGridStyle}" EnableRowVirtualization="True">
+      <DataGrid.Columns>
+       <DataGridTextColumn Header="Original Network ID" Binding="{Binding OriginalNetworkId}" Width="130"/>
+       <DataGridCheckBoxColumn Header="表示可" Binding="{Binding BroadcastViewPropriety}" Width="55"/>
+       <DataGridTextColumn Header="放送事業者数" Binding="{Binding Broadcasters.Count}" Width="95"/>
+      </DataGrid.Columns>
+     </DataGrid>
+    </Grid>
+   </TabItem>
+
+   <TabItem Header="データ放送">
+    <Grid>
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="3*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+     <StackPanel Margin="8,5">
+      <TextBlock Text="{Binding DataBroadcastStatus}" Foreground="{DynamicResource TextPrimaryBrush}"/>
+      <TextBlock Text="{Binding BmlViewerStatus}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+     </StackPanel>
+     <WrapPanel Grid.Row="1" Margin="6,0,6,5">
+      <Button Content="↑" Tag="ArrowUp" Click="BmlRemoteButton_Click" Width="30" Margin="2" ToolTip="データ放送 上"/>
+      <Button Content="↓" Tag="ArrowDown" Click="BmlRemoteButton_Click" Width="30" Margin="2" ToolTip="データ放送 下"/>
+      <Button Content="←" Tag="ArrowLeft" Click="BmlRemoteButton_Click" Width="30" Margin="2" ToolTip="データ放送 左"/>
+      <Button Content="→" Tag="ArrowRight" Click="BmlRemoteButton_Click" Width="30" Margin="2" ToolTip="データ放送 右"/>
+      <Button Content="決定" Tag="Enter" Click="BmlRemoteButton_Click" Width="44" Margin="2"/>
+      <Button Content="戻る" Tag="Backspace" Click="BmlRemoteButton_Click" Width="44" Margin="2"/>
+      <Button Content="青" Tag="Blue" Click="BmlRemoteButton_Click" Width="32" Margin="5,2,2,2" Foreground="#5599FF"/>
+      <Button Content="赤" Tag="Red" Click="BmlRemoteButton_Click" Width="32" Margin="2" Foreground="#FF6666"/>
+      <Button Content="緑" Tag="Green" Click="BmlRemoteButton_Click" Width="32" Margin="2" Foreground="#66CC66"/>
+      <Button Content="黄" Tag="Yellow" Click="BmlRemoteButton_Click" Width="32" Margin="2" Foreground="#E5CF45"/>
+      <Button Content="1" Tag="Digit1" Click="BmlRemoteButton_Click" Width="26" Margin="5,2,2,2"/>
+      <Button Content="2" Tag="Digit2" Click="BmlRemoteButton_Click" Width="26" Margin="2"/>
+      <Button Content="3" Tag="Digit3" Click="BmlRemoteButton_Click" Width="26" Margin="2"/>
+      <Button Content="4" Tag="Digit4" Click="BmlRemoteButton_Click" Width="26" Margin="2"/>
+     </WrapPanel>
+     <Grid Grid.Row="2" Background="#000000" MinHeight="220">
+      <wv2:WebView2 x:Name="BmlWebView"/>
+      <Border x:Name="BmlPlaceholder" Background="{DynamicResource InstrumentBaseBrush}" IsHitTestVisible="False">
+       <TextBlock x:Name="BmlPlaceholderText" Text="BML文書を受信待ち" Foreground="{DynamicResource TextSecondaryBrush}"
+                  HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="16"/>
+      </Border>
+     </Grid>
+     <DataGrid x:Name="DataModuleGrid" Grid.Row="3" ItemsSource="{Binding DataModules}" Style="{DynamicResource PluginDataGridStyle}" EnableRowVirtualization="True">
+      <DataGrid.Columns>
+       <DataGridTextColumn Header="PID" Binding="{Binding PidText}" Width="62"/>
+       <DataGridTextColumn Header="Module" Binding="{Binding ModuleId}" Width="58"/>
+       <DataGridTextColumn Header="名前" Binding="{Binding DisplayName}" Width="*" ElementStyle="{DynamicResource PluginIdentityTextStyle}"/>
+       <DataGridTextColumn Header="種別" Binding="{Binding ContentType}" Width="145"/>
+       <DataGridTextColumn Header="サイズ" Binding="{Binding Size}" Width="65"/>
+       <DataGridTextColumn Header="資源" Binding="{Binding ResourceCount}" Width="48"/>
+       <DataGridTextColumn Header="状態" Binding="{Binding Status}" Width="54"/>
+      </DataGrid.Columns>
+     </DataGrid>
+    </Grid>
+   </TabItem>
+
+   <TabItem Header="診断">
+    <DockPanel Margin="12,10" LastChildFill="True">
+     <controls:DiagnosticsOverview DockPanel.Dock="Top"
+       StatusKind="{Binding DiagnosticStatusKind}"
+       StatusText="{Binding DiagnosticStatusText}"
+       PhaseText="{Binding DiagnosticPhase, StringFormat=段階: {0}}"
+       LastUpdatedText="{Binding DiagnosticLastUpdated, StringFormat=更新 {0}}"
+       SummaryText="{Binding DiagnosticSummary}"
+       RecommendationText="{Binding DiagnosticRecommendation}"
+       RuntimeDiagnostics="{Binding RuntimeDiagnostics}"
+       ChannelText="{Binding DiagnosticChannelText}"/>
+     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel MaxWidth="760">
+       <Expander Header="リアルタイム処理" Style="{DynamicResource PluginDiagnosticsSectionStyle}">
+        <controls:RuntimeDiagnosticsDetails RuntimeDiagnostics="{Binding RuntimeDiagnostics}"/>
+       </Expander>
+       <Expander Header="入力・選局" Style="{DynamicResource PluginDiagnosticsSectionStyle}">
+        <Border Style="{DynamicResource PluginMetricCardStyle}" Margin="0">
+         <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="22"/><RowDefinition Height="22"/><RowDefinition Height="22"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+           <TextBlock Text="物理チャネル" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Column="1" Text="{Binding DiagnosticChannelText}"/>
+            <TextBlock Grid.Row="1" Text="対象帯域" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DiagnosticPassbandText}"/>
+            <TextBlock Grid.Row="2" Text="レート変換" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DiagnosticRateConversionText}" FontFamily="{DynamicResource DisplayFontFamily}"/>
+            <TextBlock Grid.Row="3" Text="IQ入力 → 中間 → 復調レート" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding DiagnosticRatePathText}" FontFamily="{DynamicResource DisplayFontFamily}" TextWrapping="Wrap"/>
+         </Grid>
+        </Border>
+       </Expander>
+       <Expander Header="信号・チャネル" Style="{DynamicResource PluginDiagnosticsSectionStyle}">
+        <Border Style="{DynamicResource PluginMetricCardStyle}" Margin="0">
+         <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+           <Grid.RowDefinitions><RowDefinition Height="22"/><RowDefinition Height="22"/><RowDefinition Height="22"/></Grid.RowDefinitions>
+           <TextBlock Text="チャネルレベル" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Column="1" Text="{Binding DiagnosticChannelLevelText}" FontFamily="{DynamicResource DisplayFontFamily}"/>
+           <TextBlock Grid.Row="1" Text="MER" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DiagnosticMerText}" FontFamily="{DynamicResource DisplayFontFamily}"/>
+           <TextBlock Grid.Row="2" Text="搬送波偏差" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DiagnosticFrequencyOffsetText}" FontFamily="{DynamicResource DisplayFontFamily}"/>
+         </Grid>
+        </Border>
+       </Expander>
+       <Expander Header="OFDM・TMCC同期" Style="{DynamicResource PluginDiagnosticsSectionStyle}">
+        <Border Style="{DynamicResource PluginMetricCardStyle}" Margin="0">
+         <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Grid.RowDefinitions><RowDefinition Height="22"/><RowDefinition Height="22"/></Grid.RowDefinitions>
+          <TextBlock Text="OFDM" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Column="1" Text="{Binding DiagnosticOfdmText}" FontFamily="{DynamicResource DisplayFontFamily}"/>
+          <TextBlock Grid.Row="1" Text="TMCC" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DiagnosticTmccText}" FontFamily="{DynamicResource DisplayFontFamily}"/>
+         </Grid>
+        </Border>
+       </Expander>
+       <Expander Header="FEC・TS検証" Style="{DynamicResource PluginDiagnosticsSectionStyle}">
+        <Border Style="{DynamicResource PluginMetricCardStyle}" Margin="0">
+          <StackPanel>
+           <Button Content="診断統計をリセット" Command="{Binding ResetDiagnosticStatisticsCommand}"
+                   HorizontalAlignment="Right" Padding="8,2" Margin="0,0,0,8"
+                   FontSize="10" Style="{DynamicResource PluginButtonStyle}"/>
+           <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="22"/><RowDefinition Height="Auto"/><RowDefinition Height="22"/></Grid.RowDefinitions>
+            <TextBlock Text="Viterbi・RS" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Column="1" Text="{Binding DiagnosticFecText}" FontFamily="{DynamicResource DisplayFontFamily}"/>
+            <TextBlock Grid.Row="1" Text="TS・連続性" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DiagnosticTransportText}" TextWrapping="Wrap"/>
+            <TextBlock Grid.Row="2" Text="放送時刻" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding BroadcastClockStatus}"/>
+           </Grid>
+          </StackPanel>
+        </Border>
+       </Expander>
+       <Expander Header="詳細・デバッグ" Style="{DynamicResource PluginDiagnosticsSectionStyle}">
+        <Border Style="{DynamicResource PluginMetricCardStyle}" Margin="0">
+         <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+           <TextBlock Text="TMCC Layer A" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Column="1" Text="{Binding DiagnosticTmccParametersText}" TextWrapping="Wrap"/>
+           <TextBlock Grid.Row="1" Text="累積カウンター" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding PacketStatus}" TextWrapping="Wrap"/>
+         </Grid>
+        </Border>
+       </Expander>
+      </StackPanel>
+     </ScrollViewer>
+    </DockPanel>
+   </TabItem>
+    </TabControl>
+   </Grid>
+  </Border>
+ </Grid>
+</UserControl>

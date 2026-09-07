@@ -41,11 +41,13 @@ internal sealed partial class LoRaPreambleDetector
     private readonly Complex[] _ring;
     private readonly Complex[] _downChirp;
     private readonly FastFourierTransform _fft;
+    private LoRaFinePeakEstimator? _finePeakEstimator;
     private readonly LoRaDetectorMetricsAccumulator? _metrics;
     private readonly LoRaSoftDecodingOptions? _softOptions;
     private readonly LoRaCrcListDecodingOptions? _crcListOptions;
     private readonly LoRaSearchThresholdPolicy? _searchThresholdPolicy;
     private readonly LoRaSearchEnergyGate _searchEnergyGate;
+    private readonly LoRaSnrEstimator _snrEstimator;
     private readonly float _fixedSearchThresholdDb = UpChirpThresholdDb;
     private double _ringPower;
     private int _writeIndex;
@@ -79,7 +81,7 @@ internal sealed partial class LoRaPreambleDetector
         byte syncWord = MeshtasticJpLongFastProfile.SyncWord, float expectedCenterOffsetHz = 0,
         bool enableMetrics = false, LoRaSoftDecodingOptions? softDecoding = null,
         LoRaCrcListDecodingOptions? crcListDecoding = null, LoRaSearchThresholdOptions? searchThresholdOptions = null,
-        LoRaSearchEnergyGateOptions? searchEnergyGateOptions = null)
+        LoRaSearchEnergyGateOptions? searchEnergyGateOptions = null, int? inputNoiseBandwidthHz = null)
     {
         _sampleRateHz = sampleRateHz;
         _bandwidthHz = bandwidthHz;
@@ -99,6 +101,7 @@ internal sealed partial class LoRaPreambleDetector
         }
 
         _samplesPerChip = _symbolSamples / _symbolValues;
+        _snrEstimator = new LoRaSnrEstimator(_symbolSamples, bandwidthHz, inputNoiseBandwidthHz ?? sampleRateHz);
         _expectedCenterBin = (int)MathF.Round(expectedCenterOffsetHz * _symbolSamples / sampleRateHz);
         _ring = new Complex[_symbolSamples * 2];
         _downChirp = CreateDownChirp(_symbolSamples, sampleRateHz, bandwidthHz);
@@ -303,6 +306,16 @@ internal sealed partial class LoRaPreambleDetector
             return new SpectrumPeak(0, 0.0f, float.NegativeInfinity, 0.0f);
         }
 
+        // Leave the continuously running search and its thresholds unchanged.
+        // Refine the aligned reference and every subsequent symbol consistently.
+        // The SFD's unused up-chirp FFT does not need refinement.
+        bool refinePeak = _state != AcquisitionState.Search &&
+                          (_state != AcquisitionState.Sfd || !dechirpUpChirp);
+        if (refinePeak)
+        {
+            _finePeakEstimator ??= new LoRaFinePeakEstimator(_symbolSamples);
+            _finePeakEstimator.Prepare(fftInput);
+        }
         if (_metrics is not null) _metrics.FftExecutions++;
         _fft.ExecutePower(System.Numerics.BitOperations.Log2((uint)_symbolSamples));
         float[] spectrum = _fft.OutputData;
@@ -347,7 +360,7 @@ internal sealed partial class LoRaPreambleDetector
             if (delta > 0.5f) delta = 0.5f;
             else if (delta < -0.5f) delta = -0.5f;
         }
-        float interpolatedBin = peakBin + delta;
+        float interpolatedBin = refinePeak ? _finePeakEstimator!.Interpolate(spectrum, peakBin) : peakBin + delta;
         float interpolatedFreqHz = (interpolatedBin - (len / 2.0f)) * (_sampleRateHz / (float)len);
 
         SpectrumCandidate[]? candidates = _softOptions is not null &&
@@ -386,7 +399,7 @@ internal sealed partial class LoRaPreambleDetector
             }
             if (selectedBin < 0) break;
 
-            float interpolatedBin = InterpolateBin(spectrum, selectedBin);
+            float interpolatedBin = _finePeakEstimator!.Interpolate(spectrum, selectedBin);
             float logLikelihood = 10.0f * MathF.Log10(Math.Max(1e-30f, selectedPower));
             float bestLogLikelihood = selectedCount == 0
                 ? logLikelihood
@@ -399,20 +412,6 @@ internal sealed partial class LoRaPreambleDetector
                 Math.Max(0, bestLogLikelihood - logLikelihood));
         }
         return selectedCount == candidates.Length ? candidates : candidates[..selectedCount];
-    }
-
-    private static float InterpolateBin(float[] spectrum, int bin)
-    {
-        int leftBin = (bin - 1 + spectrum.Length) % spectrum.Length;
-        int rightBin = (bin + 1) % spectrum.Length;
-        float y0 = spectrum[leftBin];
-        float y1 = spectrum[bin];
-        float y2 = spectrum[rightBin];
-        float denominator = y0 - (2.0f * y1) + y2;
-        float delta = Math.Abs(denominator) > 1e-12f
-            ? 0.5f * (y0 - y2) / denominator
-            : 0;
-        return bin + Math.Clamp(delta, -0.5f, 0.5f);
     }
 
     private LoRaSoftSymbol CreateSoftSymbol(SpectrumPeak peak, bool reducedRate)
@@ -495,6 +494,7 @@ internal sealed partial class LoRaPreambleDetector
 
     private void ResetAcquisition()
     {
+        _snrEstimator.Reset();
         _state = AcquisitionState.Search;
         _lastPeakBin = -1;
         _preamblePeakBin = float.NaN;

@@ -12,7 +12,7 @@ Stable plugin ID: `analog`. AM, FM, and SSB audio demodulation.
 
 The plugin owns its audio workspace and settings view, including profile
 selection, tuning, squelch, AGC, audio filtering, and a rolling three-second
-IQ pre-trigger capture. It also supports headless processing.
+post-channel-filter IQ pre-trigger capture. It also supports headless processing.
 
 ## Build
 

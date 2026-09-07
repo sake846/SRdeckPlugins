@@ -1,0 +1,56 @@
+<Window x:Class="SRdeckPlugin.HfFax.Views.HfFaxImageWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="HF-FAX画像（等倍）"
+        Width="1100" Height="760"
+        MinWidth="520" MinHeight="320"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        Background="#FF202124"
+        Foreground="#FFF1F3F4"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="#FF2B2D30" BorderBrush="#FF4A4D52"
+                BorderThickness="0,0,0,1" Padding="10,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock x:Name="ImageInfoText" FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="原寸（1ピクセル = 1表示単位） / スクロールで全体を確認できます"
+                               Foreground="#FFB8BCC2" FontSize="11" Margin="0,3,0,0" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="↶ 左回転" Click="RotateCounterClockwise_Click"
+                        Margin="8,0,3,0" Padding="10,4" ToolTip="反時計回りに90度回転" />
+                <Button Grid.Column="2" Content="右回転 ↷" Click="RotateClockwise_Click"
+                        Margin="3,0" Padding="10,4" ToolTip="時計回りに90度回転" />
+                <Button Grid.Column="3" Content="0°に戻す" Click="ResetRotation_Click"
+                        Margin="3,0" Padding="10,4" />
+                <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center"
+                            Margin="12,0,0,0">
+                    <TextBlock Text="回転: " Foreground="#FFB8BCC2" />
+                    <TextBlock x:Name="RotationText" MinWidth="38" />
+                    <Button Content="閉じる" Click="Close_Click" Margin="10,0,0,0"
+                            Padding="10,4" IsCancel="True" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Margin="8" Background="#FF111214" BorderBrush="#FF4A4D52" BorderThickness="1">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                          CanContentScroll="False" Background="#FF111214">
+                <Image x:Name="ImageView" Stretch="None" HorizontalAlignment="Center"
+                       VerticalAlignment="Center" RenderOptions.BitmapScalingMode="NearestNeighbor"
+                       SnapsToDevicePixels="True" />
+            </ScrollViewer>
+        </Border>
+    </DockPanel>
+</Window>

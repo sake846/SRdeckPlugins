@@ -15,6 +15,8 @@ public sealed record LoRaPayloadFrame(
     int CodingRateDenominator,
     int CorrectedCodewords)
 {
+    public float? EstimatedSnrDb { get; init; }
+    public float? EstimatedRssiDbfs { get; init; }
     public LoRaSoftFrameInformation? SoftInformation { get; init; }
     public bool WasRecoveredByListDecoding { get; init; }
     public float? CrcListMetric { get; init; }
