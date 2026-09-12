@@ -3,54 +3,64 @@
 internal sealed class ReedSolomon204
 {
     private readonly GaloisField field = new();
+    private readonly int[] received = new int[255];
+    private readonly int[] syndrome = new int[16];
+    private readonly int[] locations = new int[16];
+    private readonly int[] magnitudes = new int[16];
 
     public bool TryCorrect(ReadOnlySpan<byte> packet, out byte[] transportPacket, out int correctedErrors)
     {
-        transportPacket = [];
+        Span<byte> output = stackalloc byte[188];
+        bool valid = TryCorrect(packet, output, out correctedErrors);
+        transportPacket = valid ? output.ToArray() : [];
+        return valid;
+    }
+
+    // Scratch is owned by this single-threaded decoder and survives only one call.
+    public bool TryCorrect(ReadOnlySpan<byte> packet, Span<byte> output, out int correctedErrors)
+    {
         correctedErrors = 0;
         if (packet.Length != 204) return false;
-        var received = new int[255];
-        for (int index = 0; index < packet.Length; index++) received[index + 51] = packet[index];
-        var polynomial = new Polynomial(field, received);
-        var syndrome = new int[16];
+        if (output.Length < 188) throw new ArgumentException("The output must hold 188 bytes.", nameof(output));
         bool clean = true;
         for (int index = 0; index < syndrome.Length; index++)
         {
-            int evaluation = polynomial.EvaluateAt(field.Exp(index));
+            // Leading shortened zero symbols do not affect Horner evaluation.
+            int evaluation = packet[0], value = field.Exp(index);
+            for (int term = 1; term < packet.Length; term++)
+                evaluation = field.Multiply(evaluation, value) ^ packet[term];
             syndrome[syndrome.Length - 1 - index] = evaluation;
             clean &= evaluation == 0;
         }
-        if (!clean)
+        if (clean)
         {
-            try
-            {
-                (Polynomial sigma, Polynomial omega) = RunEuclidean(field.BuildMonomial(16, 1),
-                    new Polynomial(field, syndrome), 16);
-                int[] locations = FindErrorLocations(sigma);
-                int[] magnitudes = FindErrorMagnitudes(omega, locations);
-                for (int index = 0; index < locations.Length; index++)
-                {
-                    int position = received.Length - 1 - field.Log(locations[index]);
-                    // Errors in the 16 parity bytes are correctable as well.  Only
-                    // locations in the 51 implicit shortened symbols are invalid.
-                    if (position < 51 || position >= 255) return false;
-                    received[position] ^= magnitudes[index];
-                }
-                correctedErrors = locations.Length;
-            }
-            catch (InvalidOperationException)
-            {
-                return false;
-            }
+            packet[..188].CopyTo(output);
+            return output[0] == 0x47;
         }
-        transportPacket = new byte[188];
-        for (int index = 0; index < transportPacket.Length; index++)
-            transportPacket[index] = (byte)received[index + 51];
-        return transportPacket[0] == 0x47;
+        field.ResetScratch();
+        Array.Clear(received, 0, 51);
+        for (int index = 0; index < packet.Length; index++) received[index + 51] = packet[index];
+        if (!TryRunEuclidean(field.BuildMonomial(16, 1), field.CreatePolynomial(syndrome), 16,
+            out Polynomial sigma, out Polynomial omega)) return false;
+        int locationCount = FindErrorLocations(sigma, locations);
+        if (locationCount < 0 || !FindErrorMagnitudes(omega, locations.AsSpan(0, locationCount), magnitudes)) return false;
+        for (int index = 0; index < locationCount; index++)
+        {
+            int position = received.Length - 1 - field.Log(locations[index]);
+            // Errors in the 16 parity bytes are correctable as well. Only
+            // locations in the 51 implicit shortened symbols are invalid.
+            if (position < 51 || position >= 255) return false;
+            received[position] ^= magnitudes[index];
+        }
+        correctedErrors = locationCount;
+        for (int index = 0; index < 188; index++) output[index] = (byte)received[index + 51];
+        return output[0] == 0x47;
     }
 
-    private (Polynomial Sigma, Polynomial Omega) RunEuclidean(Polynomial first, Polynomial second, int r)
+    private bool TryRunEuclidean(Polynomial first, Polynomial second, int r,
+        out Polynomial sigma, out Polynomial omega)
     {
+        sigma = omega = field.Zero;
         if (first.Degree < second.Degree) (first, second) = (second, first);
         Polynomial rLast = first, current = second;
         Polynomial tLast = field.Zero, t = field.One;
@@ -60,7 +70,7 @@ internal sealed class ReedSolomon204
             Polynomial previousT = tLast;
             rLast = current;
             tLast = t;
-            if (rLast.IsZero) throw new InvalidOperationException("Invalid RS syndrome.");
+            if (rLast.IsZero) return false;
             current = previous;
             Polynomial quotient = field.Zero;
             int denominatorInverse = field.Inverse(rLast.LeadingCoefficient);
@@ -74,42 +84,45 @@ internal sealed class ReedSolomon204
             t = quotient.Multiply(tLast).AddOrSubtract(previousT);
         }
         int sigmaAtZero = t.GetCoefficient(0);
-        if (sigmaAtZero == 0) throw new InvalidOperationException("RS locator has no constant term.");
+        if (sigmaAtZero == 0) return false;
         int inverse = field.Inverse(sigmaAtZero);
-        return (t.Multiply(inverse), current.Multiply(inverse));
+        sigma = t.Multiply(inverse);
+        omega = current.Multiply(inverse);
+        return true;
     }
 
-    private int[] FindErrorLocations(Polynomial locator)
+    private int FindErrorLocations(Polynomial locator, Span<int> locations)
     {
         int count = locator.Degree;
-        if (count == 1) return [locator.GetCoefficient(1)];
-        var locations = new int[count];
+        if (count == 1) { locations[0] = locator.GetCoefficient(1); return 1; }
         int found = 0;
         for (int value = 1; value < 256 && found < count; value++)
             if (locator.EvaluateAt(value) == 0) locations[found++] = field.Inverse(value);
-        if (found != count) throw new InvalidOperationException("RS error locations are inconsistent.");
-        return locations;
+        return found == count ? count : -1;
     }
 
-    private int[] FindErrorMagnitudes(Polynomial evaluator, int[] locations)
+    private bool FindErrorMagnitudes(Polynomial evaluator, ReadOnlySpan<int> locations, Span<int> magnitudes)
     {
-        var magnitudes = new int[locations.Length];
         for (int index = 0; index < locations.Length; index++)
         {
+            if (locations[index] == 0) return false;
             int inverse = field.Inverse(locations[index]);
             int denominator = 1;
             for (int other = 0; other < locations.Length; other++)
                 if (index != other) denominator = field.Multiply(denominator,
                     field.Multiply(locations[other], inverse) ^ 1);
+            if (denominator == 0) return false;
             magnitudes[index] = field.Multiply(evaluator.EvaluateAt(inverse), field.Inverse(denominator));
         }
-        return magnitudes;
+        return true;
     }
 
     private sealed class GaloisField
     {
         private readonly int[] exp = new int[512];
         private readonly int[] log = new int[256];
+        private readonly List<Polynomial> scratch = [];
+        private int used;
         public Polynomial Zero { get; }
         public Polynomial One { get; }
 
@@ -128,6 +141,21 @@ internal sealed class ReedSolomon204
             One = new Polynomial(this, [1]);
         }
 
+        public void ResetScratch() => used = 0;
+        public Polynomial Rent(int length)
+        {
+            if (used == scratch.Count) scratch.Add(new Polynomial(this, [0]));
+            Polynomial result = scratch[used++];
+            result.Initialize(length);
+            return result;
+        }
+        public Polynomial CreatePolynomial(ReadOnlySpan<int> source)
+        {
+            Polynomial result = Rent(source.Length);
+            source.CopyTo(result.Coefficients);
+            return result.Normalize();
+        }
+
         public int Exp(int power) => exp[power];
         public int Log(int value) => value == 0 ? throw new InvalidOperationException("log(0)") : log[value];
         public int Inverse(int value) => value == 0 ? throw new InvalidOperationException("inverse(0)") : exp[255 - log[value]];
@@ -136,34 +164,50 @@ internal sealed class ReedSolomon204
         {
             if (degree < 0) throw new ArgumentOutOfRangeException(nameof(degree));
             if (coefficient == 0) return Zero;
-            var coefficients = new int[degree + 1];
-            coefficients[0] = coefficient;
-            return new Polynomial(this, coefficients);
+            Polynomial result = Rent(degree + 1);
+            result.Coefficients[0] = coefficient;
+            return result;
         }
     }
 
     private sealed class Polynomial
     {
         private readonly GaloisField field;
-        private readonly int[] coefficients;
-        public int Degree => coefficients.Length - 1;
-        public bool IsZero => coefficients[0] == 0;
-        public int LeadingCoefficient => coefficients[0];
+        private int[] coefficients = new int[33];
+        private int start, length;
+        public Span<int> Coefficients => coefficients.AsSpan(start, length - start);
+        public int Degree => length - start - 1;
+        public bool IsZero => coefficients[start] == 0;
+        public int LeadingCoefficient => coefficients[start];
 
-        public Polynomial(GaloisField field, int[] source)
+        public Polynomial(GaloisField field, ReadOnlySpan<int> source)
         {
             this.field = field;
-            int first = 0;
-            while (first < source.Length - 1 && source[first] == 0) first++;
-            coefficients = source[first..];
+            Initialize(source.Length);
+            source.CopyTo(Coefficients);
+            Normalize();
         }
 
-        public int GetCoefficient(int degree) => coefficients[coefficients.Length - 1 - degree];
+        public void Initialize(int count)
+        {
+            if (coefficients.Length < count) coefficients = new int[count];
+            start = 0;
+            length = count;
+            Coefficients.Clear();
+        }
+
+        public Polynomial Normalize()
+        {
+            while (start < length - 1 && coefficients[start] == 0) start++;
+            return this;
+        }
+
+        public int GetCoefficient(int degree) => coefficients[length - 1 - degree];
         public int EvaluateAt(int value)
         {
             if (value == 0) return GetCoefficient(0);
-            int result = coefficients[0];
-            for (int index = 1; index < coefficients.Length; index++)
+            int result = coefficients[start];
+            for (int index = start + 1; index < length; index++)
                 result = field.Multiply(result, value) ^ coefficients[index];
             return result;
         }
@@ -172,39 +216,49 @@ internal sealed class ReedSolomon204
         {
             if (IsZero) return other;
             if (other.IsZero) return this;
-            int[] small = coefficients, large = other.coefficients;
-            if (small.Length > large.Length) (small, large) = (large, small);
-            var sum = (int[])large.Clone();
+            ReadOnlySpan<int> small = Coefficients, large = other.Coefficients;
+            if (small.Length > large.Length) { small = other.Coefficients; large = Coefficients; }
+            Polynomial sum = field.Rent(large.Length);
+            Span<int> destination = sum.Coefficients;
+            large.CopyTo(destination);
             int difference = large.Length - small.Length;
-            for (int index = 0; index < small.Length; index++) sum[index + difference] ^= small[index];
-            return new Polynomial(field, sum);
+            for (int index = 0; index < small.Length; index++) destination[index + difference] ^= small[index];
+            return sum.Normalize();
         }
 
         public Polynomial Multiply(Polynomial other)
         {
             if (IsZero || other.IsZero) return field.Zero;
-            var product = new int[coefficients.Length + other.coefficients.Length - 1];
-            for (int left = 0; left < coefficients.Length; left++)
-            for (int right = 0; right < other.coefficients.Length; right++)
-                product[left + right] ^= field.Multiply(coefficients[left], other.coefficients[right]);
-            return new Polynomial(field, product);
+            ReadOnlySpan<int> leftTerms = Coefficients, rightTerms = other.Coefficients;
+            Polynomial product = field.Rent(leftTerms.Length + rightTerms.Length - 1);
+            Span<int> destination = product.Coefficients;
+            for (int left = 0; left < leftTerms.Length; left++)
+            for (int right = 0; right < rightTerms.Length; right++)
+                destination[left + right] ^= field.Multiply(leftTerms[left], rightTerms[right]);
+            return product.Normalize();
         }
 
         public Polynomial Multiply(int scalar)
         {
             if (scalar == 0) return field.Zero;
             if (scalar == 1) return this;
-            var product = new int[coefficients.Length];
-            for (int index = 0; index < product.Length; index++) product[index] = field.Multiply(coefficients[index], scalar);
-            return new Polynomial(field, product);
+            ReadOnlySpan<int> source = Coefficients;
+            Polynomial product = field.Rent(source.Length);
+            Span<int> destination = product.Coefficients;
+            for (int index = 0; index < source.Length; index++)
+                destination[index] = field.Multiply(source[index], scalar);
+            return product.Normalize();
         }
 
         public Polynomial MultiplyByMonomial(int degree, int coefficient)
         {
             if (coefficient == 0) return field.Zero;
-            var product = new int[coefficients.Length + degree];
-            for (int index = 0; index < coefficients.Length; index++) product[index] = field.Multiply(coefficients[index], coefficient);
-            return new Polynomial(field, product);
+            ReadOnlySpan<int> source = Coefficients;
+            Polynomial product = field.Rent(source.Length + degree);
+            Span<int> destination = product.Coefficients;
+            for (int index = 0; index < source.Length; index++)
+                destination[index] = field.Multiply(source[index], coefficient);
+            return product.Normalize();
         }
     }
 }

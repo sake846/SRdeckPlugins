@@ -199,7 +199,8 @@ public sealed class MeshtasticPluginModule(
             metadata.SampleRateHz,
             checked((int)metadata.CenterFrequencyHz),
             metadata.Sequence,
-            metadata.AbsoluteSampleStart);
+            metadata.AbsoluteSampleStart,
+            metadata.Discontinuity);
         ProcessFmMonitor(block.Samples.Span, metadata);
         return ValueTask.CompletedTask;
     }

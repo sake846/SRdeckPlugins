@@ -33,6 +33,7 @@ public partial class MeshtasticViewModel
     [ObservableProperty] private string _meshtasticRateConversionText = "—";
     [ObservableProperty] private string _meshtasticRatePathText = "—";
     [ObservableProperty] private string _meshtasticLastSignalStatus = "最終信号: -";
+    [ObservableProperty] private string _meshtasticIqRetentionText = "IQ保持: 待機中";
     [ObservableProperty] private string _meshtasticLastFailureStatus = "直近の失敗: -";
     [ObservableProperty] private string _meshtasticFrequencyCorrectionText = "—";
 

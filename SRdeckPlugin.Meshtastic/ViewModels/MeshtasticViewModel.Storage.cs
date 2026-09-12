@@ -111,11 +111,14 @@ public partial class MeshtasticViewModel
     [RelayCommand]
     private void ClearMeshtasticMessages()
     {
+        Interlocked.Increment(ref _presentationEpoch);
+        _historyVersion++;
         SelectedTimelineMessage = null;
         MeshtasticMessages.Clear();
         VisibleMeshtasticMessages.Clear();
         MeshtasticTextMessages.Clear();
         MeshtasticPacketGroups.Clear();
+        MeshtasticReceptionAggregates.Clear();
         SelectedMeshtasticNodeLatestApplications.Clear();
         MeshtasticNodes.Clear();
         FilteredMeshtasticNodes.Clear();

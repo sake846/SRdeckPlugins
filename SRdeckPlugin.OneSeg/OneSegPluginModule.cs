@@ -26,11 +26,9 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
     private readonly Dictionary<ushort, byte> streamAudioComponentTypes = [];
     private IPluginHostContext? host;
     private OneSegMediaPlayer? mediaPlayer;
-    private FileStream? recording;
-    private string? recordingPath;
-    private string? recordingMetadataPath;
-    private DateTimeOffset recordingOpenedAt;
-    private int recordingSegmentIndex;
+    private OneSegRecordingWriter? recording;
+    private Task recordingTail = Task.CompletedTask;
+    private int recordingGeneration;
     private OneSegSettings settings = new();
     private ITimer? diagnosticsTimer;
     private IqBlockMetadata? lastCaptureMetadata;
@@ -341,7 +339,6 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
             analyzer.Reset();
             audioEvents.Clear();
             streamAudioComponentTypes.Clear();
-            recordingSegmentIndex = 0;
             mediaPlayer?.Start(settings.Volume);
             if (settings.AutoRecordOnStart) OpenRecording();
         }
@@ -359,6 +356,7 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
         {
             if (State != PluginLifecycleState.Streaming) return ValueTask.CompletedTask;
             long currentCenterFreq = block.Metadata.Configuration.ChannelCenterFrequencyHz;
+            bool channelChanged = lastReceivedCenterFrequencyHz != currentCenterFreq;
             if (block.Metadata.Source.Discontinuity != IqDiscontinuity.None ||
                 lastReceivedCenterFrequencyHz != currentCenterFreq)
             {
@@ -366,6 +364,7 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
                 iqCaptureBuffer.Reset();
             }
             lastReceivedCenterFrequencyHz = currentCenterFreq;
+            if (channelChanged) RefreshRecordingSnapshot();
             lastCaptureMetadata = block.Metadata.Source;
             lastChannelConfiguration = block.Metadata.Configuration;
             iqCaptureBuffer.Write(block.Samples.Span, block.Metadata.Configuration.OutputSampleRateHz);
@@ -396,18 +395,14 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
     {
         channelScanCancellation?.Cancel();
         OneSegMediaPlayer? player;
-        FileStream? streamToClose;
+        Task recordingStopped;
         lock (processingGate)
         {
-            streamToClose = recording;
-            recording = null;
+            recordingStopped = CloseRecording("stream-stop");
             player = mediaPlayer;
             receiver.Reset();
         }
-        streamToClose?.Dispose();
-        WriteRecordingMetadata(DateTimeOffset.UtcNow);
-        recordingPath = null;
-        recordingMetadataPath = null;
+        await recordingStopped.ConfigureAwait(false);
         if (player is not null)
             await Task.Run(player.Stop).ConfigureAwait(false);
         SetStatus($"待機中 / {SelectedPrefecture().DisplayName} / {SelectedChannel().DisplayName}");
@@ -459,6 +454,7 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
         {
             viewModel.ResetServiceData();
             viewModel.Configure(settings, next);
+            viewModel.SetRecordingState(recording?.IsAccepting == true);
         });
         PersistSettings();
         SetStatus($"{(State == PluginLifecycleState.Streaming ? "受信中" : "待機中")} / {prefecture.DisplayName} / {next.DisplayName}");
@@ -478,12 +474,16 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
     private void DisposeResources()
     {
         diagnosticsTimer?.Dispose();
+        Task recordingStopped;
+        OneSegMediaPlayer? player;
         lock (processingGate)
         {
-            CloseRecording("stream-stop");
-            mediaPlayer?.Dispose();
+            recordingStopped = CloseRecording("stream-stop");
+            player = mediaPlayer;
             mediaPlayer = null;
             receiver.Reset();
         }
+        recordingStopped.GetAwaiter().GetResult();
+        player?.Dispose();
     }
 }

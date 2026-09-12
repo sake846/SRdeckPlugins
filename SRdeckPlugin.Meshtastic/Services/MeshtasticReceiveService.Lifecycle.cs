@@ -12,9 +12,21 @@ public sealed partial class MeshtasticReceiveService
         _streamLifecycleGate.Wait();
         try
         {
+            Volatile.Write(ref _acceptingStreamData, 0);
+            SpinWait.SpinUntil(() => Volatile.Read(ref _activeEnqueues) == 0);
+            // A failed block records its failure before completing this drain.
+            // This also covers restart immediately after StopStreamAsync returns.
+            WaitForDrainAsync(Interlocked.Read(ref _enqueuedWorkItems)).GetAwaiter().GetResult();
+            if (Volatile.Read(ref _workerFailure) is not null)
+                _worker.GetAwaiter().GetResult();
             lock (_streamGate)
             {
                 ResetStreamState();
+                if (_worker.IsCompleted)
+                {
+                    Volatile.Write(ref _workerFailure, null);
+                    _worker = StartWorker();
+                }
                 Volatile.Write(ref _acceptingStreamData, 1);
             }
         }
@@ -100,6 +112,7 @@ public sealed partial class MeshtasticReceiveService
         }
         foreach (ChannelReceiver receiver in _channelReceivers) receiver.Reset();
         _lastProcessedSequence = -1;
+        _lastProcessedSampleEnd = -1;
         _lastProcessedConfigurationVersion = -1;
         Interlocked.Increment(ref _ringGeneration);
         Volatile.Write(ref _targetInPassband, 0);

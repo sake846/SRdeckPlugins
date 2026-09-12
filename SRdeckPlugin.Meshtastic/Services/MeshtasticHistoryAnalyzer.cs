@@ -59,6 +59,12 @@ public sealed class MeshtasticHistoryAnalyzer
         bool decodedOnly,
         bool directOnly,
         int displayLimit)
+        => Analyze(messages, nodes.Count(node => node.ActivityStatus is "新規" or "活動中"),
+            searchText, decodedOnly, directOnly, displayLimit);
+
+    internal MeshtasticHistoryAnalysisResult Analyze(
+        IReadOnlyList<MeshtasticDisplayItem> messages, int activeNodeCount,
+        string? searchText, bool decodedOnly, bool directOnly, int displayLimit)
     {
         IEnumerable<MeshtasticDisplayItem> filtered = messages;
         string search = searchText?.Trim() ?? string.Empty;
@@ -110,7 +116,7 @@ public sealed class MeshtasticHistoryAnalyzer
             packetGroups,
             receptionAggregates,
             textMessages,
-            nodes.Count(node => node.ActivityStatus is "新規" or "活動中"),
+            activeNodeCount,
             messages.Count(item => !item.IsDecoded));
     }
 

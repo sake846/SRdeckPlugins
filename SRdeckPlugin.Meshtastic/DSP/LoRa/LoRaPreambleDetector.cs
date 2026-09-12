@@ -158,8 +158,49 @@ internal sealed partial class LoRaPreambleDetector
     {
         int count = Math.Min(samplesI.Length, samplesQ.Length);
         if (_metrics is not null) _metrics.InputSamples += count;
-        for (int index = 0; index < count; index++)
-            PushCore(samplesI[index], samplesQ[index]);
+        int offset = 0;
+        while (offset < count)
+        {
+            // Analyze at exactly the same sample as Push(), including alignment
+            // advances and the SFD quarter-symbol delay. Hoist the ring wrap and
+            // analysis checks out of the per-sample loop.
+            int untilAnalysis = Math.Max(_symbolSamples - _sampleCount,
+                _symbolSamples - _samplesSinceAnalysis);
+            int length = Math.Min(count - offset, Math.Min(_symbolSamples - _writeIndex,
+                Math.Max(1, untilAnalysis)));
+            ReadOnlySpan<float> sourceI = samplesI.Slice(offset, length);
+            ReadOnlySpan<float> sourceQ = samplesQ.Slice(offset, length);
+            Span<Complex> destination = _ring.AsSpan(_writeIndex, length);
+            if (_searchEnergyGate.Enabled)
+            {
+                double power = _ringPower;
+                for (int n = 0; n < length; n++)
+                {
+                    float i = sourceI[n], q = sourceQ[n];
+                    Complex previous = destination[n];
+                    power += ((double)i * i) + ((double)q * q) -
+                             ((double)previous.X * previous.X) - ((double)previous.Y * previous.Y);
+                    destination[n] = new Complex { X = i, Y = q };
+                }
+                _ringPower = power;
+            }
+            else
+            {
+                for (int n = 0; n < length; n++)
+                    destination[n] = new Complex { X = sourceI[n], Y = sourceQ[n] };
+            }
+            destination.CopyTo(_ring.AsSpan(_writeIndex + _symbolSamples, length));
+            _writeIndex += length;
+            if (_writeIndex == _symbolSamples) _writeIndex = 0;
+            _sampleCount = Math.Min(_symbolSamples, _sampleCount + length);
+            _samplesSinceAnalysis += length;
+            offset += length;
+            if (_sampleCount == _symbolSamples && _samplesSinceAnalysis >= _symbolSamples)
+            {
+                _samplesSinceAnalysis = 0;
+                AnalyzeSymbol();
+            }
+        }
     }
 
     internal LoRaDetectorMetricsSnapshot GetMetricsSnapshot() =>
@@ -208,6 +249,14 @@ internal sealed partial class LoRaPreambleDetector
 
     private void AnalyzeSymbolCore()
     {
+        if (_state == AcquisitionState.Sfd)
+        {
+            // SFD decisions use only the down-chirp spectrum. The up-chirp FFT
+            // was overwritten without being used by any acquisition decision.
+            ProcessSfd(CalculatePeak(dechirpUpChirp: false));
+            return;
+        }
+
         if (_state == AcquisitionState.Search && ShouldSkipSearchFft())
         {
             if (_metrics is not null) _metrics.FftSkips++;
@@ -233,9 +282,6 @@ internal sealed partial class LoRaPreambleDetector
                 break;
             case AcquisitionState.SyncLow:
                 ProcessSyncLow(upPeak);
-                break;
-            case AcquisitionState.Sfd:
-                ProcessSfd(CalculatePeak(dechirpUpChirp: false));
                 break;
             case AcquisitionState.Header:
                 ProcessHeader(upPeak);
@@ -308,9 +354,7 @@ internal sealed partial class LoRaPreambleDetector
 
         // Leave the continuously running search and its thresholds unchanged.
         // Refine the aligned reference and every subsequent symbol consistently.
-        // The SFD's unused up-chirp FFT does not need refinement.
-        bool refinePeak = _state != AcquisitionState.Search &&
-                          (_state != AcquisitionState.Sfd || !dechirpUpChirp);
+        bool refinePeak = _state != AcquisitionState.Search;
         if (refinePeak)
         {
             _finePeakEstimator ??= new LoRaFinePeakEstimator(_symbolSamples);

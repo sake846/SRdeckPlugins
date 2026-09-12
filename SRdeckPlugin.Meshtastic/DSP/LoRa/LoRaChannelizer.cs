@@ -18,6 +18,8 @@ internal sealed class LoRaChannelizer
 {
     private const int TapCount = 47;
     private const int MaximumIntermediateRateHz = 1_000_000;
+    private static readonly int PaddedTapCount =
+        (TapCount + Vector<float>.Count - 1) / Vector<float>.Count * Vector<float>.Count;
 
     internal static int CalculateIntermediateSampleRateHz(int inputSampleRateHz)
     {
@@ -31,9 +33,9 @@ internal sealed class LoRaChannelizer
             ? 0
             : checked((int)((inputSampleRateHz + (long)MaximumIntermediateRateHz - 1) /
                             MaximumIntermediateRateHz));
-    private readonly float[] _delayI = new float[TapCount * 2];
-    private readonly float[] _delayQ = new float[TapCount * 2];
-    private readonly float[] _taps = new float[TapCount];
+    private readonly float[] _delayI = new float[TapCount + PaddedTapCount];
+    private readonly float[] _delayQ = new float[TapCount + PaddedTapCount];
+    private readonly float[] _taps = new float[PaddedTapCount];
     private Vector<float>[] _tapVectors = [];
     private float[] _outputI = [];
     private float[] _outputQ = [];
@@ -236,12 +238,12 @@ internal sealed class LoRaChannelizer
     {
         int vectorWidth = Vector<float>.Count;
         int vectorCount = _tapVectors.Length;
-        float sum = 0;
+        // Keep all 47 coefficients. Zero-padding the final vector removes the
+        // scalar tail; reduce across SIMD lanes only once per output sample.
+        Vector<float> sum = Vector<float>.Zero;
         for (int vectorIndex = 0; vectorIndex < vectorCount; vectorIndex++)
-            sum += Vector.Dot(new Vector<float>(delay, start + vectorIndex * vectorWidth), _tapVectors[vectorIndex]);
-        for (int tap = vectorCount * vectorWidth; tap < TapCount; tap++)
-            sum += delay[start + tap] * _taps[tap];
-        return sum;
+            sum += new Vector<float>(delay, start + vectorIndex * vectorWidth) * _tapVectors[vectorIndex];
+        return Vector.Dot(sum, Vector<float>.One);
     }
 
     private void DesignLowPass(int sampleRateHz)
@@ -264,7 +266,7 @@ internal sealed class LoRaChannelizer
         }
         for (int i = 0; i < TapCount; i++) _taps[i] = (float)(_taps[i] / sum);
         int vectorWidth = Vector<float>.Count;
-        _tapVectors = new Vector<float>[TapCount / vectorWidth];
+        _tapVectors = new Vector<float>[PaddedTapCount / vectorWidth];
         for (int index = 0; index < _tapVectors.Length; index++)
             _tapVectors[index] = new Vector<float>(_taps, index * vectorWidth);
     }

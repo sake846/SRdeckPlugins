@@ -46,7 +46,16 @@ public readonly record struct MeshtasticReceiveSnapshot(
     long ExpiredHistoryBlocks,
     double AverageChannelizationCpuMs = 0,
     double AverageDetectionCpuMs = 0,
-    int InputSampleRateHz = 0);
+    int InputSampleRateHz = 0)
+{
+    public MeshtasticWorkerFailure? WorkerFailure { get; init; }
+    public long RetainedIqBytes { get; init; }
+    public double RetainedIqMilliseconds { get; init; }
+    public long QueueLimitDroppedBlocks { get; init; }
+}
+
+public sealed record MeshtasticWorkerFailure(
+    DateTimeOffset Timestamp, long Sequence, long AbsoluteSampleStart, Exception Exception);
 
 public sealed record MeshtasticPacketReception(
     MeshtasticRadioPacket Packet,
@@ -164,6 +173,7 @@ public interface IMeshtasticReceiveService : IDisposable
     event Action<LoRaAcquisitionDiagnostic>? AcquisitionDiagnostic;
     event Action<MeshtasticPacketReception>? MeshtasticPacketReceived;
     event Action<MeshtasticDataReception>? MeshtasticDataReceived;
+    event Action<MeshtasticWorkerFailure>? WorkerFailed;
 
     bool TryConfigureChannels(MeshtasticRegion region, MeshtasticModemPreset preset, IReadOnlyList<MeshtasticBandwidthSlots> bandwidthSlots, out string error);
 
@@ -180,7 +190,8 @@ public interface IMeshtasticReceiveService : IDisposable
         int sampleRateHz,
         int inputCenterFrequencyHz,
         long sequence,
-        long absoluteSampleStart);
+        long absoluteSampleStart,
+        IqDiscontinuity discontinuity = IqDiscontinuity.None);
     ValueTask WarmUpProcessingAsync(
         int sampleRateHz,
         int inputCenterFrequencyHz,

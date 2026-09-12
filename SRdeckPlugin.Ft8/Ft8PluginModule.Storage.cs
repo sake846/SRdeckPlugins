@@ -230,12 +230,23 @@ public sealed partial class Ft8PluginModule
                 ReceiverDiagnostics = diagnostics
             };
             string diagnosticsPath = $"{basePath}-diagnostics.json";
-            File.WriteAllText(diagnosticsPath, JsonSerializer.Serialize(document,
+            string temporaryDiagnosticsPath = $"{diagnosticsPath}.{Guid.NewGuid():N}.tmp";
+            string diagnosticsJson = JsonSerializer.Serialize(document,
                 new JsonSerializerOptions
                 {
                     WriteIndented = true,
                     NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
-                }));
+                });
+            try
+            {
+                File.WriteAllText(temporaryDiagnosticsPath, diagnosticsJson);
+                File.Move(temporaryDiagnosticsPath, diagnosticsPath);
+            }
+            finally
+            {
+                if (File.Exists(temporaryDiagnosticsPath))
+                    File.Delete(temporaryDiagnosticsPath);
+            }
             context.Dispatcher.Post(() =>
                 viewModel.CaptureStatus = $"IQ録音保存済み: {path}");
         }

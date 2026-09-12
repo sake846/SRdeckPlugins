@@ -58,6 +58,9 @@ public partial class MeshtasticViewModel
 
     private MeshtasticDiagnosticEvaluation EvaluateMeshtasticDiagnostic()
     {
+        if (_lastWorkerFailure is { } failure)
+            return new(OverallStatusKind.Error, "受信停止", "受信ワーカー",
+                failure.Exception.GetBaseException().Message, "確認: エラー記録を確認し、受信を停止して再開してください");
         DateTimeOffset now = DateTimeOffset.UtcNow;
         DateTimeOffset? lastSuccess = ReadUtcTicks(ref _lastMeshtasticSuccessfulPayloadTicks);
         DateTimeOffset? lastFailure = ReadUtcTicks(ref _lastMeshtasticFailureTicks);
@@ -119,15 +122,44 @@ public partial class MeshtasticViewModel
         RegisterMeshtasticReceiver();
         LoadMeshtasticSettings();
         _meshtasticHistoryWriter = CreateMeshtasticHistoryWriter(hostContext);
+        _stateWriter = new MeshtasticStateWriter(MeshtasticStatePath);
+        _stateWriter.SaveFailed += exception =>
+        {
+            hostContext.Logger.Log(PluginLogLevel.Error, "meshtastic.state.save-failed",
+                "Meshtastic node state could not be saved.", exception);
+            int epoch = Volatile.Read(ref _presentationEpoch);
+            hostContext.Dispatcher.Post(() =>
+            {
+                if (epoch == _presentationEpoch)
+                    SetMeshtasticReceiverStatus($"ノード状態の保存に失敗しました: {exception.Message}", OverallStatusKind.Error);
+            });
+        };
         LoadMeshtasticState();
+        StartMeshtasticUpdates();
     }
 
     public async ValueTask ShutdownAsync()
     {
         if (Interlocked.Exchange(ref _initialized, 0) == 0) return;
-        FlushMeshtasticPendingWork();
-        SaveMeshtasticState();
-        UnregisterMeshtasticReceiver();
+        await InvokeMeshtasticUiAsync(() =>
+        {
+            Interlocked.Increment(ref _presentationEpoch);
+            _historyVersion++;
+            _statisticsTimer?.Stop();
+            FlushMeshtasticPendingWork();
+            SaveMeshtasticState();
+            UnregisterMeshtasticReceiver();
+        });
+        if (_stateWriter is not null)
+        {
+            try { await _stateWriter.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception exception)
+            {
+                await InvokeMeshtasticUiAsync(() => SetMeshtasticReceiverStatus(
+                    $"ノード状態の最終保存に失敗しました: {exception.Message}", OverallStatusKind.Error));
+            }
+            _stateWriter = null;
+        }
         if (_meshtasticHistoryWriter is not null)
         {
             await _meshtasticHistoryWriter.DisposeAsync().ConfigureAwait(false);
@@ -250,18 +282,17 @@ public partial class MeshtasticViewModel
         MaximumMeshtasticHistoryBytes);
     private DispatcherTimer? _meshtasticDerivedRefreshTimer;
     private DispatcherTimer? _meshtasticSnapshotSaveTimer;
-    private long _meshtasticLastStatisticsUpdateMs;
 
     public ObservableCollection<MeshtasticDisplayItem> MeshtasticMessages { get; } = new();
-    public ObservableCollection<MeshtasticDisplayItem> VisibleMeshtasticMessages { get; } = new();
-    public ObservableCollection<MeshtasticDisplayItem> MeshtasticTextMessages { get; } = new();
-    public ObservableCollection<MeshtasticPacketGroupItem> MeshtasticPacketGroups { get; } = new();
-    public ObservableCollection<MeshtasticReceptionAggregateItem> MeshtasticReceptionAggregates { get; } = new();
-    public ObservableCollection<MeshtasticDisplayItem> SelectedMeshtasticNodeLatestApplications { get; } = new();
+    public ObservableCollection<MeshtasticDisplayItem> VisibleMeshtasticMessages { get; } = new MeshtasticDisplayCollection<MeshtasticDisplayItem>();
+    public ObservableCollection<MeshtasticDisplayItem> MeshtasticTextMessages { get; } = new MeshtasticDisplayCollection<MeshtasticDisplayItem>();
+    public ObservableCollection<MeshtasticPacketGroupItem> MeshtasticPacketGroups { get; } = new MeshtasticDisplayCollection<MeshtasticPacketGroupItem>();
+    public ObservableCollection<MeshtasticReceptionAggregateItem> MeshtasticReceptionAggregates { get; } = new MeshtasticDisplayCollection<MeshtasticReceptionAggregateItem>();
+    public ObservableCollection<MeshtasticDisplayItem> SelectedMeshtasticNodeLatestApplications { get; } = new MeshtasticDisplayCollection<MeshtasticDisplayItem>();
     public ObservableCollection<MeshtasticNodeDisplayItem> MeshtasticNodes { get; } = new();
     public ObservableCollection<MeshtasticNodeDisplayItem> FilteredMeshtasticNodes { get; } = new();
     public ObservableCollection<MeshtasticMapPoint> MeshtasticMapPoints { get; } = new();
-    public ObservableCollection<GeoMapMarker> MapMarkers { get; } = new();
+    public ObservableCollection<GeoMapMarker> MapMarkers { get; } = new MeshtasticDisplayCollection<GeoMapMarker>();
     private readonly Dictionary<uint, MeshtasticNodeDisplayItem> _meshtasticNodesById = new();
     private readonly Dictionary<uint, MeshtasticMapPoint> _meshtasticMapPointsById = new();
 
@@ -293,9 +324,9 @@ public partial class MeshtasticViewModel
     [ObservableProperty] private bool _meshtasticMapActiveOnly;
     [ObservableProperty] private bool _meshtasticMapDirectOnly;
 
-    partial void OnMeshtasticHistorySearchTextChanged(string value) => RefreshMeshtasticPacketGroups();
-    partial void OnMeshtasticHistoryDecodedOnlyChanged(bool value) => RefreshMeshtasticPacketGroups();
-    partial void OnMeshtasticHistoryDirectOnlyChanged(bool value) => RefreshMeshtasticPacketGroups();
+    partial void OnMeshtasticHistorySearchTextChanged(string value) => ScheduleMeshtasticDerivedRefresh();
+    partial void OnMeshtasticHistoryDecodedOnlyChanged(bool value) => ScheduleMeshtasticDerivedRefresh();
+    partial void OnMeshtasticHistoryDirectOnlyChanged(bool value) => ScheduleMeshtasticDerivedRefresh();
     partial void OnMeshtasticNodeSearchTextChanged(string value) => RefreshFilteredMeshtasticNodes();
     partial void OnMeshtasticNodesActiveOnlyChanged(bool value) => RefreshFilteredMeshtasticNodes();
     partial void OnMeshtasticNodesDirectOnlyChanged(bool value) => RefreshFilteredMeshtasticNodes();
@@ -348,11 +379,9 @@ public partial class MeshtasticViewModel
 
     private void RefreshSelectedMeshtasticNodeLatestApplications()
     {
-        SelectedMeshtasticNodeLatestApplications.Clear();
-        if (SelectedMeshtasticNode is null) return;
-        foreach (MeshtasticDisplayItem item in _meshtasticHistoryAnalyzer.GetLatestApplications(
-                     MeshtasticMessages, SelectedMeshtasticNode.NodeId))
-            SelectedMeshtasticNodeLatestApplications.Add(item);
+        ReplaceMeshtasticItems(SelectedMeshtasticNodeLatestApplications,
+            SelectedMeshtasticNode is null ? [] : _meshtasticHistoryAnalyzer.GetLatestApplications(
+                MeshtasticMessages, SelectedMeshtasticNode.NodeId));
     }
 
     private void RefreshMeshtasticPacketGroups()
@@ -364,37 +393,39 @@ public partial class MeshtasticViewModel
             MeshtasticHistoryDecodedOnly,
             MeshtasticHistoryDirectOnly,
             MeshtasticHistoryDisplayLimit);
+        ApplyMeshtasticHistoryAnalysis(result);
+    }
 
-        VisibleMeshtasticMessages.Clear();
-        foreach (MeshtasticDisplayItem item in result.FilteredMessages)
-            VisibleMeshtasticMessages.Add(item);
-
-        MeshtasticPacketGroups.Clear();
-        foreach (MeshtasticPacketGroupItem item in result.PacketGroups)
-            MeshtasticPacketGroups.Add(item);
-
-        MeshtasticReceptionAggregates.Clear();
-        foreach (MeshtasticReceptionAggregateItem item in result.ReceptionAggregates)
-            MeshtasticReceptionAggregates.Add(item);
-
-        MeshtasticTextMessages.Clear();
-        foreach (MeshtasticDisplayItem item in result.TextMessages)
-            MeshtasticTextMessages.Add(item);
+    private void ApplyMeshtasticHistoryAnalysis(MeshtasticHistoryAnalysisResult result)
+    {
+        // WPF may clear selection while a row is replaced or a filter resets the view.
+        MeshtasticDisplayItem? selected = SelectedTimelineMessage;
+        ReplaceMeshtasticItems(VisibleMeshtasticMessages, result.FilteredMessages);
+        ReplaceMeshtasticItems(MeshtasticPacketGroups, result.PacketGroups, static (left, right) =>
+            left.Sender == right.Sender && left.SenderName == right.SenderName &&
+            left.PacketIdText == right.PacketIdText && left.Port == right.Port &&
+            left.Summary == right.Summary && left.Receptions.SequenceEqual(right.Receptions));
+        ReplaceMeshtasticItems(MeshtasticReceptionAggregates, result.ReceptionAggregates);
+        ReplaceMeshtasticItems(MeshtasticTextMessages, result.TextMessages);
 
         MeshtasticActiveNodeCount = result.ActiveNodeCount;
         MeshtasticUndecodedHistoryCount = result.UndecodedHistoryCount;
 
-        if (SelectedTimelineMessage is null || !VisibleMeshtasticMessages.Contains(SelectedTimelineMessage))
-            SelectedTimelineMessage = VisibleMeshtasticMessages.FirstOrDefault();
+        SelectedTimelineMessage = selected is null ? VisibleMeshtasticMessages.FirstOrDefault()
+            : VisibleMeshtasticMessages.FirstOrDefault(item => item.Sender == selected.Sender &&
+                item.PacketId == selected.PacketId && item.ReceivedAt == selected.ReceivedAt &&
+                item.Radio == selected.Radio && item.PayloadHex == selected.PayloadHex)
+                ?? VisibleMeshtasticMessages.FirstOrDefault();
     }
 
     private void ScheduleMeshtasticDerivedRefresh()
     {
+        _historyVersion++;
         _meshtasticDerivedRefreshTimer ??= CreateMeshtasticTimer(
             TimeSpan.FromMilliseconds(250),
             () =>
             {
-                RefreshMeshtasticPacketGroups();
+                _ = RefreshMeshtasticHistoryInBackground();
                 RefreshSelectedMeshtasticNodeLatestApplications();
                 RefreshFilteredMeshtasticNodes();
             });
@@ -432,7 +463,7 @@ public partial class MeshtasticViewModel
             _meshtasticSnapshotSaveTimer.Stop();
             SaveMeshtasticState();
         }
-        ApplyMeshtasticStatistics(_meshtasticReceiveService.Snapshot);
+        ApplyPendingMeshtasticDiagnostics();
     }
 
     private static string ResolveMeshtasticPresetName(MeshtasticRadioReception radio)
@@ -473,17 +504,18 @@ public partial class MeshtasticViewModel
 
     private void RefreshMeshtasticMapMarkers()
     {
+        if (_restoringMeshtasticState) return;
         IEnumerable<MeshtasticMapPoint> points = MeshtasticMapPoints;
         if (MeshtasticMapActiveOnly)
             points = points.Where(point => point.ActivityStatus is "新規" or "活動中");
         if (MeshtasticMapDirectOnly)
             points = points.Where(point => point.HasDirectReception);
 
-        MapMarkers.Clear();
+        var markers = new List<GeoMapMarker>();
         foreach (MeshtasticMapPoint point in points)
         {
             string reception = point.HasDirectReception ? "直接受信あり" : "中継受信のみ";
-            MapMarkers.Add(new GeoMapMarker(
+            markers.Add(new GeoMapMarker(
                 point.NodeNumber.ToString(CultureInfo.InvariantCulture),
                 point.Latitude,
                 point.Longitude,
@@ -493,6 +525,7 @@ public partial class MeshtasticViewModel
                 Symbol: "station",
                 IsSelected: point.IsSelected));
         }
+        ReplaceMeshtasticItems(MapMarkers, markers);
     }
 
     [ObservableProperty] private long _meshtasticPreambleCount;

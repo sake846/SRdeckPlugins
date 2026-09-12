@@ -20,7 +20,9 @@ Native SDR drivers execute with full process privileges. Obtain SDRplay componen
 
 ## Map network access
 
-Embedded maps load integrity-pinned Leaflet 1.9.4 resources and OpenStreetMap tiles over HTTPS. Tile requests disclose the client IP address and the approximate viewed area to those services. Do not open the map in an environment where that disclosure is unacceptable.
+Embedded maps load integrity-pinned Leaflet 1.9.4 resources over HTTPS. Online mode also loads OpenStreetMap tiles over HTTPS; tile requests disclose the client IP address and the approximate viewed area to that service. Offline mode serves tiles only from the user-selected MBTiles archive and blocks OpenStreetMap tile requests. Auto mode uses online tiles while connected and switches to a valid configured MBTiles archive when the network is unavailable or online tile requests fail. Select Offline before opening the map in an environment where tile-request disclosure is unacceptable.
+
+The map settings tab can download a raster MBTiles archive from an HTTPS URL supplied by the user. The request discloses the client IP address to that host. Downloads are streamed to a temporary file, validated as compatible raster MBTiles, and moved to the selected destination only after validation succeeds. Canceled and failed downloads remove the temporary file. Users are responsible for choosing a trusted provider and complying with its terms and map-data license.
 
 ## Release checks
 

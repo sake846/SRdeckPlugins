@@ -146,10 +146,10 @@ public partial class MeshtasticViewModel
         _meshtasticReceiveService.MeshtasticDataReceived += HandleMeshtasticDataReceived;
         _meshtasticReceiveService.PreambleDetected += HandleMeshtasticPreambleDetected;
         _meshtasticReceiveService.FrameSynchronized += HandleMeshtasticFrameSynchronized;
-        _meshtasticReceiveService.ExplicitHeaderDecoded += HandleMeshtasticHeaderDecoded;
         _meshtasticReceiveService.PayloadDecoded += HandleMeshtasticPayloadDecoded;
         _meshtasticReceiveService.MeshtasticPacketReceived += HandleMeshtasticPacketReceived;
         _meshtasticReceiveService.AcquisitionDiagnostic += HandleMeshtasticAcquisitionDiagnostic;
+        _meshtasticReceiveService.WorkerFailed += HandleMeshtasticWorkerFailed;
     }
 
     private void UnregisterMeshtasticReceiver()
@@ -157,30 +157,20 @@ public partial class MeshtasticViewModel
         _meshtasticReceiveService.MeshtasticDataReceived -= HandleMeshtasticDataReceived;
         _meshtasticReceiveService.PreambleDetected -= HandleMeshtasticPreambleDetected;
         _meshtasticReceiveService.FrameSynchronized -= HandleMeshtasticFrameSynchronized;
-        _meshtasticReceiveService.ExplicitHeaderDecoded -= HandleMeshtasticHeaderDecoded;
         _meshtasticReceiveService.PayloadDecoded -= HandleMeshtasticPayloadDecoded;
         _meshtasticReceiveService.MeshtasticPacketReceived -= HandleMeshtasticPacketReceived;
         _meshtasticReceiveService.AcquisitionDiagnostic -= HandleMeshtasticAcquisitionDiagnostic;
-        FlushMeshtasticPendingWork();
+        _meshtasticReceiveService.WorkerFailed -= HandleMeshtasticWorkerFailed;
     }
 
     private void HandleMeshtasticPreambleDetected(LoRaPreambleDetection detection)
     {
-        string status = $"最終信号: {FormatMeshtasticSignal(detection.EstimatedSnrDb, detection.EstimatedRssiDbfs)}（推定） / dechirpピーク {detection.DechirpedPeakHz:F1} Hz";
-        _hostContext?.Dispatcher.Post(() => MeshtasticLastSignalStatus = status);
-        RefreshMeshtasticStatistics();
+        lock (_diagnosticGate) { _pendingDetection = detection; _pendingSynchronization = null; }
     }
 
     private void HandleMeshtasticFrameSynchronized(LoRaFrameSynchronization synchronization)
     {
-        string status = FormatMeshtasticFrequencyCorrection(synchronization);
-        string signal = FormatMeshtasticSignal(synchronization.EstimatedSnrDb, synchronization.EstimatedRssiDbfs);
-        _hostContext?.Dispatcher.Post(() =>
-        {
-            MeshtasticFrequencyCorrectionText = status;
-            MeshtasticLastSignalStatus = $"最終信号: {signal}（推定）";
-        });
-        RefreshMeshtasticStatistics();
+        lock (_diagnosticGate) _pendingSynchronization = synchronization;
     }
 
     private string FormatMeshtasticSignal(float? snr, float? rssiDbfs) =>
@@ -195,7 +185,6 @@ public partial class MeshtasticViewModel
             : synchronization.CompensationRequired
                 ? $"推定ずれ {synchronization.CarrierFrequencyOffsetHz:+0.0;-0.0;0.0} Hz / 安全範囲外のため未補正"
                 : $"推定ずれ {synchronization.CarrierFrequencyOffsetHz:+0.0;-0.0;0.0} Hz / 許容範囲内（補正不要）";
-    private void HandleMeshtasticHeaderDecoded(LoRaExplicitHeader header) => RefreshMeshtasticStatistics();
 
     private void HandleMeshtasticPayloadDecoded(LoRaPayloadFrame frame)
     {
@@ -205,23 +194,23 @@ public partial class MeshtasticViewModel
             Interlocked.Exchange(ref _lastMeshtasticSuccessfulPayloadTicks, DateTimeOffset.UtcNow.Ticks);
         }
         else if (frame.IsPayloadCrcValid is false) Interlocked.Increment(ref _meshtasticCrcErrorAccumulator);
-        RefreshMeshtasticStatistics();
     }
 
     private void HandleMeshtasticPacketReceived(MeshtasticPacketReception reception)
     {
+        int epoch = Volatile.Read(ref _presentationEpoch);
         Interlocked.Exchange(ref _lastMeshtasticSuccessfulPayloadTicks, DateTimeOffset.UtcNow.Ticks);
         if (BuzzerEnabled)
         {
             _hostContext?.Notifications.PlayReceptionAlarm(TimeSpan.FromMilliseconds(500));
         }
-        RefreshMeshtasticStatistics();
         if (reception.IsDataDecoded) return;
 
         reception = reception with { Quality = reception.Quality.WithReceiverCalibration(_hostContext?.ReceiverTelemetry) };
 
         _hostContext?.Dispatcher.Post(() =>
         {
+            if (epoch != _presentationEpoch || Volatile.Read(ref _initialized) == 0) return;
             string transmission = reception.Packet.WasRelayed switch
             {
                 false => "直接",
@@ -305,8 +294,7 @@ public partial class MeshtasticViewModel
         }
 
         string status = $"直近の失敗: {diagnostic.Timestamp.ToLocalTime():HH:mm:ss} {diagnostic.Stage} / {diagnostic.Message}";
-        _hostContext?.Dispatcher.Post(() => MeshtasticLastFailureStatus = status);
-        RefreshMeshtasticStatistics();
+        lock (_diagnosticGate) _pendingFailure = status;
     }
 
     private long _meshtasticCrcOkAccumulator;
@@ -319,6 +307,8 @@ public partial class MeshtasticViewModel
     [RelayCommand]
     private void ResetMeshtasticStatistics()
     {
+        lock (_diagnosticGate)
+        { _pendingDetection = null; _pendingSynchronization = null; _pendingFailure = null; }
         _meshtasticReceiveService.ResetStatistics();
         Interlocked.Exchange(ref _meshtasticCrcOkAccumulator, 0);
         Interlocked.Exchange(ref _meshtasticCrcErrorAccumulator, 0);
@@ -331,20 +321,18 @@ public partial class MeshtasticViewModel
         MeshtasticFrequencyCorrectionText = "—";
         Interlocked.Exchange(ref _lastMeshtasticSuccessfulPayloadTicks, 0);
         Interlocked.Exchange(ref _lastMeshtasticFailureTicks, 0);
-        RefreshMeshtasticStatistics();
-    }
-
-    private void RefreshMeshtasticStatistics()
-    {
-        long now = Environment.TickCount64;
-        long previous = Interlocked.Read(ref _meshtasticLastStatisticsUpdateMs);
-        if (now - previous < 250 || Interlocked.CompareExchange(ref _meshtasticLastStatisticsUpdateMs, now, previous) != previous) return;
-        MeshtasticReceiveSnapshot snapshot = _meshtasticReceiveService.Snapshot;
-        _hostContext?.Dispatcher.Post(() => ApplyMeshtasticStatistics(snapshot));
+        ApplyPendingMeshtasticDiagnostics();
     }
 
     private void ApplyMeshtasticStatistics(MeshtasticReceiveSnapshot snapshot)
     {
+        _lastWorkerFailure = snapshot.WorkerFailure;
+        MeshtasticPerformanceStatus = MeshtasticPerformanceEvaluator.Evaluate(new(
+            snapshot.SubmittedBlocks, snapshot.ProcessedBlocks, snapshot.DroppedBlocks, snapshot.QueueDepth,
+            snapshot.CurrentQueueDelayMs, snapshot.CurrentInputBlockTimeMs, snapshot.AverageProcessingLoadPercent,
+            snapshot.OldestDeferredIqMs, snapshot.DeferredRetentionRemainingMs));
+        MeshtasticPerformanceDetails = $"処理負荷 {snapshot.AverageProcessingLoadPercent:F1}% · 待ち {snapshot.QueueDepth}ブロック · 欠落 {snapshot.DroppedBlocks}";
+        MeshtasticIqRetentionText = $"IQ保持 {snapshot.RetainedIqBytes / 1048576.0:F1} / 64 MiB · {snapshot.RetainedIqMilliseconds / 1000.0:F2} / 5秒 · 上限棄却 {snapshot.QueueLimitDroppedBlocks}";
         _meshtasticDiagnosticLastUpdated = DateTime.Now.ToString("HH:mm:ss");
         MeshtasticPreambleCount = snapshot.DetectedPreambles;
         MeshtasticSynchronizedCount = snapshot.SynchronizedFrames;

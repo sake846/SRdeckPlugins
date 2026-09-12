@@ -6,6 +6,8 @@ namespace SRdeckPlugin.OneSeg.Transport;
 internal sealed partial class MpegTsAnalyzer
 {
     private readonly Dictionary<ushort, SectionAssembler> sections = [];
+    private readonly PsiSectionCache parsedSections = new();
+    private IReadOnlyList<OneSegProgramInfo> publishedPrograms = [];
     private readonly Dictionary<ushort, ushort> pmtPids = [];
     private readonly Dictionary<ushort, int> continuity = [];
     private readonly Dictionary<ushort, TimeSpan> lastPcrNotifications = [];
@@ -41,6 +43,8 @@ internal sealed partial class MpegTsAnalyzer
     public void Reset()
     {
         sections.Clear();
+        parsedSections.Clear();
+        publishedPrograms = [];
         pmtPids.Clear();
         continuity.Clear();
         lastPcrNotifications.Clear();
@@ -112,6 +116,19 @@ internal sealed partial class MpegTsAnalyzer
         if (section.Length < 3) return;
         bool hasCrc = section[0] != 0x70;
         if (hasCrc && (section.Length < 8 || !CrcIsValid(section))) return;
+        // Clocks, captions and DSM-CC keep their own update semantics. Exact
+        // byte comparison also catches changes without a version increment.
+        bool cacheable = section.Length <= 4096 && (section[0] switch
+        {
+            0x01 => section.Length >= 12,
+            0x02 => section.Length >= 16,
+            0x40 or 0x41 => section.Length >= 16,
+            0x42 or 0x46 => section.Length >= 15,
+            >= 0x4e and <= 0x6f => section.Length >= 18,
+            0xc4 => section.Length >= 14,
+            _ => false
+        });
+        if (cacheable && parsedSections.Contains(pid, section)) return;
         switch (section[0])
         {
             case 0x00: ParsePat(section); break;
@@ -127,6 +144,7 @@ internal sealed partial class MpegTsAnalyzer
                     DataModuleUpdated?.Invoke(module);
                 break;
         }
+        if (cacheable) parsedSections.Remember(pid, section);
     }
 
     private void ParsePat(ReadOnlySpan<byte> section)
@@ -136,7 +154,12 @@ internal sealed partial class MpegTsAnalyzer
         {
             ushort service = BinaryPrimitives.ReadUInt16BigEndian(section[offset..]);
             ushort pid = (ushort)(((section[offset + 2] & 0x1f) << 8) | section[offset + 3]);
-            if (service != 0) pmtPids[service] = pid;
+            if (service != 0)
+            {
+                // A changed PAT mapping can affect an otherwise identical PMT.
+                if (pmtPids.TryGetValue(service, out ushort oldPid) && oldPid != pid) parsedSections.Clear();
+                pmtPids[service] = pid;
+            }
         }
     }
 
@@ -169,7 +192,7 @@ internal sealed partial class MpegTsAnalyzer
             {
                 serviceAdtsPids.Add(elementaryPid);
                 adtsAudioServices[elementaryPid] = service;
-                adtsAudioDetectors.TryAdd(elementaryPid, new AdtsAudioModeDetector());
+                if (!adtsAudioDetectors.ContainsKey(elementaryPid)) adtsAudioDetectors.Add(elementaryPid, new AdtsAudioModeDetector());
             }
             if (caption) captionPids.Add(elementaryPid);
             if (data)
@@ -190,7 +213,16 @@ internal sealed partial class MpegTsAnalyzer
         programs.TryGetValue(service, out OneSegProgramInfo? old);
         programs[service] = new(service, old?.ServiceName ?? $"Service {service}",
             old?.ProviderName ?? "", pmtPid, pcr, streams);
-        ProgramsChanged?.Invoke(Programs);
+        PublishPrograms();
+    }
+
+    private void PublishPrograms()
+    {
+        if (publishedPrograms.Count == programs.Count && publishedPrograms.All(previous =>
+            programs.TryGetValue(previous.ServiceId, out OneSegProgramInfo? current) &&
+            OneSegProgramComparison.Equivalent(previous, current))) return;
+        publishedPrograms = Programs;
+        ProgramsChanged?.Invoke(publishedPrograms);
     }
 
     private void ProcessAdtsAudio(ushort pid, ushort service, ReadOnlySpan<byte> payload, bool start)
@@ -386,7 +418,7 @@ internal sealed partial class MpegTsAnalyzer
             programs[service] = new(service, name, provider, old?.PmtPid ?? pmtPids.GetValueOrDefault(service), old?.PcrPid ?? 0, old?.Streams ?? []);
             offset += 5 + length;
         }
-        ProgramsChanged?.Invoke(Programs);
+        PublishPrograms();
     }
 
     private void ParseEit(ReadOnlySpan<byte> section)

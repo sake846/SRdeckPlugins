@@ -9,8 +9,7 @@ namespace SRdeckPlugin.OneSeg.Transport;
 /// <summary>Reassembles ARIB DSM-CC download-info and download-data blocks.</summary>
 internal sealed class DsmccCarouselAnalyzer
 {
-    private readonly Dictionary<(uint Download, ushort Module, byte Version), ModuleState> modules = [];
-    private readonly Dictionary<uint, ushort> blockSizes = [];
+    private readonly Dictionary<(ushort Pid, uint Download, ushort Module), ModuleState> modules = [];
     private readonly Dictionary<ushort, byte> componentTags = [];
 
     public void RegisterStream(ushort pid, byte? componentTag)
@@ -21,7 +20,6 @@ internal sealed class DsmccCarouselAnalyzer
     public void Reset()
     {
         modules.Clear();
-        blockSizes.Clear();
         componentTags.Clear();
     }
 
@@ -49,13 +47,12 @@ internal sealed class DsmccCarouselAnalyzer
         if (bodyOffset + 22 > section.Length - 4) return [];
         uint downloadId = BinaryPrimitives.ReadUInt32BigEndian(section[bodyOffset..]);
         ushort blockSize = BinaryPrimitives.ReadUInt16BigEndian(section[(bodyOffset + 4)..]);
-        blockSizes[downloadId] = blockSize;
         int compatibilityLength = BinaryPrimitives.ReadUInt16BigEndian(section[(bodyOffset + 16)..]);
         int offset = bodyOffset + 18 + compatibilityLength;
         if (offset + 2 > section.Length - 4) return [];
         int count = BinaryPrimitives.ReadUInt16BigEndian(section[offset..]);
         offset += 2;
-        var result = new List<OneSegDataModule>();
+        List<OneSegDataModule>? result = null;
         for (int index = 0; index < count && offset + 8 <= section.Length - 4; index++)
         {
             ushort moduleId = BinaryPrimitives.ReadUInt16BigEndian(section[offset..]);
@@ -66,14 +63,14 @@ internal sealed class DsmccCarouselAnalyzer
             if (offset + infoLength > section.Length - 4) break;
             string info = DecodeModuleInfo(section.Slice(offset, infoLength));
             offset += infoLength;
-            var key = (downloadId, moduleId, version);
-            if (!modules.TryGetValue(key, out ModuleState? state))
+            var key = (pid, downloadId, moduleId);
+            if (!modules.TryGetValue(key, out ModuleState? state) || state.Version != version)
                 modules[key] = state = new(pid, downloadId, moduleId, version, moduleSize, info,
-                    componentTags.GetValueOrDefault(pid));
-            else state.Update(pid, moduleSize, info, componentTags.GetValueOrDefault(pid));
-            result.Add(state.ToInfo());
+                    componentTags.GetValueOrDefault(pid), blockSize);
+            else if (!state.Update(moduleSize, info, componentTags.GetValueOrDefault(pid), blockSize)) continue;
+            (result ??= []).Add(state.ToInfo());
         }
-        return result;
+        return result is null ? [] : result;
     }
 
     private IReadOnlyList<OneSegDataModule> ParseDdb(ushort pid, uint downloadId,
@@ -85,13 +82,14 @@ internal sealed class DsmccCarouselAnalyzer
         byte version = section[bodyOffset + 2];
         ushort blockNumber = BinaryPrimitives.ReadUInt16BigEndian(section[(bodyOffset + 4)..]);
         int end = section.Length - 4;
-        byte[] block = section.Slice(bodyOffset + 6, end - bodyOffset - 6).ToArray();
-        var key = (downloadId, moduleId, version);
+        ReadOnlySpan<byte> block = section.Slice(bodyOffset + 6, end - bodyOffset - 6);
+        var key = (pid, downloadId, moduleId);
         // DDBs from other carousel transactions and control streams coexist on
         // the same PID.  Only modules announced by a valid DII belong here.
-        if (!modules.TryGetValue(key, out ModuleState? state)) return [];
-        state.Blocks[blockNumber] = block;
-        state.TryComplete(blockSizes.GetValueOrDefault(downloadId));
+        if (!modules.TryGetValue(key, out ModuleState? state) || state.Version != version) return [];
+        if (state.Blocks.TryGetValue(blockNumber, out byte[]? previous) && block.SequenceEqual(previous)) return [];
+        state.Blocks[blockNumber] = block.ToArray();
+        state.TryComplete();
         return [state.ToInfo()];
     }
 
@@ -103,7 +101,7 @@ internal sealed class DsmccCarouselAnalyzer
     }
 
     private sealed class ModuleState(ushort pid, uint downloadId, ushort moduleId,
-        byte version, int size, string info, byte componentTag)
+        byte version, int size, string info, byte componentTag, ushort blockSize)
     {
         public ushort Pid { get; private set; } = pid;
         public uint DownloadId { get; } = downloadId;
@@ -114,22 +112,37 @@ internal sealed class DsmccCarouselAnalyzer
         public byte ComponentTag { get; private set; } = componentTag;
         public SortedDictionary<ushort, byte[]> Blocks { get; } = [];
         public byte[]? Content { get; private set; }
+        private ushort BlockSize { get; set; } = blockSize;
 
-        public void Update(ushort newPid, int newSize, string newInfo, byte newComponentTag)
+        public bool Update(int newSize, string newInfo, byte newComponentTag, ushort newBlockSize)
         {
-            Pid = newPid;
+            string nextInfo = string.IsNullOrWhiteSpace(newInfo) ? Info : newInfo;
+            byte nextTag = newComponentTag == 0 ? ComponentTag : newComponentTag;
+            if (Size == newSize && Info == nextInfo && ComponentTag == nextTag && BlockSize == newBlockSize) return false;
+            // A changed size/block layout can invalidate completion even without
+            // a version bump. Do not keep advertising the old complete content.
+            if (Size != newSize || BlockSize != newBlockSize)
+            {
+                Blocks.Clear();
+                Content = null;
+            }
             Size = newSize;
-            if (newComponentTag != 0) ComponentTag = newComponentTag;
-            if (!string.IsNullOrWhiteSpace(newInfo)) Info = newInfo;
+            Info = nextInfo;
+            ComponentTag = nextTag;
+            BlockSize = newBlockSize;
+            return true;
         }
 
-        public void TryComplete(ushort blockSize)
+        public void TryComplete()
         {
+            Content = null;
             if (Blocks.Count == 0) return;
-            int expected = Size > 0 && blockSize > 0 ? (Size + blockSize - 1) / blockSize : -1;
+            int expected = Size > 0 && BlockSize > 0 ? (int)(((long)Size + BlockSize - 1) / BlockSize) : -1;
             if (expected > 0 && (Blocks.Count < expected || Enumerable.Range(0, expected)
                 .Any(number => !Blocks.ContainsKey((ushort)number)))) return;
-            byte[] joined = Blocks.OrderBy(value => value.Key).SelectMany(value => value.Value).ToArray();
+            // Blocks is already sorted. This runs only when a block changes;
+            // identical carousel retransmissions never join, inflate or parse.
+            byte[] joined = Blocks.SelectMany(value => value.Value).ToArray();
             if (Size > 0)
             {
                 if (joined.Length < Size) return;

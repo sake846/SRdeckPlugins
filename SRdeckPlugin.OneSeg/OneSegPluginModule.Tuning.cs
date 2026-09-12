@@ -366,6 +366,7 @@ public sealed partial class OneSegPluginModule
 
     private void PersistSettings()
     {
+        RefreshRecordingSnapshot();
         IPluginHostContext? context = host;
         if (context is null) return;
         OneSegSettings snapshot = settings.Normalize();

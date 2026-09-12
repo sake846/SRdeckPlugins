@@ -42,8 +42,19 @@ internal sealed partial class OneSegViewModel
 
     public void SetPrograms(IReadOnlyList<OneSegProgramInfo> values)
     {
-        Programs.Clear();
-        foreach (OneSegProgramInfo value in values) Programs.Add(value);
+        for (int index = 0; index < values.Count; index++)
+        {
+            OneSegProgramInfo value = values[index];
+            int existing = index;
+            while (existing < Programs.Count && Programs[existing].ServiceId != value.ServiceId) existing++;
+            if (existing == Programs.Count) Programs.Insert(index, value);
+            else
+            {
+                if (existing != index) Programs.Move(existing, index);
+                if (!OneSegProgramComparison.Equivalent(Programs[index], value)) Programs[index] = value;
+            }
+        }
+        while (Programs.Count > values.Count) Programs.RemoveAt(Programs.Count - 1);
     }
 
     public void SetConditionalAccess(IReadOnlyList<OneSegConditionalAccessInfo> values)
@@ -83,6 +94,12 @@ internal sealed partial class OneSegViewModel
             item.DownloadId == value.DownloadId && item.ModuleId == value.ModuleId && item.Version == value.Version);
         if (old is not null && ModulesEquivalent(old, value)) return;
         if (old is not null) DataModules.Remove(old);
+        // Keep the last complete document visible while its next version is
+        // assembling. Once complete, replace its resources and release old versions.
+        if (value.Complete)
+            foreach (OneSegDataModule previous in DataModules.Where(item => item.Pid == value.Pid &&
+                item.DownloadId == value.DownloadId && item.ModuleId == value.ModuleId).ToArray())
+                DataModules.Remove(previous);
         DataModules.Add(value);
         while (DataModules.Count > 256) DataModules.RemoveAt(0);
         DataBroadcastStatus = $"データ放送: {DataModules.Count}モジュール / 完了 {DataModules.Count(item => item.Complete)}";
@@ -176,7 +193,7 @@ internal sealed partial class OneSegViewModel
             left.ComponentTag != right.ComponentTag) return false;
         IReadOnlyList<OneSegBmlResource> leftResources = left.Resources ?? [];
         IReadOnlyList<OneSegBmlResource> rightResources = right.Resources ?? [];
-        return leftResources.Zip(rightResources).All(pair =>
+        return leftResources.Count == rightResources.Count && leftResources.Zip(rightResources).All(pair =>
             pair.First.Path == pair.Second.Path && pair.First.ContentType == pair.Second.ContentType &&
             pair.First.Content.AsSpan().SequenceEqual(pair.Second.Content));
     }
@@ -184,9 +201,16 @@ internal sealed partial class OneSegViewModel
     public void SetEvent(OneSegEventInfo value)
     {
         OneSegEventInfo? existing = Events.FirstOrDefault(item => item.ServiceId == value.ServiceId && item.EventId == value.EventId);
-        if (existing is not null) Events.Remove(existing);
-        Events.Add(value);
-        SortEvents();
+        if (existing == value) return;
+        if (existing is not null && CompareEvents(existing, value) == 0)
+            Events[Events.IndexOf(existing)] = value;
+        else
+        {
+            if (existing is not null) Events.Remove(existing);
+            int position = 0;
+            while (position < Events.Count && CompareEvents(Events[position], value) <= 0) position++;
+            Events.Insert(position, value);
+        }
         while (Events.Count > 256) Events.RemoveAt(Events.Count - 1);
         RefreshProgramSummary(DateTimeOffset.Now);
     }
@@ -268,15 +292,11 @@ internal sealed partial class OneSegViewModel
             .ThenBy(item => item.ServiceId)
             .ThenBy(item => item.ServiceName);
 
-    private void SortEvents()
+    private static int CompareEvents(OneSegEventInfo left, OneSegEventInfo right)
     {
-        OneSegEventInfo[] sorted = Events.OrderBy(item => item.StartTime is null)
-            .ThenBy(item => item.StartTime)
-            .ThenBy(item => item.EventId)
-            .ToArray();
-        if (Events.SequenceEqual(sorted)) return;
-        Events.Clear();
-        foreach (OneSegEventInfo value in sorted) Events.Add(value);
+        int result = (left.StartTime is null).CompareTo(right.StartTime is null);
+        if (result == 0) result = Nullable.Compare(left.StartTime, right.StartTime);
+        return result != 0 ? result : left.EventId.CompareTo(right.EventId);
     }
 
     private void PublishCaptionSettings() => CaptionSettingsChanged?.Invoke(

@@ -4,6 +4,8 @@ internal sealed class EnergyDescrambler
 {
     private int register = 0x00a9;
 
+    internal int State { get => register; set => register = value; }
+
     public void ResetFrame() => register = 0x00a9;
 
     public void AdvancePackets(int count)
@@ -14,13 +16,19 @@ internal sealed class EnergyDescrambler
 
     public byte[] ProcessPacket(ReadOnlySpan<byte> packet)
     {
-        if (packet.Length != 204) throw new ArgumentException("An ISDB-T outer packet is 204 bytes.", nameof(packet));
         var output = new byte[204];
+        ProcessPacket(packet, output);
+        return output;
+    }
+
+    public void ProcessPacket(ReadOnlySpan<byte> packet, Span<byte> output)
+    {
+        if (packet.Length != 204) throw new ArgumentException("An ISDB-T outer packet is 204 bytes.", nameof(packet));
+        if (output.Length < 204) throw new ArgumentException("The output must hold 204 bytes.", nameof(output));
         output[0] = packet[203];
-        for (int index = 1; index < output.Length; index++)
+        for (int index = 1; index < 204; index++)
             output[index] = (byte)(packet[index - 1] ^ NextByte());
         _ = NextByte();
-        return output;
     }
 
     private byte NextByte()

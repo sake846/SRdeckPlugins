@@ -28,6 +28,9 @@ internal sealed class OneSegReceiver
     private double mer;
     private double channelPower;
     private bool wasLocked;
+    private readonly Action<byte[]> publishTransportPacket;
+
+    public OneSegReceiver() => publishTransportPacket = packet => TransportPacketDecoded?.Invoke(packet);
 
     public event Action<byte[]>? TransportPacketDecoded;
 
@@ -119,8 +122,7 @@ internal sealed class OneSegReceiver
                 viterbiBuffer);
             viterbiBytes += decodedCount;
             bytes.Process(viterbiBuffer.AsSpan(0, decodedCount), byteDeinterleaverBuffer);
-            foreach (byte[] packet in outer.Process(byteDeinterleaverBuffer.AsSpan(0, decodedCount)))
-                TransportPacketDecoded?.Invoke(packet);
+            outer.Process(byteDeinterleaverBuffer.AsSpan(0, decodedCount), publishTransportPacket);
         }
     }
 

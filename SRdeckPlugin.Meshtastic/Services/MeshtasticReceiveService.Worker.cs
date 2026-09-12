@@ -16,10 +16,13 @@ public sealed partial class MeshtasticReceiveService
 {
     private void ProcessBlocks()
     {
+        long sequence = -1, sampleStart = -1;
         try
         {
             foreach (IqBlock block in _blocks.GetConsumingEnumerable(_cancellation.Token))
             {
+                sequence = block.Sequence;
+                sampleStart = block.AbsoluteSampleStart;
                 try
                 {
                     using (block)
@@ -41,7 +44,12 @@ public sealed partial class MeshtasticReceiveService
                             block.Materialize();
                             if (queueDelayUs > block.Count * 3_000_000L / block.SampleRateHz)
                                 Interlocked.Increment(ref _deferredRecoveredBlocks);
-                            bool discontinuity = _lastProcessedSequence >= 0 && block.Sequence != _lastProcessedSequence + 1;
+                            bool discontinuity = block.Discontinuity != IqDiscontinuity.None ||
+                                (_lastProcessedSampleEnd >= 0 &&
+                                 (block.Sequence != _lastProcessedSequence + 1 ||
+                                  block.AbsoluteSampleStart != _lastProcessedSampleEnd ||
+                                  block.SampleRateHz != _lastProcessedSampleRateHz ||
+                                  block.InputCenterFrequencyHz != _lastProcessedCenterFrequencyHz));
                             bool configurationChanged = block.ConfigurationVersion != _lastProcessedConfigurationVersion;
                             if (configurationChanged) RebuildChannelReceivers(block.Configurations);
                             long channelizationTicks = 0;
@@ -62,6 +70,9 @@ public sealed partial class MeshtasticReceiveService
                                     Interlocked.Add(ref detectionTicks, timing.DetectionTicks);
                                 });
                             _lastProcessedSequence = block.Sequence;
+                            _lastProcessedSampleEnd = block.AbsoluteSampleStart + block.Count;
+                            _lastProcessedSampleRateHz = block.SampleRateHz;
+                            _lastProcessedCenterFrequencyHz = block.InputCenterFrequencyHz;
                             _lastProcessedConfigurationVersion = block.ConfigurationVersion;
                             long processingTimeUs = ToMicroseconds(Stopwatch.GetElapsedTime(processingStarted));
                             long inputBlockTimeUs = Math.Max(1, (long)(block.Count * 1_000_000.0 / block.SampleRateHz));
@@ -83,20 +94,32 @@ public sealed partial class MeshtasticReceiveService
                         }
                     }
                 }
+                catch (Exception exception) when (exception is not OperationCanceledException || !_cancellation.IsCancellationRequested)
+                {
+                    RecordWorkerFailure(sequence, sampleStart, exception);
+                    throw;
+                }
                 finally
                 {
                     CompleteWorkItem();
                 }
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
         {
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            MeshtasticWorkerFailure failure = Volatile.Read(ref _workerFailure)
+                ?? RecordWorkerFailure(sequence, sampleStart, exception);
+            // Reporting must not prevent queue cleanup if a diagnostic subscriber fails.
+            try { WorkerFailed?.Invoke(failure); }
+            catch (Exception) { }
         }
         finally
         {
+            Volatile.Write(ref _acceptingStreamData, 0);
+            SpinWait.SpinUntil(() => Volatile.Read(ref _activeEnqueues) == 0);
             while (_blocks.TryTake(out IqBlock? block))
             {
                 block.Dispose();
@@ -105,18 +128,43 @@ public sealed partial class MeshtasticReceiveService
         }
     }
 
+    private MeshtasticWorkerFailure RecordWorkerFailure(long sequence, long sampleStart, Exception exception)
+    {
+        Volatile.Write(ref _acceptingStreamData, 0);
+        var failure = new MeshtasticWorkerFailure(DateTimeOffset.UtcNow, sequence, sampleStart, exception);
+        Volatile.Write(ref _workerFailure, failure);
+        return failure;
+    }
+
     private static LoRaChannelizerTiming ProcessChannelReceiver(ChannelReceiver receiver, IqBlock block,
         bool discontinuity, bool configurationChanged)
     {
         double offsetHz = receiver.CenterFrequencyHz - block.InputCenterFrequencyHz;
-        bool inPassband = Math.Abs(offsetHz) + receiver.BandwidthHz / 2.0 <= block.SampleRateHz * 0.475;
-        if (!inPassband) { receiver.Reset(); return default; }
+        IReadOnlyList<LoRaPreambleDetector> detectors = receiver.Detectors;
+        if (Math.Abs(offsetHz) + receiver.BandwidthHz / 2.0 > block.SampleRateHz * 0.475)
+        {
+            // A shared 250 kHz DDC can cross the guard band while one of its
+            // 125 kHz slots remains fully inside it. Use the selected slot's
+            // occupied band, as TrySubmit does, and reset only excluded detectors.
+            receiver.InPassbandDetectors.Clear();
+            foreach (DetectorReceiver detector in receiver.DetectorReceivers)
+            {
+                ChannelConfiguration configuration = detector.Configuration;
+                if (Math.Abs(configuration.FrequencyHz - (double)block.InputCenterFrequencyHz) +
+                    configuration.Profile.BandwidthHz / 2.0 <= block.SampleRateHz * 0.475)
+                    receiver.InPassbandDetectors.Add(detector.Detector);
+                else
+                    detector.Detector.Reset();
+            }
+            detectors = receiver.InPassbandDetectors;
+            if (detectors.Count == 0) { receiver.Reset(); return default; }
+        }
         receiver.Channelizer.Configure(block.SampleRateHz, offsetHz, receiver.BandwidthHz);
         if (discontinuity || configurationChanged) receiver.Reset();
         return receiver.Channelizer.Process(
             block.SamplesI.AsSpan(0, block.Count),
             block.SamplesQ.AsSpan(0, block.Count),
-            receiver.Detectors);
+            detectors);
     }
 
     private static long ToMicroseconds(TimeSpan duration) => Math.Max(0, (long)(duration.TotalMilliseconds * 1000.0));
@@ -208,6 +256,7 @@ public sealed partial class MeshtasticReceiveService
     private sealed class IqBlock : IDisposable
     {
         private int _disposed;
+        private readonly MeshtasticIqBudget.Reservation? _reservation;
 
         public IqBlock(IqSampleRingBuffer buffer, int ringOffset, int count, int sampleRateHz,
             int inputCenterFrequencyHz, long sequence, ChannelConfiguration[] configurations,
@@ -227,7 +276,8 @@ public sealed partial class MeshtasticReceiveService
 
         public IqBlock(short[] samplesI, short[] samplesQ, int count, int sampleRateHz,
             int inputCenterFrequencyHz, long sequence, ChannelConfiguration[] configurations,
-            long enqueuedTimestamp, long absoluteSampleStart)
+            long enqueuedTimestamp, long absoluteSampleStart, IqDiscontinuity discontinuity,
+            MeshtasticIqBudget.Reservation? reservation = null)
         {
             Buffer = null!;
             SamplesI = samplesI;
@@ -240,6 +290,8 @@ public sealed partial class MeshtasticReceiveService
             EnqueuedTimestamp = enqueuedTimestamp;
             AbsoluteSampleStart = absoluteSampleStart;
             RingGeneration = -1;
+            Discontinuity = discontinuity;
+            _reservation = reservation;
         }
 
         public IqSampleRingBuffer Buffer { get; }
@@ -253,6 +305,7 @@ public sealed partial class MeshtasticReceiveService
         public ChannelConfiguration[] Configurations { get; }
         public long EnqueuedTimestamp { get; }
         public long AbsoluteSampleStart { get; }
+        public IqDiscontinuity Discontinuity { get; }
         public int RingGeneration { get; }
         public int ConfigurationVersion => Configurations[0].Version;
         public bool IsMaterialized => SamplesI.Length != 0;
@@ -270,6 +323,7 @@ public sealed partial class MeshtasticReceiveService
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
             if (SamplesI.Length != 0) ArrayPool<short>.Shared.Return(SamplesI);
             if (SamplesQ.Length != 0) ArrayPool<short>.Shared.Return(SamplesQ);
+            _reservation?.Dispose();
         }
     }
 
@@ -284,6 +338,7 @@ public sealed partial class MeshtasticReceiveService
     private sealed record ChannelReceiver(int CenterFrequencyHz, int BandwidthHz, LoRaChannelizer Channelizer, IReadOnlyList<DetectorReceiver> DetectorReceivers)
     {
         public IReadOnlyList<LoRaPreambleDetector> Detectors { get; } = DetectorReceivers.Select(value => value.Detector).ToArray();
+        public List<LoRaPreambleDetector> InPassbandDetectors { get; } = new(DetectorReceivers.Count);
         public void Reset()
         {
             Channelizer.Reset();

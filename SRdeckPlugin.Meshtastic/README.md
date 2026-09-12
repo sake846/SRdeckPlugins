@@ -45,6 +45,28 @@ cache avoid per-symbol allocations and repeating the main peak's DFT evaluation.
 Search FFT ratios, thresholds and CRC acceptance are unchanged. No capture-specific
 constant offset or decision-directed tracking is applied.
 
+## Discovery processing and diagnostics
+
+Input is ingested in batches ending at the next symbol-analysis boundary, reducing
+per-sample ring-wrap and scheduling checks. Selected slots and SFs, the 500 kS/s
+decoder rate, filters, acquisition thresholds and FEC/CRC conditions are preserved.
+At a shared 250 kHz channel's edge, selected 125 kHz slots are processed whenever
+their own occupied bands fit the input. Input loss, sample-position gaps, sample-rate
+changes and retuning reset stale acquisition state.
+
+The 47-tap channel FIR pads its last SIMD vector with zeros and performs one
+horizontal reduction per output. Its coefficients and tap count are unchanged;
+only floating-point summation order differs. SFD analysis executes just the
+down-chirp FFT used by the decision. Regression checks cover a double-precision
+FIR reference, weak-frame parity against the previous FIR, and adjacent-channel rejection.
+
+Compare processing time with input duration, queue depth and dropped-block counts.
+Check host/SDR input losses separately from the plugin's internal drops. Changing
+slots can also change the required input bandwidth and tuning center; compare the
+passband status and actual sample rate. If a compatible `sr_fft.dll` is unavailable,
+the shared DSP uses its managed FFT without retrying the same loader exception for
+every symbol. Update both the Meshtastic and shared DSP assemblies for this fix.
+
 ## Reception history
 
 JSON Lines history keeps the newest receptions within the configured age limit,

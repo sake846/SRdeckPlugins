@@ -31,7 +31,7 @@ SOFTWARE.
 
 ## Leaflet 1.9.4
 
-Leaflet is downloaded at runtime from the version-pinned `unpkg.com` path and is protected by Subresource Integrity. Source: <https://github.com/Leaflet/Leaflet/tree/v1.9.4>.
+Leaflet's version-pinned JavaScript and CSS distribution files are embedded in `SRdeckPlugin.Wpf`, so the map renderer itself does not require a CDN connection. The vendored files match the SHA-256 hashes published for Leaflet 1.9.4. Source: <https://github.com/Leaflet/Leaflet/tree/v1.9.4>.
 
 BSD 2-Clause License
 
@@ -64,7 +64,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Map data is copyright OpenStreetMap contributors and is available under the Open Database License (ODbL) 1.0. The map displays a persistent link to <https://www.openstreetmap.org/copyright>.
 
-Interactive map views request only the raster tiles needed for the current viewport from `https://tile.openstreetmap.org/{z}/{x}/{y}.png`. They do not implement bulk download, prefetch, or offline archives. Requests use WebView2's normal HTTP cache and an SRdeck-identifying User-Agent. The community tile service is best-effort and is governed separately from the data license; see the current [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/) and OSMF terms before changing this integration.
+In Online mode, interactive map views request only the raster tiles needed for the current viewport from `https://tile.openstreetmap.org/{z}/{x}/{y}.png`. Requests use an SRdeck-identifying User-Agent. Viewed tiles are cached in a bounded local SQLite database and are revalidated with `ETag` or `Last-Modified` after the server-provided cache lifetime. Auto mode may reuse still-valid viewed tiles without a connection and can fall back to a user-supplied raster MBTiles archive. SRdeck does not bulk-download, prefetch, create, or redistribute OpenStreetMap standard tiles. The settings dialog can download a complete raster MBTiles archive from a user-supplied HTTPS URL; it does not use the OpenStreetMap standard tile service for that operation. The archive provider's terms and data license apply separately. The community tile service is best-effort and is governed separately from the data license; see the current [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/) and OSMF terms before changing this integration.
 
 ## rtl-sdr API declarations
 
@@ -74,6 +74,10 @@ The managed declarations in `SRdeck/SDR/RtlSdrApi.cs` correspond to the public r
 - Copyright (C) 2012 Dimitri Stolnikov
 
 SRdeck does not distribute `rtlsdr.dll`. Users obtain a compatible native library separately. The SRdeck source and combined work are distributed under GPL-3.0-only; the complete GPL-3.0 license appears in `LICENSE`. Upstream source: <https://gitea.osmocom.org/sdr/rtl-sdr>.
+
+## Microsoft.Data.Sqlite 10.0.12
+
+Microsoft.Data.Sqlite and its SQLitePCLRaw dependencies are used to read user-supplied raster MBTiles archives in read-only mode and to maintain the bounded online map-tile cache. Microsoft.Data.Sqlite and SQLitePCLRaw are distributed under the MIT License. The bundled SQLite library is in the public domain.
 
 ## SDRplay API declarations
 

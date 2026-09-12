@@ -27,12 +27,12 @@ public partial class MeshtasticViewModel
 {
     private void HandleMeshtasticDataReceived(MeshtasticDataReception reception)
     {
+        int epoch = Volatile.Read(ref _presentationEpoch);
         reception = reception with { Quality = reception.Quality.WithReceiverCalibration(_hostContext?.ReceiverTelemetry) };
-        RefreshMeshtasticStatistics();
         MeshtasticDisplayItem item = new(
             reception.Packet.ReceivedAt.ToLocalTime().ToString("HH:mm:ss"),
             $"!{reception.Packet.From:x8}",
-            ResolveMeshtasticSenderName(reception.Packet.From),
+            $"!{reception.Packet.From:x8}",
             BuildMeshtasticTransmission(reception),
             $"Hop {reception.Packet.HopLimit}/{reception.Packet.HopStart}",
             reception.Data.PortName,
@@ -60,6 +60,8 @@ public partial class MeshtasticViewModel
 
         _hostContext?.Dispatcher.Post(() =>
         {
+            if (epoch != _presentationEpoch || Volatile.Read(ref _initialized) == 0) return;
+            item = item with { SenderName = ResolveMeshtasticSenderName(reception.Packet.From) };
             MeshtasticMessages.Insert(0, item);
             if (item.IsTextMessage)
             {
@@ -74,8 +76,6 @@ public partial class MeshtasticViewModel
             {
                 MeshtasticMessages.RemoveAt(MeshtasticMessages.Count - 1);
             }
-            if (SelectedMeshtasticNode?.NodeNumber == reception.Packet.From)
-                RefreshSelectedMeshtasticNodeLatestApplications();
             SelectedTimelineMessage ??= item;
             ScheduleMeshtasticDerivedRefresh();
 
@@ -126,8 +126,7 @@ public partial class MeshtasticViewModel
             if (string.Equals(item.Sender, sender, StringComparison.OrdinalIgnoreCase) && item.SenderName != displayName)
                 MeshtasticTextMessages[index] = item with { SenderName = displayName };
         }
-        RefreshSelectedMeshtasticNodeLatestApplications();
-        RefreshMeshtasticPacketGroups();
+        ScheduleMeshtasticDerivedRefresh();
     }
 
     private void UpdateMeshtasticMapPoint(MeshtasticNodeDisplayItem node)
@@ -146,11 +145,12 @@ public partial class MeshtasticViewModel
         point.ActivityStatus = node.ActivityStatus;
         point.HasDirectReception = node.DirectReceptionCount > 0;
         point.IsSelected = node.NodeNumber == SelectedMeshtasticNode?.NodeNumber;
-        RefreshMeshtasticMapMarkers();
+        if (!_restoringMeshtasticState) UpdateMeshtasticMapMarker(point);
     }
 
     private void LoadMeshtasticState()
     {
+        _restoringMeshtasticState = true;
         try
         {
             LoadMeshtasticHistory();
@@ -182,6 +182,7 @@ public partial class MeshtasticViewModel
                 $"受信履歴の復元に失敗しました: {exception.Message}",
                 OverallStatusKind.Error);
         }
+        finally { _restoringMeshtasticState = false; RefreshMeshtasticMapMarkers(); }
     }
 
     private void RestoreMeshtasticAppTypesFromHistory()
@@ -237,10 +238,7 @@ public partial class MeshtasticViewModel
                 ? $"探索 ({SelectedMeshtasticRegion})"
                 : $"条件指定 ({SelectedMeshtasticRegion} / {SelectedMeshtasticModemPreset})";
             var state = new MeshtasticPersistedState(DateTimeOffset.Now, nodes, currentModeSummary);
-            string json = JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
-            string temporaryPath = MeshtasticStatePath + ".tmp";
-            File.WriteAllText(temporaryPath, json, new UTF8Encoding(false));
-            File.Move(temporaryPath, MeshtasticStatePath, true);
+            _stateWriter?.Enqueue(state);
         }
         catch (Exception exception)
         {

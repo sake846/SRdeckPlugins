@@ -739,6 +739,8 @@
                                                                    FontSize="11" FontWeight="SemiBold" />
                                                         <TextBlock Text="{Binding MeshtasticPerformanceDetails}" Foreground="{DynamicResource TextPrimaryBrush}"
                                                                    FontSize="10" TextWrapping="Wrap" Margin="0,2,0,0" />
+                                                        <TextBlock Text="{Binding MeshtasticIqRetentionText}" Foreground="{DynamicResource TextPrimaryBrush}"
+                                                                   FontSize="10" TextWrapping="Wrap" Margin="0,2,0,0" />
                                                     </StackPanel>
                                                 </Grid>
                                             </Border>

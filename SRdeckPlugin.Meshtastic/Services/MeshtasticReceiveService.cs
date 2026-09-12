@@ -28,7 +28,10 @@ public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
     private readonly ConcurrentQueue<IqBlock> _blockQueue = new();
     private readonly BlockingCollection<IqBlock> _blocks;
     private readonly CancellationTokenSource _cancellation = new();
-    private readonly Task _worker;
+    private Task _worker;
+    private MeshtasticWorkerFailure? _workerFailure;
+    private readonly MeshtasticIqBudget _iqBudget = new();
+    private long _queueLimitDroppedBlocks;
     private readonly List<ChannelReceiver> _channelReceivers = new();
     private readonly Dictionary<MeshtasticPacketKey, int> _recentPackets = new();
     private readonly Queue<MeshtasticPacketKey> _recentPacketOrder = new();
@@ -74,6 +77,9 @@ public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
     private long _decodedMeshtasticData;
     private long _nextSequence;
     private long _lastProcessedSequence = -1;
+    private long _lastProcessedSampleEnd = -1;
+    private int _lastProcessedSampleRateHz;
+    private int _lastProcessedCenterFrequencyHz;
     private int _targetInPassband;
     private int _warmupInProgress;
     private int _acceptingStreamData = 1;
@@ -105,12 +111,14 @@ public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
             throw new InvalidOperationException("JP LongFast channel profile is internally inconsistent.");
         }
 
-        _worker = Task.Factory.StartNew(
+        _worker = StartWorker();
+    }
+
+    private Task StartWorker() => Task.Factory.StartNew(
             ProcessBlocks,
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
-    }
 
     public event Action<LoRaPreambleDetection>? PreambleDetected;
     public event Action<LoRaFrameSynchronization>? FrameSynchronized;
@@ -119,6 +127,7 @@ public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
     public event Action<LoRaAcquisitionDiagnostic>? AcquisitionDiagnostic;
     public event Action<MeshtasticPacketReception>? MeshtasticPacketReceived;
     public event Action<MeshtasticDataReception>? MeshtasticDataReceived;
+    public event Action<MeshtasticWorkerFailure>? WorkerFailed;
 
     public bool TryConfigureChannels(MeshtasticRegion region, MeshtasticModemPreset preset, IReadOnlyList<MeshtasticBandwidthSlots> bandwidthSlots, out string error)
     {
@@ -200,10 +209,18 @@ public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
         Interlocked.Read(ref _expiredHistoryBlocks),
         CalculateAverageCpuMilliseconds(_totalChannelizationTicks, _timedBlockCount),
         CalculateAverageCpuMilliseconds(_totalDetectionTicks, _timedBlockCount),
-        Volatile.Read(ref _lastInputSampleRateHz));
+        Volatile.Read(ref _lastInputSampleRateHz))
+    {
+        WorkerFailure = Volatile.Read(ref _workerFailure),
+        RetainedIqBytes = _iqBudget.Snapshot.Bytes,
+        RetainedIqMilliseconds = _iqBudget.Snapshot.Microseconds / 1000.0,
+        QueueLimitDroppedBlocks = Interlocked.Read(ref _queueLimitDroppedBlocks)
+    };
 
     private double CalculateOldestDeferredIqMs()
     {
+        if (_blockQueue.TryPeek(out IqBlock? owned) && owned.IsMaterialized)
+            return Stopwatch.GetElapsedTime(owned.EnqueuedTimestamp).TotalMilliseconds;
         if (!_blockQueue.TryPeek(out IqBlock? block) || block.RingGeneration != Volatile.Read(ref _ringGeneration)) return 0;
         long ageSamples = Math.Max(0, Volatile.Read(ref _latestAbsoluteSampleEnd) - block.AbsoluteSampleStart);
         return ageSamples * 1000.0 / Math.Max(1, block.SampleRateHz);
@@ -211,6 +228,8 @@ public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
 
     private double CalculateDeferredRetentionRemainingMs()
     {
+        if (_blockQueue.TryPeek(out IqBlock? owned) && owned.IsMaterialized)
+            return Math.Max(0, MeshtasticIqBudget.MaximumMicroseconds - _iqBudget.Snapshot.Microseconds) / 1000.0;
         if (!_blockQueue.TryPeek(out IqBlock? block) || block.RingGeneration != Volatile.Read(ref _ringGeneration)) return 0;
         long ageSamples = Math.Max(0, Volatile.Read(ref _latestAbsoluteSampleEnd) - block.AbsoluteSampleStart);
         long remaining = Math.Max(0, block.Buffer.Capacity - block.Count * RingSafetyBlocks - ageSamples);
@@ -219,6 +238,7 @@ public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
 
     public void ResetStatistics()
     {
+        Interlocked.Exchange(ref _queueLimitDroppedBlocks, 0);
         Interlocked.Exchange(ref _submittedBlocks, 0);
         Interlocked.Exchange(ref _processedBlocks, 0);
         Interlocked.Exchange(ref _droppedBlocks, 0);
@@ -290,7 +310,20 @@ public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
         int sampleRateHz,
         int inputCenterFrequencyHz,
         long sequence,
-        long absoluteSampleStart)
+        long absoluteSampleStart,
+        IqDiscontinuity discontinuity = IqDiscontinuity.None)
+    {
+        Interlocked.Increment(ref _activeEnqueues);
+        try
+        {
+            return TrySubmitNormalizedCore(samples, sampleRateHz, inputCenterFrequencyHz,
+                sequence, absoluteSampleStart, discontinuity);
+        }
+        finally { Interlocked.Decrement(ref _activeEnqueues); }
+    }
+
+    private bool TrySubmitNormalizedCore(ReadOnlySpan<Complex32> samples, int sampleRateHz,
+        int inputCenterFrequencyHz, long sequence, long absoluteSampleStart, IqDiscontinuity discontinuity)
     {
         if (Volatile.Read(ref _disposed) != 0 ||
             Volatile.Read(ref _acceptingStreamData) == 0 ||
@@ -308,25 +341,45 @@ public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
         Volatile.Write(ref _targetInPassband, allInPassband ? 1 : 0);
         if (!anyInPassband) return false;
 
-        short[] samplesI = ArrayPool<short>.Shared.Rent(samples.Length);
-        short[] samplesQ = ArrayPool<short>.Shared.Rent(samples.Length);
-        for (int index = 0; index < samples.Length; index++)
+        if (_blocks.Count >= QueueCapacity) { RegisterQueueLimitDrop(); return false; }
+        MeshtasticIqBudget.Reservation? reservation = _iqBudget.TryReserve(samples.Length, sampleRateHz);
+        if (reservation is null) { RegisterQueueLimitDrop(); return false; }
+        short[]? samplesI = null;
+        short[]? samplesQ = null;
+        try
         {
-            samplesI[index] = NormalizeToInt16(samples[index].I);
-            samplesQ[index] = NormalizeToInt16(samples[index].Q);
-        }
+            samplesI = ArrayPool<short>.Shared.Rent(samples.Length);
+            samplesQ = ArrayPool<short>.Shared.Rent(samples.Length);
+            if (!reservation.TrySetActualBytes(((long)samplesI.Length + samplesQ.Length) * sizeof(short)))
+            { RegisterQueueLimitDrop(); return false; }
+            for (int index = 0; index < samples.Length; index++)
+            {
+                samplesI[index] = NormalizeToInt16(samples[index].I);
+                samplesQ[index] = NormalizeToInt16(samples[index].Q);
+            }
 
-        var block = new IqBlock(
-            samplesI,
-            samplesQ,
-            samples.Length,
-            sampleRateHz,
-            inputCenterFrequencyHz,
-            sequence,
-            configurations,
-            Stopwatch.GetTimestamp(),
-            absoluteSampleStart);
-        return TryEnqueue(block);
+            var block = new IqBlock(
+                samplesI,
+                samplesQ,
+                samples.Length,
+                sampleRateHz,
+                inputCenterFrequencyHz,
+                sequence,
+                configurations,
+                Stopwatch.GetTimestamp(),
+                absoluteSampleStart,
+                discontinuity,
+                reservation);
+            samplesI = samplesQ = null;
+            reservation = null; // Ownership moves to the block, including rejected enqueues.
+            return TryEnqueue(block);
+        }
+        finally
+        {
+            if (samplesI is not null) ArrayPool<short>.Shared.Return(samplesI);
+            if (samplesQ is not null) ArrayPool<short>.Shared.Return(samplesQ);
+            reservation?.Dispose();
+        }
     }
 
     private bool TryEnqueue(IqBlock block)
@@ -343,7 +396,8 @@ public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
             if (!_blocks.TryAdd(block))
             {
                 block.Dispose();
-                RegisterExpiredBlock();
+                if (block.IsMaterialized) RegisterQueueLimitDrop();
+                else RegisterExpiredBlock();
                 return false;
             }
 
@@ -426,6 +480,7 @@ public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
                     foreach (ChannelReceiver receiver in _channelReceivers)
                         receiver.Reset();
                     _lastProcessedSequence = -1;
+                    _lastProcessedSampleEnd = -1;
                 }
                 ResetStatistics();
                 Volatile.Write(ref _targetInPassband, 0);
@@ -450,6 +505,12 @@ public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
     {
         Interlocked.Increment(ref _droppedBlocks);
         Interlocked.Increment(ref _expiredHistoryBlocks);
+    }
+
+    private void RegisterQueueLimitDrop()
+    {
+        Interlocked.Increment(ref _droppedBlocks);
+        Interlocked.Increment(ref _queueLimitDroppedBlocks);
     }
 
 }
