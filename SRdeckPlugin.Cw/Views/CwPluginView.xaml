@@ -283,9 +283,9 @@
                                 </DataGrid>
                             </Border>
                             <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows" />
-                            <controls:TimelineDetailPane Grid.Row="3" DetailContent="{Binding SelectedTimelineRow}"
+                            <controls:SelectionDetailPane Grid.Row="3" DetailContent="{Binding SelectedTimelineRow}"
                                 EmptyText="時系列の復号文を選択すると、受信条件と全文が表示されます">
-                                <controls:TimelineDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="4,2">
+                                <controls:SelectionDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="4,2">
                                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                         <TextBlock Text="CW 復号文" Style="{DynamicResource PluginSecondarySectionHeaderStyle}"/>
                                         <TextBlock Grid.Column="1" Text="{Binding LocalReceivedAt, StringFormat={}{0:yyyy/MM/dd HH:mm:ss.fff}}" Style="{DynamicResource PluginTimelineDetailTimestampStyle}"/>
@@ -296,8 +296,8 @@
                                         <StackPanel><TextBlock Text="速度 / 追尾ID" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding SpeedDisplay, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding TrackId, Mode=OneWay}"/></TextBlock></StackPanel>
                                     </UniformGrid>
                                     <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" />
-                                </StackPanel></DataTemplate></controls:TimelineDetailPane.DetailContentTemplate>
-                            </controls:TimelineDetailPane>
+                                </StackPanel></DataTemplate></controls:SelectionDetailPane.DetailContentTemplate>
+                            </controls:SelectionDetailPane>
                         </Grid>
                     </TabItem>
 

@@ -69,7 +69,6 @@ public sealed partial class HfFaxPluginModule : PluginModuleBase, IPluginChannel
     private readonly object resultGate = new();
     private readonly HfFaxReceiver receiver = new();
     private readonly HfFaxViewModel viewModel = new();
-    private readonly List<HfFaxImageSnapshot> history = [];
     private PluginJsonLinesHistoryWriter<HfFaxImageSnapshot>? historyWriter;
     private HfFaxSettings settings = new();
     private HfFaxImageSnapshot? latestImage;
@@ -443,10 +442,6 @@ public sealed partial class HfFaxPluginModule : PluginModuleBase, IPluginChannel
                 HostContext?.Dispatcher.Post(() => viewModel.RealignCurrentImage(
                     realigned, normalized.HorizontalShiftPixels));
         }
-        if (previous.MaximumHistory != normalized.MaximumHistory)
-        {
-            lock (resultGate) TrimHistory(normalized.MaximumHistory);
-        }
         if (oldFrequency != newFrequency)
         {
             SetCenterFrequency(newFrequency);
@@ -566,7 +561,6 @@ public sealed partial class HfFaxPluginModule : PluginModuleBase, IPluginChannel
     {
         lock (resultGate)
         {
-            history.Clear();
             latestImage = null;
         }
         viewModel.ClearImages();
@@ -591,8 +585,6 @@ public sealed partial class HfFaxPluginModule : PluginModuleBase, IPluginChannel
         lock (resultGate)
         {
             latestImage = image;
-            history.Insert(0, image);
-            TrimHistory(settings.MaximumHistory);
         }
         HostContext?.Notifications.PlayReceptionAlarm();
         HostContext?.Dispatcher.Post(() => viewModel.CompleteImage(image));
@@ -622,12 +614,6 @@ public sealed partial class HfFaxPluginModule : PluginModuleBase, IPluginChannel
 
     private void OnReceiverStateChanged(HfFaxReceiverState state) =>
         HostContext?.Dispatcher.Post(() => viewModel.SetReceiverState(state));
-
-    private void TrimHistory(int maximum)
-    {
-        if (history.Count > maximum)
-            history.RemoveRange(maximum, history.Count - maximum);
-    }
 
     private async Task SaveSettingsAsync(HfFaxSettings value)
     {

@@ -20,6 +20,7 @@ namespace SRdeckPlugin.AdsB;
 public sealed partial class AdsBPluginModule : PluginModuleBase, IIqBlockConsumer, IPluginChannelBlockConsumer, IPluginViewProvider,
     IFrequencyOverlayProvider, IPluginResultProvider, IPluginExportProvider, IPluginProcessingDiagnosticsProvider, IPluginProcessingWarmup
 {
+    public const string LegendHtml = "<i style=\"background:__SERIES_1__\"></i>高高度 (24,000 ft以上) <i style=\"background:__SERIES_4__\"></i>中高度 (10,000–23,999 ft) <i style=\"background:__SERIES_3__\"></i>低高度 (10,000 ft未満)";
     private const long FrequencyHz = 1_090_000_000;
     private readonly object gate = new();
     private readonly object processingGate = new();
@@ -45,22 +46,24 @@ public sealed partial class AdsBPluginModule : PluginModuleBase, IIqBlockConsume
     public AdsBPluginModule()
     {
         RegisterStreamReset(pretriggerBuffer.Reset);
-        viewModel.SettingsChanged = (maximum, retention, historyLimit, trailPoints, latitude, longitude, enableSic) =>
+        viewModel.SettingsChanged = updatedSettings =>
         {
-            settings = settings with
-            {
-                MaximumAircraft = maximum, RetentionMinutes = retention,
-                ReceiverLatitude = latitude, ReceiverLongitude = longitude,
-                MaximumTrailPoints = trailPoints,
-                MaximumHistory = historyLimit,
-                EnableSuccessiveInterferenceCancellation = enableSic
-            };
-            settings = settings.Normalize();
+            settings = (updatedSettings with { MapState = settings.MapState }).Normalize();
             lock (processingGate)
                 receiver.ConfigureSuccessiveInterferenceCancellation(
                     settings.EnableSuccessiveInterferenceCancellation);
             PruneStoredHistory();
             cprDecoder.ConfigureReceiverReference(settings.ReceiverLatitude, settings.ReceiverLongitude);
+            PersistSettings();
+        };
+        viewModel.SaveRawModeSChanged = value =>
+        {
+            settings = settings with { SaveRawModeS = value };
+            PersistSettings();
+        };
+        viewModel.HistoryRecordModeChanged = value =>
+        {
+            settings = settings with { HistoryRecordMode = value };
             PersistSettings();
         };
         viewModel.ClearRequested = () =>
@@ -84,11 +87,7 @@ public sealed partial class AdsBPluginModule : PluginModuleBase, IIqBlockConsume
             receiver.ConfigureSuccessiveInterferenceCancellation(
                 settings.EnableSuccessiveInterferenceCancellation);
         cprDecoder.ConfigureReceiverReference(settings.ReceiverLatitude, settings.ReceiverLongitude);
-        viewModel.SynchronizeSettings(settings.MaximumAircraft, settings.RetentionMinutes,
-            settings.MaximumHistory, settings.MaximumTrailPoints,
-            settings.ReceiverLatitude, settings.ReceiverLongitude,
-            settings.SaveRawModeS, settings.HistoryRecordMode,
-            settings.EnableSuccessiveInterferenceCancellation);
+        viewModel.SynchronizeSettings(settings);
     }
 
     public override PluginDescriptor Descriptor { get; } = new(
@@ -175,11 +174,7 @@ public sealed partial class AdsBPluginModule : PluginModuleBase, IIqBlockConsume
         receiver.ConfigureSuccessiveInterferenceCancellation(
             settings.EnableSuccessiveInterferenceCancellation);
         historyWriter = CreateHistoryWriter(hostContext);
-        viewModel.SynchronizeSettings(settings.MaximumAircraft, settings.RetentionMinutes,
-            settings.MaximumHistory, settings.MaximumTrailPoints,
-            settings.ReceiverLatitude, settings.ReceiverLongitude,
-            settings.SaveRawModeS, settings.HistoryRecordMode,
-            settings.EnableSuccessiveInterferenceCancellation);
+        viewModel.SynchronizeSettings(settings);
         LoadHistory();
     }
 

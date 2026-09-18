@@ -460,9 +460,9 @@
                             </Border>
 
                             <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows"/>
-                            <controls:TimelineDetailPane Grid.Row="3" DetailContent="{Binding SelectedTimelinePacket}"
+                            <controls:SelectionDetailPane Grid.Row="3" DetailContent="{Binding SelectedTimelinePacket}"
                                 EmptyText="時系列の受信イベントを選択すると、Wi-SUN フレームの詳細が表示されます">
-                                <controls:TimelineDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="4,2">
+                                <controls:SelectionDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="4,2">
                                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                         <TextBlock Text="{Binding CommunicationText}" Style="{DynamicResource PluginSelectionDetailHeaderStyle}"/>
                                         <TextBlock Grid.Column="1" Text="{Binding LocalTimestamp, StringFormat={}{0:yyyy/MM/dd HH:mm:ss.fff zzz}}" Style="{DynamicResource PluginTimelineDetailTimestampStyle}"/>
@@ -475,8 +475,8 @@
                                     </UniformGrid>
                                     <TextBlock Text="{Binding ProtocolSummary}" Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,4,0,0"/>
                                     <Expander Header="RAWデータ (HEX / ASCII)" Style="{DynamicResource PluginTimelineExpanderStyle}"><StackPanel><TextBlock Text="{Binding RawHexString}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap"/><TextBlock Text="{Binding AsciiString}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap" Margin="0,3,0,0"/></StackPanel></Expander>
-                                </StackPanel></DataTemplate></controls:TimelineDetailPane.DetailContentTemplate>
-                            </controls:TimelineDetailPane>
+                                </StackPanel></DataTemplate></controls:SelectionDetailPane.DetailContentTemplate>
+                            </controls:SelectionDetailPane>
                         </Grid>
                     </TabItem>
 

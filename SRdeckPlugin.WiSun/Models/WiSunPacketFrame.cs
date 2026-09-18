@@ -1,4 +1,3 @@
-using System;
 
 namespace SRdeckPlugin.WiSun.Models;
 
@@ -31,19 +30,11 @@ public sealed record WiSunPacketFrame
 
     public string RawHexString => Convert.ToHexString(RawPayload);
 
-    public string AsciiString
+    public string AsciiString => string.Create(RawPayload.Length, RawPayload, static (chars, bytes) =>
     {
-        get
-        {
-            char[] chars = new char[RawPayload.Length];
-            for (int i = 0; i < RawPayload.Length; i++)
-            {
-                byte b = RawPayload[i];
-                chars[i] = (b >= 32 && b <= 126) ? (char)b : '.';
-            }
-            return new string(chars);
-        }
-    }
+        for (int i = 0; i < bytes.Length; i++)
+            chars[i] = bytes[i] is >= 32 and <= 126 ? (char)bytes[i] : '.';
+    });
 
     public string SummaryText =>
         $"[Wi-SUN / 802.15.4g] {FrequencyHz / 1e6:F3} MHz | Type: {FrameType} | Seq: {SequenceNumber?.ToString() ?? "--"} | PAN: {PanId?.ToString("X4") ?? "--"} | {DurationMs:F1} ms | SNR: {SnrDb:F1} dB";

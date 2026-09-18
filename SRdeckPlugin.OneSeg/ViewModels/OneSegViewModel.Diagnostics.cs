@@ -12,19 +12,40 @@ namespace SRdeckPlugin.OneSeg.ViewModels;
 
 internal sealed partial class OneSegViewModel
 {
-    public void Configure(OneSegSettings settings, OneSegChannel channel)
+    public void Configure(OneSegSettings settings, OneSegChannel channel,
+        bool preserveRegionPresets = false)
     {
         synchronizingSelection = true;
         try
         {
             selectedPrefecture = OneSegPrefecture.Find(settings.PrefectureId);
-            UpdateCandidates(selectedPrefecture, channel.Number, true);
-            if (Stations.Count == 0 && settings.ScannedStations is { Count: > 0 })
-                ReplaceStations(settings.ScannedStations);
-            if (Stations.Count > 0)
+            selectedRegion = OneSegRegionPreset.Find(selectedPrefecture, settings.RegionId);
+            UpdateCandidates(selectedRegion, channel.Number, true);
+            if (settings.ScannedStations is { Count: > 0 } scannedStations)
             {
+                ReplaceStations(scannedStations);
+                if (preserveRegionPresets)
+                {
+                    HashSet<int> receivedChannels = Stations.Where(item => !item.IsPreset)
+                        .Select(item => item.ChannelNumber).ToHashSet();
+                    foreach (OneSegStation preset in selectedRegion.PresetStations.Where(item =>
+                        !receivedChannels.Contains(item.ChannelNumber)))
+                    {
+                        Stations.Add(preset);
+                    }
+                    EnsureSelectedChannelPreset(selectedRegion, channel.Number);
+                    SortStations();
+                }
                 ScanStatus = "";
-                ScanResultsText = $"検出局: {string.Join("、", Stations.Select(item => item.DisplayName))}";
+                ScanResultsText = FormatScanResults(Stations);
+            }
+            else
+            {
+                ReplaceStations(selectedRegion.PresetStations);
+                EnsureSelectedChannelPreset(selectedRegion, channel.Number);
+                SortStations();
+                ScanStatus = $"地域プリセット: {selectedPrefecture.DisplayName} / {selectedRegion.DisplayName}";
+                ScanResultsText = $"検出局: なし / プリセット候補: {Stations.Count}ch";
             }
             recording = false;
             autoRecordOnStart = settings.AutoRecordOnStart;
@@ -38,42 +59,53 @@ internal sealed partial class OneSegViewModel
             volume = 100;
             desiredAudioTrackId = settings.AudioTrackId;
             captionsEnabled = settings.CaptionsEnabled;
-            captionFontSize = 16;
             captionBackgroundEnabled = settings.CaptionBackgroundEnabled;
             selectedCaptionPosition = CaptionPositions.First(item => item.Id == settings.CaptionPosition);
-            emergencyNotificationsEnabled = true;
+            emergencyNotificationsEnabled = settings.EmergencyNotificationsEnabled;
             selectedStation = Stations.FirstOrDefault(item => item.ServiceId == settings.LastServiceId &&
                 item.ChannelNumber == channel.Number) ??
                 Stations.FirstOrDefault(item => item.ChannelNumber == channel.Number);
-            OnPropertyChanged(nameof(SelectedPrefecture));
-            OnPropertyChanged(nameof(Recording));
-            OnPropertyChanged(nameof(AutoRecordOnStart));
-            OnPropertyChanged(nameof(RecordingDirectory));
-            OnPropertyChanged(nameof(RecordingSegmentMinutes));
-            OnPropertyChanged(nameof(RecordingMaxBytes));
-            OnPropertyChanged(nameof(RecordingStorageLimitBytes));
-            OnPropertyChanged(nameof(RecordingSidecarEnabled)); OnPropertyChanged(nameof(IqCaptureDirectory)); OnPropertyChanged(nameof(IqCaptureSeconds));
-            OnPropertyChanged(nameof(Volume));
-            OnPropertyChanged(nameof(SelectedStation));
-            OnPropertyChanged(nameof(CaptionsEnabled));
-            OnPropertyChanged(nameof(CaptionFontSize));
-            OnPropertyChanged(nameof(CaptionAreaHeight));
-            OnPropertyChanged(nameof(CaptionBackgroundEnabled));
-            OnPropertyChanged(nameof(SelectedCaptionPosition));
-            OnPropertyChanged(nameof(CaptionVerticalAlignment));
-            OnPropertyChanged(nameof(CaptionVisibility));
-            OnPropertyChanged(nameof(CaptionAreaVisibility));
-            OnPropertyChanged(nameof(EmergencyNotificationsEnabled));
+            OnPropertyChanged(string.Empty);
             RefreshProgramSummary(DateTimeOffset.Now);
             NotifyStationCommands();
         }
         finally { synchronizingSelection = false; }
     }
 
-    private void UpdateCandidates(OneSegPrefecture prefecture, int desiredChannel, bool includeDesired = false)
+    private void EnsureSelectedChannelPreset(OneSegRegionPreset region, int channelNumber)
+    {
+        if (Stations.Any(item => item.ChannelNumber == channelNumber)) return;
+        OneSegChannel? channel = OneSegChannel.JapaneseUhfChannels.FirstOrDefault(item =>
+            item.Number == channelNumber);
+        if (channel is null) return;
+        Stations.Add(new OneSegStation(0, $"{region.DisplayName} {channel.DisplayName}",
+            "地域プリセット", channel.Number) { IsPreset = true });
+    }
+
+    public void EnsureSelectedStationForCurrentChannel()
+    {
+        if (selectedStation is not null && Stations.Contains(selectedStation)) return;
+        OneSegStation? candidate = Stations.FirstOrDefault(item =>
+            item.ChannelNumber == SelectedChannel.Number);
+        if (candidate is null) return;
+        bool previousSynchronizingSelection = synchronizingSelection;
+        synchronizingSelection = true;
+        try
+        {
+            selectedStation = candidate;
+            OnPropertyChanged(nameof(SelectedStation));
+            NotifyStationCommands();
+        }
+        finally
+        {
+            synchronizingSelection = previousSynchronizingSelection;
+        }
+    }
+
+    private void UpdateCandidates(OneSegRegionPreset region, int desiredChannel, bool includeDesired = false)
     {
         Channels.Clear();
-        foreach (OneSegChannel channel in prefecture.CandidateChannels) Channels.Add(channel);
+        foreach (OneSegChannel channel in region.CandidateChannels) Channels.Add(channel);
         if (includeDesired && Channels.All(channel => channel.Number != desiredChannel))
         {
             OneSegChannel? extra = OneSegChannel.JapaneseUhfChannels.FirstOrDefault(channel =>
@@ -99,52 +131,81 @@ internal sealed partial class OneSegViewModel
             }
             finally { synchronizingSelection = false; }
         }
+        isAdditionalScanning = isAppend;
         IsScanning = true;
+        OnPropertyChanged(nameof(IsFullScanning));
+        OnPropertyChanged(nameof(IsAdditionalScanning));
         ScanStatus = $"{(isAppend ? "追加サーチ" : "サーチ")}開始: {channelCount}ch";
-        ScanResultsText = Stations.Count == 0 ? "検出局: なし" : $"検出局: {string.Join("、", Stations.Select(item => item.DisplayName))}";
+        ScanResultsText = FormatScanResults(Stations);
     }
 
-    public void ReportScanProgress(int index, int total, OneSegChannel channel,
-        string reception = "同期待ち") => ScanStatus =
-        $"サーチ中 {index}/{total}: {channel.DisplayName} / {channel.FrequencyText} / {reception}";
+    public void ReportScanProgress(int index, int total, OneSegChannel channel) => ScanStatus =
+        $"サーチ中 {index}/{total}: {channel.DisplayName}, {channel.FrequencyText}";
 
     public void AddScannedStation(OneSegStation station)
     {
-        int existingIndex = -1;
-        for (int i = 0; i < Stations.Count; i++)
+        // Removing a preset temporarily clears WPF Selector.SelectedItem. Keep
+        // that transient binding change from triggering a retune while the
+        // received station is inserted and selected below.
+        bool previousSynchronizingSelection = synchronizingSelection;
+        synchronizingSelection = true;
+        try
         {
-            if (Stations[i].ServiceId == station.ServiceId && Stations[i].ChannelNumber == station.ChannelNumber)
+            bool selectedPresetRemoved = selectedStation?.IsPreset == true &&
+                selectedStation.ChannelNumber == station.ChannelNumber;
+            bool selectReceivedStation = selectedStation is null &&
+                station.ChannelNumber == SelectedChannel.Number;
+            for (int i = Stations.Count - 1; i >= 0; i--)
             {
-                existingIndex = i;
-                break;
+                if (Stations[i].IsPreset && Stations[i].ChannelNumber == station.ChannelNumber)
+                    Stations.RemoveAt(i);
             }
-        }
-        if (existingIndex >= 0)
-        {
-            OneSegStation existing = Stations[existingIndex];
-            OneSegStation updated = existing.UpdateInfo(
-                serviceName: station.ServiceName,
-                providerName: station.ProviderName,
-                remoteControlKeyId: station.RemoteControlKeyId,
-                merDb: station.MerDb,
-                transportPackets: station.TransportPackets,
-                reedSolomonPackets: station.ReedSolomonPackets,
-                reedSolomonRejected: station.ReedSolomonRejected,
-                scannedAt: station.ScannedAt ?? DateTimeOffset.Now);
-            Stations[existingIndex] = updated;
-            if (selectedStation?.ServiceId == updated.ServiceId && selectedStation?.ChannelNumber == updated.ChannelNumber)
+            int existingIndex = -1;
+            for (int i = 0; i < Stations.Count; i++)
             {
-                selectedStation = updated;
+                if (Stations[i].ServiceId == station.ServiceId && Stations[i].ChannelNumber == station.ChannelNumber)
+                {
+                    existingIndex = i;
+                    break;
+                }
+            }
+            if (existingIndex >= 0)
+            {
+                OneSegStation existing = Stations[existingIndex];
+                OneSegStation updated = existing.UpdateInfo(
+                    serviceName: station.ServiceName,
+                    providerName: station.ProviderName,
+                    remoteControlKeyId: station.RemoteControlKeyId,
+                    merDb: station.MerDb,
+                    transportPackets: station.TransportPackets,
+                    reedSolomonPackets: station.ReedSolomonPackets,
+                    reedSolomonRejected: station.ReedSolomonRejected,
+                    scannedAt: station.ScannedAt ?? DateTimeOffset.Now);
+                Stations[existingIndex] = updated;
+                if (selectedStation?.ServiceId == updated.ServiceId && selectedStation?.ChannelNumber == updated.ChannelNumber)
+                {
+                    selectedStation = updated;
+                    OnPropertyChanged(nameof(SelectedStation));
+                }
+            }
+            else
+            {
+                Stations.Add(station);
+            }
+            SortStations();
+            if (selectedPresetRemoved || selectReceivedStation)
+            {
+                selectedStation = Stations.FirstOrDefault(item =>
+                    !item.IsPreset && item.ChannelNumber == station.ChannelNumber);
                 OnPropertyChanged(nameof(SelectedStation));
             }
+            ScanResultsText = FormatScanResults(Stations);
+            NotifyStationCommands();
         }
-        else
+        finally
         {
-            Stations.Add(station);
+            synchronizingSelection = previousSynchronizingSelection;
         }
-        SortStations();
-        ScanResultsText = $"検出局: {string.Join("、", Stations.Select(item => item.DisplayName))}";
-        NotifyStationCommands();
     }
 
     public void EndScan(IReadOnlyList<OneSegStation> stations, int selectedChannel, bool succeeded,
@@ -153,18 +214,27 @@ internal sealed partial class OneSegViewModel
         synchronizingSelection = true;
         try
         {
-            ReplaceStations(stations);
+            ReplaceStations(stations.Count > 0 ? stations : selectedRegion.PresetStations);
             selectedStation = Stations.FirstOrDefault(item => item.ChannelNumber == selectedChannel &&
                 item.ServiceId == selectedServiceId) ??
                 Stations.FirstOrDefault(item => item.ChannelNumber == selectedChannel);
             OnPropertyChanged(nameof(SelectedStation));
         }
         finally { synchronizingSelection = false; }
+        isAdditionalScanning = false;
         IsScanning = false;
-        ScanStatus = succeeded ? $"サーチ完了: {Stations.Count}局" : "サーチ中断";
-        ScanResultsText = Stations.Count == 0 ? "検出局: なし" :
-            $"検出局: {string.Join("、", Stations.Select(item => item.DisplayName))}";
+        OnPropertyChanged(nameof(IsFullScanning));
+        OnPropertyChanged(nameof(IsAdditionalScanning));
+        ScanStatus = succeeded ? $"サーチ完了: {stations.Count}局" : "サーチ中断";
+        ScanResultsText = FormatScanResults(stations);
         NotifyStationCommands();
+    }
+
+    private static string FormatScanResults(IEnumerable<OneSegStation> stations)
+    {
+        OneSegStation[] detected = stations.Where(item => !item.IsPreset).ToArray();
+        return detected.Length == 0 ? "検出局: なし" :
+            $"検出局: {string.Join("、", detected.Select(item => item.DisplayName))}";
     }
 
     public void ApplyDiagnostics(OneSegDiagnostics dsp, long packets, long continuityErrors,

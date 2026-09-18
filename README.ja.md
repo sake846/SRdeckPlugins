@@ -22,8 +22,8 @@ SRdeckの公式プラグインをバージョン付きリリーススナップ�
 
 ## リリースメタデータ
 
-- リリースバージョン: `1.0.4`
-- 必要なSRdeckプラットフォームパッケージ: `1.0.4`
+- リリースバージョン: `1.0.5`
+- 必要なSRdeckプラットフォームパッケージ: `1.0.5`
 
 ## ビルド
 
@@ -32,7 +32,7 @@ SRdeckの公式プラグインをバージョン付きリリーススナップ�
 - Windows x64
 - .NET 10 SDK（`dotnet --info`で10.x SDKが表示されること）
 - Git
-- `1.0.4`と同じバージョンのSRdeckプラットフォームNuGetパッケージ4個
+- `1.0.5`と同じバージョンのSRdeckプラットフォームNuGetパッケージ4個
 
 プラグインは`SRdeckPlugin.Contracts`、`SRdeckPlugin.Sdk`、`SRdeckPlugin.Wpf`、
 `SRdeckCore.SignalProcessing`をNuGetパッケージとして参照します。ビルド・動作確認に使う
@@ -42,8 +42,8 @@ SRdeckホストとNuGetパッケージのバージョンを一致させてくだ
 ### 1. 対応するソーススナップショットを取得する
 
 ```powershell
-$releaseVersion = "1.0.4"
-$platformVersion = "1.0.4"
+$releaseVersion = "1.0.5"
+$platformVersion = "1.0.5"
 
 git clone --branch "v$releaseVersion" --depth 1 https://github.com/sake846/SRdeckPlugins.git
 Set-Location .\SRdeckPlugins
@@ -54,10 +54,10 @@ Set-Location .\SRdeckPlugins
 対応する[SRdeckのリリース](https://github.com/sake846/SRdeck/releases)から、次の4ファイルを
 ダウンロードしてください。
 
-- `SRdeckCore.SignalProcessing.1.0.4.nupkg`
-- `SRdeckPlugin.Contracts.1.0.4.nupkg`
-- `SRdeckPlugin.Sdk.1.0.4.nupkg`
-- `SRdeckPlugin.Wpf.1.0.4.nupkg`
+- `SRdeckCore.SignalProcessing.1.0.5.nupkg`
+- `SRdeckPlugin.Contracts.1.0.5.nupkg`
+- `SRdeckPlugin.Sdk.1.0.5.nupkg`
+- `SRdeckPlugin.Wpf.1.0.5.nupkg`
 
 GitHub CLIをインストール済みなら、次のコマンドで自動取得できます。
 

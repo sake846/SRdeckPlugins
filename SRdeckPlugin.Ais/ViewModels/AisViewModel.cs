@@ -132,8 +132,6 @@ public sealed partial class AisViewModel : ObservableObject
         if (SelectedTarget is null || !FilteredTargets.Contains(SelectedTarget))
             SelectedTarget = FilteredTargets.FirstOrDefault();
     }
-    partial void OnValidFramesChanged(long value) => NotifyTotals();
-    partial void OnRejectedFramesChanged(long value) => NotifyTotals();
     partial void OnInputSampleRateHzChanged(int value) => OnPropertyChanged(nameof(InputSampleRateText));
     partial void OnCenterFrequencyHzChanged(long value) => OnPropertyChanged(nameof(CenterFrequencyText));
 
@@ -333,12 +331,6 @@ public sealed partial class AisViewModel : ObservableObject
         SettingsChanged?.Invoke(MaximumTargets, RetentionMinutes, HistoryMaximum,
             MaximumTrailPoints, MonitorAudioEnabled, MonitorAudioVolume, SquelchEnabled, SquelchThresholdDbm,
             SaveRawFrames, ChannelFilter, DemodulationGateEnabled);
-    }
-
-    private void NotifyTotals()
-    {
-        OnPropertyChanged(nameof(TotalFrames));
-        OnPropertyChanged(nameof(AcceptanceRate));
     }
 
     public Func<ValueTask>? ResetSettingsRequested { get; set; }

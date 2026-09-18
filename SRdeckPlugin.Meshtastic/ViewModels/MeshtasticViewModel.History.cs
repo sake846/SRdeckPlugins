@@ -1,15 +1,10 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -33,7 +28,7 @@ public partial class MeshtasticViewModel
             reception.Packet.ReceivedAt.ToLocalTime().ToString("HH:mm:ss"),
             $"!{reception.Packet.From:x8}",
             $"!{reception.Packet.From:x8}",
-            BuildMeshtasticTransmission(reception),
+            MeshtasticRouteDisplay.Format(reception),
             $"Hop {reception.Packet.HopLimit}/{reception.Packet.HopStart}",
             reception.Data.PortName,
             reception.Quality.Summary,

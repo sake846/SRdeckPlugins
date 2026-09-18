@@ -1,0 +1,142 @@
+<Window x:Class="SRdeckPlugin.Analog.Views.FrequencyInputDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="周波数・モード入力" Width="280" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" WindowStyle="ToolWindow" ResizeMode="NoResize"
+        Background="#FF151515" Foreground="#FFBEBEBE"
+        FontFamily="Consolas"
+        KeyDown="Window_KeyDown">
+    <Window.Resources>
+        <Style x:Key="NumpadButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#FF1B1B1B"/>
+            <Setter Property="BorderBrush" Value="#FF444444"/>
+            <Setter Property="Foreground" Value="#FFBEBEBE"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="2">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="#FF44F6DA"/>
+                    <Setter Property="Foreground" Value="White"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#FF2B2B2B"/>
+                    <Setter Property="BorderBrush" Value="#FF44F6DA"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="28"/>
+            <RowDefinition Height="32"/>
+            <RowDefinition Height="42"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="4"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Receiver Header -->
+        <TextBlock Grid.Row="0" Grid.ColumnSpan="4" 
+                   Text="{Binding ReceiverName}" 
+                   Foreground="{Binding ThemeBrush}" 
+                   FontSize="14" FontWeight="Bold" 
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+        <!-- Mode Selection Row -->
+        <Grid Grid.Row="1" Grid.ColumnSpan="4" Margin="0,2,0,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="モード" 
+                       Foreground="#FFBEBEBE" 
+                       FontSize="11" 
+                       FontWeight="Bold" 
+                       VerticalAlignment="Center" 
+                       Margin="2,0,8,0"/>
+            <ComboBox x:Name="ModeComboBox" 
+                      Grid.Column="1" 
+                      Height="24"
+                      FontSize="11"
+                      Style="{DynamicResource PluginComboBoxStyle}"
+                      DisplayMemberPath="DisplayName"
+                      SelectedValuePath="Id"
+                      SelectionChanged="ModeComboBox_OnSelectionChanged" />
+        </Grid>
+
+        <!-- Display Area -->
+        <Border Grid.Row="2" Grid.ColumnSpan="4" Background="#FF151515" BorderBrush="#FF333333" BorderThickness="1" CornerRadius="2">
+            <TextBlock
+                       Text="{Binding InputText}" 
+                       FontSize="24" 
+                       Foreground="{Binding ThemeBrush}" 
+                       FontWeight="Bold" 
+                       HorizontalAlignment="Right" 
+                       VerticalAlignment="Center" 
+                       Margin="0,0,10,0"/>
+        </Border>
+
+        <!-- Row 4: 7, 8, 9, MHz -->
+        <Button Grid.Row="4" Grid.Column="0" Content="7" Style="{StaticResource NumpadButtonStyle}" Click="NumButton_Click"/>
+        <Button Grid.Row="4" Grid.Column="1" Content="8" Style="{StaticResource NumpadButtonStyle}" Click="NumButton_Click"/>
+        <Button Grid.Row="4" Grid.Column="2" Content="9" Style="{StaticResource NumpadButtonStyle}" Click="NumButton_Click"/>
+        <Button Grid.Row="4" Grid.Column="3" Content="MHz" Style="{StaticResource NumpadButtonStyle}" Click="UnitButton_Click"/>
+
+        <!-- Row 5: 4, 5, 6, kHz -->
+        <Button Grid.Row="5" Grid.Column="0" Content="4" Style="{StaticResource NumpadButtonStyle}" Click="NumButton_Click"/>
+        <Button Grid.Row="5" Grid.Column="1" Content="5" Style="{StaticResource NumpadButtonStyle}" Click="NumButton_Click"/>
+        <Button Grid.Row="5" Grid.Column="2" Content="6" Style="{StaticResource NumpadButtonStyle}" Click="NumButton_Click"/>
+        <Button Grid.Row="5" Grid.Column="3" Content="kHz" Style="{StaticResource NumpadButtonStyle}" Click="UnitButton_Click"/>
+
+        <!-- Row 6: 1, 2, 3, Hz -->
+        <Button Grid.Row="6" Grid.Column="0" Content="1" Style="{StaticResource NumpadButtonStyle}" Click="NumButton_Click"/>
+        <Button Grid.Row="6" Grid.Column="1" Content="2" Style="{StaticResource NumpadButtonStyle}" Click="NumButton_Click"/>
+        <Button Grid.Row="6" Grid.Column="2" Content="3" Style="{StaticResource NumpadButtonStyle}" Click="NumButton_Click"/>
+        <Button Grid.Row="6" Grid.Column="3" Content="Hz" Style="{StaticResource NumpadButtonStyle}" Click="UnitButton_Click"/>
+
+        <!-- Row 7: 0, ., BS, CLR -->
+        <Button Grid.Row="7" Grid.Column="0" Content="0" Style="{StaticResource NumpadButtonStyle}" Click="NumButton_Click"/>
+        <Button Grid.Row="7" Grid.Column="1" Content="." Style="{StaticResource NumpadButtonStyle}" Click="NumButton_Click"/>
+        <Button Grid.Row="7" Grid.Column="2" Content="BS" Style="{StaticResource NumpadButtonStyle}" Click="BsButton_Click"/>
+        <Button Grid.Row="7" Grid.Column="3" Content="CLR" Style="{StaticResource NumpadButtonStyle}" Click="ClrButton_Click"/>
+
+        <!-- Row 8: 適用, キャンセル -->
+        <Button Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2" Content="適用" Style="{StaticResource NumpadButtonStyle}" Click="ApplyButton_Click"/>
+        <Button Grid.Row="8" Grid.Column="2" Grid.ColumnSpan="2" Content="キャンセル" Style="{StaticResource NumpadButtonStyle}" Click="CancelButton_Click"/>
+
+        <!-- Error Overlay -->
+        <Grid Grid.Row="0" Grid.RowSpan="10" Grid.Column="0" Grid.ColumnSpan="4" Background="#CC151515" Visibility="{Binding ErrorVisibility}" Panel.ZIndex="1000" Margin="-12">
+            <Border Background="#FF1E1E1E" BorderBrush="#FFFF5555" BorderThickness="1" CornerRadius="3"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" Padding="15" Margin="10">
+                <StackPanel>
+                    <TextBlock Text="エラー" Foreground="#FFFF5555" FontSize="13" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock Text="{Binding ErrorText}" Foreground="White" FontSize="11" HorizontalAlignment="Center" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                    <Button Content="閉じる" Click="CloseError_Click" Width="80" Height="24" Margin="0,12,0,0" Style="{StaticResource NumpadButtonStyle}" Foreground="#FFFF5555" BorderBrush="#FFFF5555" HorizontalAlignment="Center" Cursor="Hand" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

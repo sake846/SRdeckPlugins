@@ -378,9 +378,9 @@
                                 </Border>
                                 <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch"
                                               Background="Transparent" ResizeDirection="Rows" />
-                                <controls:TimelineDetailPane x:Name="MeshtasticNodeDetailPane" Grid.Row="3" MinHeight="0" DetailContent="{Binding SelectedMeshtasticNode}"
+                                <controls:SelectionDetailPane x:Name="MeshtasticNodeDetailPane" Grid.Row="3" MinHeight="0" DetailContent="{Binding SelectedMeshtasticNode}"
                                     EmptyText="一覧からノードを選択すると、ノード情報とAPPごとの最新値が表示されます">
-                                    <controls:TimelineDetailPane.DetailContentTemplate>
+                                    <controls:SelectionDetailPane.DetailContentTemplate>
                                         <DataTemplate>
                                             <StackPanel Margin="6,4">
                                                 <WrapPanel Margin="0,0,0,4">
@@ -456,8 +456,8 @@
                                                 </TextBlock>
                                             </StackPanel>
                                         </DataTemplate>
-                                    </controls:TimelineDetailPane.DetailContentTemplate>
-                                </controls:TimelineDetailPane>
+                                    </controls:SelectionDetailPane.DetailContentTemplate>
+                                </controls:SelectionDetailPane>
                             </Grid>
                         </TabItem>
 
@@ -565,16 +565,16 @@
                                     </Grid>
                                  </Border>
                                 <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows"/>
-                                <controls:TimelineDetailPane x:Name="MeshtasticTimelineDetailPane" Grid.Row="3" MinHeight="0" DetailContent="{Binding SelectedTimelineMessage}"
+                                <controls:SelectionDetailPane x:Name="MeshtasticTimelineDetailPane" Grid.Row="3" MinHeight="0" DetailContent="{Binding SelectedTimelineMessage}"
                                     EmptyText="時系列のパケットを選択すると、経路・復号・無線条件の詳細が表示されます">
-                                    <controls:TimelineDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="6,4">
+                                    <controls:SelectionDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="6,4">
                                          <TextBlock Text="{Binding SenderName}" Style="{DynamicResource PluginIdentityTextStyle}" Margin="0,0,0,4"/>
                                          <TextBlock Text="{Binding Port}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontWeight="SemiBold" Margin="0,2,0,4"/>
                                          <ContentControl Content="{Binding DisplayFields}" ContentTemplate="{StaticResource MeshtasticDetailFieldsTemplate}" HorizontalContentAlignment="Stretch" Margin="0,0,0,8" />
                                          <TextBlock Text="ペイロード" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="0,4,0,3"/>
                                          <TextBlock Text="{Binding PayloadHex}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap" Margin="0,0,0,4"/>
-                                     </StackPanel></DataTemplate></controls:TimelineDetailPane.DetailContentTemplate>
-                                </controls:TimelineDetailPane>
+                                     </StackPanel></DataTemplate></controls:SelectionDetailPane.DetailContentTemplate>
+                                </controls:SelectionDetailPane>
                             </Grid>
                         </TabItem>
 

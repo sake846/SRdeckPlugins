@@ -1,5 +1,4 @@
 using SRdeckPlugin.Contracts;
-using SRdeckCore.SignalProcessing;
 
 namespace SRdeckPlugin.Analog;
 
@@ -125,7 +124,7 @@ internal sealed partial class AnalogDemodulator
 
     private float RemoveDcDiff(float input)
     {
-        float output = input - _dcDiffPreviousInput + _dcDiffPole * _dcDiffPreviousOutput;
+        float output = input - _dcDiffPreviousInput + _dcPole * _dcDiffPreviousOutput;
         _dcDiffPreviousInput = input;
         _dcDiffPreviousOutput = output;
         return output;

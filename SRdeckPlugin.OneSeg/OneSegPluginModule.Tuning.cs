@@ -18,12 +18,13 @@ namespace SRdeckPlugin.OneSeg;
 public sealed partial class OneSegPluginModule
 {
     private OneSegPrefecture SelectedPrefecture() => OneSegPrefecture.Find(settings.PrefectureId);
+    private OneSegRegionPreset SelectedRegion() => OneSegRegionPreset.Find(SelectedPrefecture(), settings.RegionId);
     private OneSegChannel SelectedChannel() => OneSegChannel.JapaneseUhfChannels
-        .FirstOrDefault(item => item.Number == settings.Channel) ?? SelectedPrefecture().CandidateChannels[0];
+        .FirstOrDefault(item => item.Number == settings.Channel) ?? SelectedRegion().CandidateChannels[0];
     private IReadOnlyList<OneSegChannel> ProfileChannels()
     {
         OneSegChannel selected = SelectedChannel();
-        return SelectedPrefecture().CandidateChannels.Append(selected)
+        return SelectedRegion().CandidateChannels.Append(selected)
             .DistinctBy(channel => channel.Number).ToArray();
     }
     private static PluginTuningRequest CreateTuningRequest(OneSegChannel channel) => new(channel.Id,
@@ -44,7 +45,7 @@ public sealed partial class OneSegPluginModule
             host?.Logger.Log(PluginLogLevel.Warning, "oneseg.channel.change", "OneSeg channel selection failed.", exception);
             Dispatch(() =>
             {
-                viewModel.Configure(settings, SelectedChannel());
+                viewModel.Configure(settings, SelectedChannel(), preserveRegionPresets: true);
                 viewModel.Status = $"選局失敗: {exception.Message}";
             });
         }
@@ -52,14 +53,33 @@ public sealed partial class OneSegPluginModule
 
     private async Task ChangePrefectureFromViewAsync(OneSegPrefecture prefecture, OneSegChannel channel)
     {
-        try { await Task.Run(async () => await ApplySelectionAsync(prefecture, channel, CancellationToken.None)); }
+        try
+        {
+            OneSegRegionPreset region = OneSegRegionPreset.Find(prefecture, null);
+            await Task.Run(async () => await ApplySelectionAsync(prefecture, region, channel, CancellationToken.None));
+        }
         catch (Exception exception)
         {
             host?.Logger.Log(PluginLogLevel.Warning, "oneseg.prefecture.change", "OneSeg prefecture selection failed.", exception);
             Dispatch(() =>
             {
-                viewModel.Configure(settings, SelectedChannel());
+                viewModel.Configure(settings, SelectedChannel(), preserveRegionPresets: true);
                 viewModel.Status = $"地域変更失敗: {exception.Message}";
+            });
+        }
+    }
+
+    private async Task ChangeRegionFromViewAsync(OneSegPrefecture prefecture,
+        OneSegRegionPreset region, OneSegChannel channel)
+    {
+        try { await Task.Run(async () => await ApplySelectionAsync(prefecture, region, channel, CancellationToken.None)); }
+        catch (Exception exception)
+        {
+            host?.Logger.Log(PluginLogLevel.Warning, "oneseg.region.change", "OneSeg region selection failed.", exception);
+            Dispatch(() =>
+            {
+                viewModel.Configure(settings, SelectedChannel(), preserveRegionPresets: true);
+                viewModel.Status = $"送信所エリア変更失敗: {exception.Message}";
             });
         }
     }
@@ -72,9 +92,9 @@ public sealed partial class OneSegPluginModule
             OneSegChannel channel = OneSegChannel.JapaneseUhfChannels.FirstOrDefault(item =>
                 item.Number == station.ChannelNumber) ?? throw new InvalidOperationException(
                 $"{station.ServiceName} の物理チャンネルは現在の地域候補にありません。");
-            settings = settings with { LastServiceId = station.ServiceId };
+            settings = settings with { LastServiceId = station.IsPreset ? null : station.ServiceId };
             await Task.Run(async () => await ApplySelectionAsync(
-                prefecture, channel, CancellationToken.None, forceRestart: true));
+                prefecture, SelectedRegion(), channel, CancellationToken.None, forceRestart: true));
         }
         catch (Exception exception)
         {
@@ -82,6 +102,11 @@ public sealed partial class OneSegPluginModule
                 "OneSeg station selection failed.", exception);
             Dispatch(() => viewModel.Status = $"放送局選択失敗: {exception.Message}");
         }
+    }
+
+    private void StopScanFromView()
+    {
+        channelScanCancellation?.Cancel();
     }
 
     private async Task ScanChannelsFromViewAsync(bool isAppend = false)
@@ -139,7 +164,7 @@ public sealed partial class OneSegPluginModule
                     iqCaptureBuffer.Reset();
                 }
                 OneSegStation? station = await WaitForScannedStationAsync(
-                    channel, progress, channels.Count, cancellation.Token).ConfigureAwait(false);
+                    channel, cancellation.Token).ConfigureAwait(false);
                 if (station is null) continue;
                 stations.Add(station);
                 Dispatch(() => viewModel.AddScannedStation(station));
@@ -180,7 +205,7 @@ public sealed partial class OneSegPluginModule
                         if (State == PluginLifecycleState.Streaming) mediaPlayer?.Start(settings.Volume);
                     }
                     SetStatus($"{(State == PluginLifecycleState.Streaming ? "受信中" : "待機中")} / " +
-                        $"{prefecture.DisplayName} / {original.DisplayName}");
+                        $"{prefecture.DisplayName} / {SelectedRegion().DisplayName} / {original.DisplayName}");
                 }
             }
             catch (Exception exception)
@@ -238,6 +263,41 @@ public sealed partial class OneSegPluginModule
             .ToArray();
     }
 
+    private OneSegStation[] CreateReceivedStations(IReadOnlyList<OneSegProgramInfo> programs)
+    {
+        OneSegProgramInfo[] candidates = programs
+            .Where(program => program.PmtPid == 0x1fc8 && program.Streams.Count > 0 &&
+                !string.IsNullOrWhiteSpace(program.ServiceName) &&
+                !program.ServiceName.StartsWith("Service ", StringComparison.Ordinal))
+            .ToArray();
+        if (candidates.Length == 0) return [];
+
+        lock (processingGate)
+        {
+            OneSegChannel channel = OneSegChannel.JapaneseUhfChannels.FirstOrDefault(item =>
+                item.CenterFrequencyHz == lastReceivedCenterFrequencyHz) ?? SelectedChannel();
+            OneSegDiagnostics diagnostics = receiver.Diagnostics;
+            long packets = analyzer.PacketCount;
+            double? mer = diagnostics.OfdmLocked && double.IsFinite(diagnostics.MerDb)
+                ? diagnostics.MerDb : null;
+            return candidates.Select(program => CreateScannedStation(program, channel,
+                diagnostics, mer, packets)).ToArray();
+        }
+    }
+
+    private void UpdateReceivedStations(IReadOnlyList<OneSegStation> receivedStations)
+    {
+        foreach (OneSegStation station in receivedStations) viewModel.AddScannedStation(station);
+        viewModel.EnsureSelectedStationForCurrentChannel();
+        viewModel.ScanStatus = "";
+        OneSegStation[] merged = MergeStations(settings.ScannedStations ?? [], receivedStations).ToArray();
+        if (settings.ScannedStations is null || !settings.ScannedStations.SequenceEqual(merged))
+        {
+            settings = settings with { ScannedStations = merged };
+            PersistSettings();
+        }
+    }
+
     private void UpdateStationInfoFromNetwork(OneSegNetworkInfo network)
     {
         bool updatedAny = false;
@@ -291,7 +351,7 @@ public sealed partial class OneSegPluginModule
     }
 
     private async Task<OneSegStation?> WaitForScannedStationAsync(
-        OneSegChannel channel, int progress, int total, CancellationToken cancellationToken)
+        OneSegChannel channel, CancellationToken cancellationToken)
     {
         DateTimeOffset started = DateTimeOffset.UtcNow;
         OneSegProgramInfo? fallback = null;
@@ -300,7 +360,6 @@ public sealed partial class OneSegPluginModule
         double merTotal = 0;
         int merSamples = 0;
         OneSegDiagnostics latestDiagnostics = OneSegDiagnostics.Empty;
-        int polls = 0;
         while (DateTimeOffset.UtcNow - started < TimeSpan.FromSeconds(30))
         {
             await Task.Delay(100, cancellationToken).ConfigureAwait(false);
@@ -331,12 +390,6 @@ public sealed partial class OneSegPluginModule
                     merSamples > 0 ? merTotal / merSamples : null, packets);
 
             TimeSpan elapsed = DateTimeOffset.UtcNow - started;
-            if (++polls % 5 == 0)
-            {
-                string reception = $"OFDM {(diagnostics.OfdmLocked ? "LOCK" : "--")} / " +
-                    $"TMCC {(diagnostics.TmccLocked ? "LOCK" : "--")} / TS {packets:N0}";
-                Dispatch(() => viewModel.ReportScanProgress(progress, total, channel, reception));
-            }
             if (elapsed >= TimeSpan.FromSeconds(2) && !sawOfdmLock) return null;
             if (elapsed >= TimeSpan.FromSeconds(5) && !sawTmccLock && fallback is null) return null;
         }

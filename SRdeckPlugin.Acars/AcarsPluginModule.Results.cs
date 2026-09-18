@@ -426,7 +426,7 @@ public sealed partial class AcarsPluginModule
             string basePath = Path.Combine(directory,
                 $"acars-analysis-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}-{selectedChannel.FrequencyHz}");
             string path = $"{basePath}.wav";
-            using (var capture = new AcarsIqCapture(path, snapshot.SampleRateHz, TimeSpan.FromSeconds(3)))
+            using (var capture = new BoundedIqWavWriter(path, snapshot.SampleRateHz, TimeSpan.FromSeconds(3)))
             {
                 capture.WritePcm(snapshot.RawInterleaved);
             }

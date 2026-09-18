@@ -197,10 +197,10 @@
                             </Border>
                             <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch"
                                           Background="Transparent" ResizeDirection="Rows" />
-                            <controls:TimelineDetailPane Grid.Row="3"
+                            <controls:SelectionDetailPane Grid.Row="3"
                                 DetailContent="{Binding SelectedHistoryItem}"
                                 EmptyText="時系列から受信画像を選択すると、詳細を表示します。">
-                                <controls:TimelineDetailPane.DetailContentTemplate>
+                                <controls:SelectionDetailPane.DetailContentTemplate>
                                     <DataTemplate>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -234,8 +234,8 @@
                                     </Border>
                                 </Grid>
                                     </DataTemplate>
-                                </controls:TimelineDetailPane.DetailContentTemplate>
-                            </controls:TimelineDetailPane>
+                                </controls:SelectionDetailPane.DetailContentTemplate>
+                            </controls:SelectionDetailPane>
                         </Grid>
                     </TabItem>
 

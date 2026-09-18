@@ -51,7 +51,7 @@ internal sealed partial class OneSegViewModel
             else
             {
                 if (existing != index) Programs.Move(existing, index);
-                if (!OneSegProgramComparison.Equivalent(Programs[index], value)) Programs[index] = value;
+                if (!Programs[index].IsEquivalentTo(value)) Programs[index] = value;
             }
         }
         while (Programs.Count > values.Count) Programs.RemoveAt(Programs.Count - 1);
@@ -133,6 +133,8 @@ internal sealed partial class OneSegViewModel
         BmlViewerStatus = "BML: 文書を受信待ち";
         BmlRevision++;
         Caption = "";
+        SetAudioTracks([], -1);
+        SetEmergency(false);
         broadcastOffset = null;
         BroadcastClockStatus = "放送時刻: 受信待ち";
         PcrStatus = "PCR: 受信待ち";
@@ -299,8 +301,7 @@ internal sealed partial class OneSegViewModel
         return result != 0 ? result : left.EventId.CompareTo(right.EventId);
     }
 
-    private void PublishCaptionSettings() => CaptionSettingsChanged?.Invoke(
-        CaptionsEnabled, CaptionFontSize, CaptionBackgroundEnabled, SelectedCaptionPosition.Id);
+    private void PublishCaptionSettings() => CaptionSettingsChanged?.Invoke();
 
     private void NotifyStationCommands()
     {

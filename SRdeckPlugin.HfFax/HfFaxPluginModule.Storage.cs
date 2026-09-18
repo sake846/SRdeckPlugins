@@ -31,8 +31,6 @@ public sealed partial class HfFaxPluginModule
                     .ToArray();
             lock (resultGate)
             {
-                history.Clear();
-                history.AddRange(newestFirst);
                 latestImage = newestFirst.FirstOrDefault();
             }
             context.Dispatcher.Post(() => viewModel.LoadHistory(newestFirst));

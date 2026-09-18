@@ -1,15 +1,10 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -26,7 +21,7 @@ namespace SRdeckPlugin.Meshtastic.ViewModels;
 
 public partial class MeshtasticViewModel
 {
-    private readonly IMeshtasticReceiveService _meshtasticReceiveService;
+    private readonly MeshtasticReceiveService _meshtasticReceiveService;
     private readonly MeshtasticHistoryAnalyzer _meshtasticHistoryAnalyzer = new();
     private readonly MeshtasticSettingsService _meshtasticSettingsService = new();
     private IPluginHostContext? _hostContext;
@@ -38,6 +33,7 @@ public partial class MeshtasticViewModel
     private string _meshtasticDiagnosticLastUpdated = "未更新";
     private long _lastMeshtasticSuccessfulPayloadTicks;
     private long _lastMeshtasticFailureTicks;
+    private MeshtasticDiagnosticEvaluation? _meshtasticDiagnosticCache;
 
     [ObservableProperty] private MeshtasticDisplayItem? _selectedTimelineMessage;
 
@@ -46,11 +42,13 @@ public partial class MeshtasticViewModel
         get => _runtimeDiagnostics;
         private set => SetProperty(ref _runtimeDiagnostics, value);
     }
-    public OverallStatusKind MeshtasticDiagnosticStatusKind => EvaluateMeshtasticDiagnostic().Kind;
-    public string MeshtasticDiagnosticStatusText => EvaluateMeshtasticDiagnostic().Status;
-    public string MeshtasticDiagnosticPhase => EvaluateMeshtasticDiagnostic().Phase;
-    public string MeshtasticDiagnosticSummary => EvaluateMeshtasticDiagnostic().Summary;
-    public string MeshtasticDiagnosticRecommendation => EvaluateMeshtasticDiagnostic().Recommendation;
+    private MeshtasticDiagnosticEvaluation CurrentMeshtasticDiagnostic =>
+        _meshtasticDiagnosticCache ??= EvaluateMeshtasticDiagnostic();
+    public OverallStatusKind MeshtasticDiagnosticStatusKind => CurrentMeshtasticDiagnostic.Kind;
+    public string MeshtasticDiagnosticStatusText => CurrentMeshtasticDiagnostic.Status;
+    public string MeshtasticDiagnosticPhase => CurrentMeshtasticDiagnostic.Phase;
+    public string MeshtasticDiagnosticSummary => CurrentMeshtasticDiagnostic.Summary;
+    public string MeshtasticDiagnosticRecommendation => CurrentMeshtasticDiagnostic.Recommendation;
     public string MeshtasticDiagnosticLastUpdated => _meshtasticDiagnosticLastUpdated;
     public string MeshtasticDiagnosticTuningText =>
         $"{SelectedMeshtasticRegion} / {(IsMeshtasticDiscoveryMode ? "探索" : SelectedMeshtasticModemPreset.ToString())}";
@@ -107,7 +105,7 @@ public partial class MeshtasticViewModel
     private readonly record struct MeshtasticDiagnosticEvaluation(OverallStatusKind Kind,
         string Status, string Phase, string Summary, string Recommendation);
 
-    public MeshtasticViewModel(IMeshtasticReceiveService meshtasticReceiveService)
+    public MeshtasticViewModel(MeshtasticReceiveService meshtasticReceiveService)
     {
         _meshtasticReceiveService = meshtasticReceiveService;
     }

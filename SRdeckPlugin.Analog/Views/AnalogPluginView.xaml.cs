@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using SRdeckPlugin.Contracts;
@@ -65,12 +66,11 @@ public partial class AnalogPluginView : UserControl
     {
         if (_plugin is null) return;
         AnalogReceiverSnapshot snapshot = _plugin.GetReceiverSnapshot();
-        SignalLevelTextBlock.Text = snapshot.HasCalibratedSignalLevelDbm
-            ? $"{snapshot.SignalLevelDbm:F0} dBm"
-            : $"{snapshot.SignalLevelDbfs:F1} dBFS";
-        SignalLevelProgressBar.Value = snapshot.HasCalibratedSignalLevelDbm
-            ? Math.Clamp(snapshot.SignalLevelDbm + 150, 0, 150)
-            : Math.Clamp(snapshot.SignalLevelDbfs + 120, 0, 120) * 1.25;
+        SignalLevelTextBlock.Text = $"{snapshot.SignalLevelDbm,4:F0} dBm";
+        SignalLevelProgressBar.Value = Math.Clamp(snapshot.SignalLevelDbm + 150, 0, 150);
+        SquelchThresholdTextBlock.Text = $"{snapshot.SquelchThresholdDbm,4:F0} dBm";
+        SquelchThresholdProgressBar.Value = Math.Clamp(snapshot.SquelchThresholdDbm + 150, 0, 150);
+        SquelchBarContainer.Opacity = snapshot.IsSquelchEnabled ? 0.85 : 0.32;
         SquelchStatusTextBlock.Text = !snapshot.IsSquelchEnabled
             ? "OFF"
             : snapshot.IsSquelchOpen ? "OPEN" : "CLOSED";
@@ -79,19 +79,22 @@ public partial class AnalogPluginView : UserControl
         bool isWideFm = _plugin.SelectedProfileId == "fm" && snapshot.BandwidthHz > 50_000;
         PluginProfileDescriptor? profile = _plugin.Profiles.FirstOrDefault(
             candidate => candidate.Id == _plugin.SelectedProfileId);
-        ApplyReceiverFace(snapshot, profile, isWideFm);
-        UpdateSpectrumAnalyzer(snapshot);
+        ApplyReceiverFace(snapshot, isWideFm);
 
         StatusIndicator.Tag = snapshot.IsReceiverEnabled
             ? OverallStatusKind.Running
             : OverallStatusKind.Idle;
 
-        DemodStateTextBlock.Text = _plugin.SelectedProfileId switch
+        string demodState = _plugin.SelectedProfileId switch
         {
-            "fm" when isWideFm => snapshot.IsStereoEnabled && snapshot.IsStereoDetected ? "STEREO" : "MONO",
+            "fm" when isWideFm => snapshot.IsStereoEnabled ? "STEREO" : "MONO",
             "ssb" => snapshot.IsLowerSideband ? "LSB" : "USB",
-            _ => profile?.DisplayName ?? _plugin.SelectedProfileId?.ToUpperInvariant() ?? "—"
+            _ => string.Empty
         };
+        DemodStateTextBlock.Text = demodState;
+        DemodStateTextBlock.Visibility = string.IsNullOrEmpty(demodState)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
 
         string headerFrequency = snapshot.FrequencyHz > 0
             ? $"{snapshot.FrequencyHz / 1_000_000.0:F3} MHz"
@@ -174,8 +177,7 @@ public partial class AnalogPluginView : UserControl
             ? $"{snapshot.SignalLevelDbm:F1} dBm"
             : "—（ホスト未校正）";
         DiagnosticSquelchTextBlock.Text = snapshot.IsSquelchEnabled
-            ? $"{(snapshot.IsSquelchOpen ? "OPEN" : "CLOSED")} / しきい値 {snapshot.SquelchThresholdDbm:F1} " +
-              $"{(snapshot.HasCalibratedSignalLevelDbm ? "dBm" : "dBFS")} / hysteresis ±2 dB"
+            ? $"{(snapshot.IsSquelchOpen ? "OPEN" : "CLOSED")} / しきい値 {snapshot.SquelchThresholdDbm:F1} dBm / hysteresis ±2 dB"
             : "無効";
         DiagnosticAudioTextBlock.Text = snapshot.IsMuted
             ? "ミュート"
@@ -200,61 +202,30 @@ public partial class AnalogPluginView : UserControl
 
     private void ApplyReceiverFace(
         AnalogReceiverSnapshot snapshot,
-        PluginProfileDescriptor? profile,
         bool isWideFm)
     {
-        Brush primary = ResolveBrush("AnalogWideFmPrimaryBrush");
-        Brush secondary = ResolveBrush("AnalogWideFmSecondaryBrush");
-
-        ReceiverDisplayPanel.Background = ResolveBrush("AnalogWideFmDisplayBrush");
-        ReceiverDisplayPanel.BorderBrush = ResolveBrush("AnalogWideFmBorderBrush");
-        SignalLevelProgressBar.Foreground = primary;
-        SignalLevelProgressBar.Background = ResolveBrush("AnalogWideFmMeterTrackBrush");
-        MainFrequencyTextBlock.Foreground = primary;
-        DemodStateTextBlock.Foreground = primary;
-        SignalLevelTextBlock.Foreground = primary;
-        AudioLevelTextBlock.Foreground = primary;
-        SquelchStatusTextBlock.Foreground = primary;
-        DisplayStatusTextBlock.Foreground = secondary;
-        DisplayBandTextBlock.Foreground = secondary;
-
         MainFrequencyTextBlock.Text = snapshot.FrequencyHz > 0
             ? $"{snapshot.FrequencyHz / 1_000_000.0,8:F3}"
             : "----.---";
-        DisplayStatusTextBlock.Text = snapshot.TuningStatus;
-        ReceiverTitleTextBlock.Text = _plugin?.SelectedProfileId switch
-        {
-            "fm" when isWideFm => "FM-W DIGITAL TUNER",
-            "fm" => "FM-N DIGITAL TUNER",
-            "ssb" => "SSB DIGITAL RECEIVER",
-            "am" => "AM DIGITAL TUNER",
-            _ => "ANALOG DIGITAL TUNER"
-        };
         ReceiverModeBadgeTextBlock.Text = _plugin?.SelectedProfileId switch
         {
-            "fm" when isWideFm => "FM-W",
-            "fm" => "FM-N",
+            "fm" when isWideFm => "FM-WIDE",
+            "fm" => "FM NARROW",
             "ssb" => "SSB",
             "am" => "AM",
             _ => "ANALOG"
         };
-        ReceiverTitleTextBlock.Foreground = secondary;
-        ReceiverSeriesTextBlock.Text = "90s HI-FI SERIES";
-        ReceiverSeriesTextBlock.Foreground = primary;
-        ReceiverModeBadge.Visibility = Visibility.Visible;
-        DisplayBandTextBlock.Text = isWideFm
-            ? "FM  76  80  84  88  92  96  100  104  108"
-            : $"{profile?.DisplayName ?? "---"}  /  {snapshot.BandwidthHz / 1_000.0:F1} kHz";
+        DisplayBandTextBlock.Text = $"{snapshot.BandwidthHz / 1_000.0,5:F1} kHz";
 
         Brush off = ResolveBrush("AnalogIndicatorOffBrush");
         Brush green = ResolveBrush("AnalogIndicatorGreenBrush");
         Brush amber = ResolveBrush("AnalogIndicatorAmberBrush");
         Brush red = ResolveBrush("AnalogIndicatorRedBrush");
-        PowerLamp.Background = !snapshot.IsReceiverEnabled ? off : snapshot.IsMuted ? red : green;
-        PowerLamp.ToolTip = !snapshot.IsReceiverEnabled ? "受信停止" : snapshot.IsMuted ? "受信中・ミュート" : "受信中";
+        MuteLamp.Background = snapshot.IsMuted ? red : off;
         AfcLamp.Background = _plugin?.SelectedProfileId == "fm" && snapshot.IsAfcEnabled
             ? amber
             : off;
+        AfcIndicatorPanel.Opacity = _plugin?.SelectedProfileId == "fm" ? 1.0 : 0.32;
         SquelchLamp.Background = !snapshot.IsSquelchEnabled
             ? off
             : snapshot.IsSquelchOpen ? green : amber;
@@ -278,4 +249,177 @@ public partial class AnalogPluginView : UserControl
     private static string FormatDisplayDbfs(float value) => value > 0
         ? $"{20 * Math.Log10(value),6:F1} dBFS"
         : "—";
+
+    private void MainFrequency_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        _ = OpenFrequencyInputDialogAsync();
+    }
+
+    private async void ReceiverModeBadge_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_plugin is null) return;
+        string nextProfile = _plugin.SelectedProfileId switch
+        {
+            "am" => "fm",
+            "fm" => "ssb",
+            _ => "am"
+        };
+        await _plugin.ChangeProfileFromViewAsync(nextProfile);
+    }
+
+    private void DisplayBand_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e) =>
+        _ = CycleBandwidthAsync();
+
+    internal async ValueTask CycleBandwidthAsync()
+    {
+        if (_plugin is null) return;
+        AnalogReceiverSnapshot snapshot = _plugin.GetReceiverSnapshot();
+        int[] options = _plugin.SelectedProfileId switch
+        {
+            "am" => [6_000, 10_000, 15_000],
+            "fm" => [12_500, 15_000, 200_000],
+            "ssb" => [2_400, 3_000, 4_000],
+            _ => [snapshot.BandwidthHz]
+        };
+        int currentIndex = Array.IndexOf(options, snapshot.BandwidthHz);
+        int nextBandwidth = currentIndex >= 0
+            ? options[(currentIndex + 1) % options.Length]
+            : (Array.Find(options, b => b > snapshot.BandwidthHz) is int found && found > 0 ? found : options[0]);
+
+        // ponytail: cycling bandwidth presets matches standard receiver button behavior.
+        await _plugin.UpdateReceiverOptionsAsync(
+            options => options with { BandwidthHz = nextBandwidth },
+            requestTuning: true);
+    }
+
+    private void DemodState_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e) =>
+        _ = CycleDemodStateAsync();
+
+    internal async ValueTask CycleDemodStateAsync()
+    {
+        if (_plugin is null) return;
+        AnalogReceiverSnapshot snapshot = _plugin.GetReceiverSnapshot();
+        if (_plugin.SelectedProfileId == "ssb")
+        {
+            await _plugin.UpdateReceiverOptionsAsync(
+                options => options with { IsLowerSideband = !snapshot.IsLowerSideband },
+                requestTuning: true);
+        }
+        else if (_plugin.SelectedProfileId == "fm" && snapshot.BandwidthHz > 50_000)
+        {
+            await _plugin.UpdateReceiverOptionsAsync(
+                options => options with { IsStereoEnabled = !snapshot.IsStereoEnabled },
+                requestTuning: false);
+        }
+    }
+
+    private void MuteIndicator_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e) =>
+        _ = ToggleMuteAsync();
+
+    internal async ValueTask ToggleMuteAsync()
+    {
+        if (_plugin is null) return;
+        AnalogReceiverSnapshot snapshot = _plugin.GetReceiverSnapshot();
+        await _plugin.UpdateReceiverOptionsAsync(
+            options => options with { IsMuted = !snapshot.IsMuted },
+            requestTuning: false);
+    }
+
+    private void AfcIndicator_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e) =>
+        _ = ToggleAfcAsync();
+
+    internal async ValueTask ToggleAfcAsync()
+    {
+        if (_plugin is null || _plugin.SelectedProfileId != "fm") return;
+        AnalogReceiverSnapshot snapshot = _plugin.GetReceiverSnapshot();
+        await _plugin.UpdateReceiverOptionsAsync(
+            options => options with { IsAfcEnabled = !snapshot.IsAfcEnabled },
+            requestTuning: false);
+    }
+
+    private void SquelchIndicator_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e) =>
+        _ = ToggleSquelchAsync();
+
+    internal async ValueTask ToggleSquelchAsync()
+    {
+        if (_plugin is null) return;
+        AnalogReceiverSnapshot snapshot = _plugin.GetReceiverSnapshot();
+        await _plugin.UpdateReceiverOptionsAsync(
+            options => options with { IsSquelchEnabled = !snapshot.IsSquelchEnabled },
+            requestTuning: false);
+    }
+
+    private void StereoIndicator_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e) =>
+        _ = ToggleStereoAsync();
+
+    internal async ValueTask ToggleStereoAsync()
+    {
+        if (_plugin is null) return;
+        AnalogReceiverSnapshot snapshot = _plugin.GetReceiverSnapshot();
+        if (_plugin.SelectedProfileId != "fm" || snapshot.BandwidthHz <= 50_000) return;
+        await _plugin.UpdateReceiverOptionsAsync(
+            options => options with { IsStereoEnabled = !snapshot.IsStereoEnabled },
+            requestTuning: false);
+    }
+
+    private void SquelchBar_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        e.Handled = true;
+        int delta = e.Delta > 0 ? 1 : -1;
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            delta *= 5;
+        }
+        _ = AdjustSquelchThresholdAsync(delta);
+    }
+
+    internal async ValueTask AdjustSquelchThresholdAsync(float deltaDbm)
+    {
+        if (_plugin is null) return;
+        AnalogReceiverSnapshot snapshot = _plugin.GetReceiverSnapshot();
+        float current = snapshot.SquelchThresholdDbm;
+        float newThreshold = Math.Clamp(MathF.Round(current + deltaDbm), -150f, 0f);
+        if (Math.Abs(newThreshold - current) < 0.001f) return;
+
+        await _plugin.UpdateReceiverOptionsAsync(
+            options => options with { SquelchThresholdDbm = newThreshold },
+            requestTuning: false);
+    }
+
+    internal async ValueTask<bool> OpenFrequencyInputDialogAsync(Func<FrequencyInputDialog, bool?>? showDialog = null)
+    {
+        if (_plugin is null) return false;
+        var dialog = new FrequencyInputDialog
+        {
+            Owner = Window.GetWindow(this) ?? Application.Current?.MainWindow,
+            ReceiverName = "アナログ復調",
+            SelectedProfileId = _plugin.SelectedProfileId ?? "am",
+            ThemeBrush = TryFindResource("AnalogWideFmPrimaryBrush") as Brush
+                ?? new SolidColorBrush(Color.FromRgb(0x44, 0xF6, 0xDA))
+        };
+
+        bool? result = showDialog is not null ? showDialog(dialog) : dialog.ShowDialog();
+        if (result == true)
+        {
+            bool modified = false;
+            if (dialog.SelectedProfileId is { Length: > 0 } newProfile &&
+                newProfile != _plugin.SelectedProfileId)
+            {
+                await _plugin.ChangeProfileFromViewAsync(newProfile);
+                modified = true;
+            }
+
+            if (dialog.ResultFrequencyHz > 0)
+            {
+                await _plugin.UpdateReceiverOptionsAsync(
+                    options => options with { FrequencyHz = dialog.ResultFrequencyHz },
+                    requestTuning: true);
+                modified = true;
+            }
+
+            return modified;
+        }
+
+        return false;
+    }
 }

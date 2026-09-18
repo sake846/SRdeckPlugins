@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -13,6 +14,8 @@ namespace SRdeckPlugin.OneSeg.ViewModels;
 internal sealed partial class OneSegViewModel : ObservableObject
 {
     private OneSegPrefecture selectedPrefecture = OneSegPrefecture.Find("tokyo");
+    private OneSegRegionPreset selectedRegion = OneSegRegionPreset.Find(
+        OneSegPrefecture.Find("tokyo"), null);
     private OneSegChannel selectedChannel = OneSegPrefecture.Find("tokyo").CandidateChannels.Last();
     private string status = "未初期化";
     private string ofdmLockStatus = "未同期";
@@ -32,11 +35,11 @@ internal sealed partial class OneSegViewModel : ObservableObject
     private string scanStatus = "未サーチ";
     private string scanResultsText = "検出局: なし";
     private bool isScanning;
+    private bool isAdditionalScanning;
     private bool synchronizingSelection;
     private OneSegAudioTrackOption? selectedAudioTrack;
     private int desiredAudioTrackId = -1;
     private bool captionsEnabled = true;
-    private double captionFontSize = 16;
     private bool captionBackgroundEnabled = true;
     private OneSegCaptionPositionOption selectedCaptionPosition;
     private string currentProgramTitle = "番組情報を受信待ち";
@@ -89,6 +92,7 @@ internal sealed partial class OneSegViewModel : ObservableObject
     private long diagnosticBaselineContinuityErrors;
 
     public IReadOnlyList<OneSegPrefecture> Prefectures => OneSegPrefecture.All;
+    public IReadOnlyList<OneSegRegionPreset> Regions => selectedPrefecture.Regions;
     public ObservableCollection<OneSegChannel> Channels { get; } = [];
     public ObservableCollection<OneSegStation> Stations { get; } = [];
     public ObservableCollection<OneSegProgramInfo> Programs { get; } = [];
@@ -101,22 +105,36 @@ internal sealed partial class OneSegViewModel : ObservableObject
     public MediaPlayer? MediaPlayer { get => mediaPlayer; set => SetProperty(ref mediaPlayer, value); }
     public Action<OneSegChannel>? ChannelSelectionRequested { get; set; }
     public Action<OneSegPrefecture, OneSegChannel>? PrefectureSelectionRequested { get; set; }
+    public Action<OneSegPrefecture, OneSegRegionPreset, OneSegChannel>? RegionSelectionRequested { get; set; }
     public Action<bool>? RecordingChanged { get; set; }
-    public Action<string, int, long, long, bool, bool, string, int>? RecordingSettingsChanged { get; set; }
+    public Action? RecordingSettingsChanged { get; set; }
     public Action<int>? VolumeChanged { get; set; }
     public Action? CaptureRequested { get; set; }
     public Action<bool>? ScanRequested { get; set; }
+    public Action? StopScanRequested { get; set; }
     public Action<OneSegStation>? StationSelectionRequested { get; set; }
     public Action<int>? AudioTrackSelectionRequested { get; set; }
-    public Action<bool, double, bool, string>? CaptionSettingsChanged { get; set; }
+    public Action? CaptionSettingsChanged { get; set; }
     public Action<bool>? EmergencyNotificationsChanged { get; set; }
 
     public OneSegViewModel()
     {
         selectedCaptionPosition = CaptionPositions[^1];
         CaptureCommand = new RelayCommand(() => CaptureRequested?.Invoke());
-        ScanCommand = new RelayCommand(() => ScanRequested?.Invoke(false), () => !IsScanning);
-        AdditionalScanCommand = new RelayCommand(() => ScanRequested?.Invoke(true), () => !IsScanning);
+        ScanCommand = new RelayCommand(
+            () =>
+            {
+                if (IsScanning) StopScanRequested?.Invoke();
+                else ScanRequested?.Invoke(false);
+            },
+            () => !IsScanning || IsFullScanning);
+        AdditionalScanCommand = new RelayCommand(
+            () =>
+            {
+                if (IsScanning) StopScanRequested?.Invoke();
+                else ScanRequested?.Invoke(true);
+            },
+            () => !IsScanning || IsAdditionalScanning);
         PreviousStationCommand = new RelayCommand(() => SelectRelative(-1), () => Stations.Count > 1 && !IsScanning);
         NextStationCommand = new RelayCommand(() => SelectRelative(1), () => Stations.Count > 1 && !IsScanning);
         ResetDiagnosticStatisticsCommand = new RelayCommand(ResetDiagnosticStatistics);
@@ -152,13 +170,37 @@ internal sealed partial class OneSegViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref selectedPrefecture, value)) return;
-            UpdateCandidates(value, selectedChannel.Number);
-            Stations.Clear();
-            selectedStation = null;
-            ScanStatus = "未サーチ";
-            ScanResultsText = "検出局: なし";
+            selectedRegion = value.Regions[0];
+            OnPropertyChanged(nameof(Regions));
+            OnPropertyChanged(nameof(SelectedRegion));
+            UpdateCandidates(selectedRegion, selectedChannel.Number);
+            ReplaceStations(selectedRegion.PresetStations);
+            selectedStation = Stations.FirstOrDefault(item =>
+                item.ChannelNumber == selectedChannel.Number);
+            ScanStatus = $"地域プリセット: {value.DisplayName} / {selectedRegion.DisplayName}";
+            ScanResultsText = $"検出局: なし / プリセット候補: {Stations.Count}ch";
             OnPropertyChanged(nameof(SelectedStation));
+            NotifyStationCommands();
             if (!synchronizingSelection) PrefectureSelectionRequested?.Invoke(value, selectedChannel);
+        }
+    }
+
+    public OneSegRegionPreset SelectedRegion
+    {
+        get => selectedRegion;
+        set
+        {
+            if (value is null || !string.Equals(value.PrefectureId, selectedPrefecture.Id,
+                StringComparison.OrdinalIgnoreCase) || !SetProperty(ref selectedRegion, value)) return;
+            UpdateCandidates(value, selectedChannel.Number);
+            ReplaceStations(value.PresetStations);
+            selectedStation = Stations.FirstOrDefault(item => item.ChannelNumber == selectedChannel.Number);
+            ScanStatus = $"地域プリセット: {selectedPrefecture.DisplayName} / {value.DisplayName}";
+            ScanResultsText = $"検出局: なし / プリセット候補: {Stations.Count}ch";
+            OnPropertyChanged(nameof(SelectedStation));
+            NotifyStationCommands();
+            if (!synchronizingSelection)
+                RegionSelectionRequested?.Invoke(selectedPrefecture, value, selectedChannel);
         }
     }
 
@@ -193,13 +235,47 @@ internal sealed partial class OneSegViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref isScanning, value)) return;
+            if (!value) isAdditionalScanning = false;
+            OnPropertyChanged(nameof(IsFullScanning));
+            OnPropertyChanged(nameof(IsAdditionalScanning));
             OnPropertyChanged(nameof(SelectionEnabled));
             ScanCommand.NotifyCanExecuteChanged();
             AdditionalScanCommand.NotifyCanExecuteChanged();
             NotifyStationCommands();
         }
     }
+    public bool IsFullScanning => IsScanning && !isAdditionalScanning;
+    public bool IsAdditionalScanning => IsScanning && isAdditionalScanning;
     public bool SelectionEnabled => !IsScanning;
+    public string SettingsHeaderTitle
+    {
+        get
+        {
+            if (IsScanning)
+            {
+                return string.IsNullOrWhiteSpace(ScanStatus) ? "サーチ中" : ScanStatus;
+            }
+
+            if (SelectedStation is null)
+            {
+                return "放送局を選択してください";
+            }
+
+            string? audio = SelectedAudioTrack?.DisplayName;
+            return string.IsNullOrWhiteSpace(audio)
+                ? SelectedStation.DisplayName
+                : $"{SelectedStation.DisplayName} / {audio}";
+        }
+    }
+
+    protected override void OnPropertyChanged(PropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+        if (e.PropertyName is nameof(SelectedStation) or nameof(SelectedAudioTrack) or nameof(IsScanning) or nameof(ScanStatus))
+        {
+            OnPropertyChanged(nameof(SettingsHeaderTitle));
+        }
+    }
     public string Status { get => status; set => SetProperty(ref status, value); }
     public string OfdmLockStatus { get => ofdmLockStatus; private set => SetProperty(ref ofdmLockStatus, value); }
     public string TmccLockStatus { get => tmccLockStatus; private set => SetProperty(ref tmccLockStatus, value); }
@@ -261,17 +337,7 @@ internal sealed partial class OneSegViewModel : ObservableObject
             PublishCaptionSettings();
         }
     }
-    public double CaptionFontSize
-    {
-        get => captionFontSize;
-        set
-        {
-            value = 16;
-            if (!SetProperty(ref captionFontSize, value)) return;
-            OnPropertyChanged(nameof(CaptionAreaHeight));
-            PublishCaptionSettings();
-        }
-    }
+    public double CaptionFontSize => 16;
     public double CaptionAreaHeight => CaptionFontSize * 3.6 + 12;
     public Visibility CaptionAreaVisibility => CaptionsEnabled
         ? Visibility.Visible : Visibility.Collapsed;
@@ -379,9 +445,7 @@ internal sealed partial class OneSegViewModel : ObservableObject
     private void NotifyRecordingSettingsChanged()
     {
         if (!synchronizingSelection)
-            RecordingSettingsChanged?.Invoke(RecordingDirectory, RecordingSegmentMinutes,
-                RecordingMaxBytes, RecordingStorageLimitBytes, AutoRecordOnStart,
-                RecordingSidecarEnabled, IqCaptureDirectory, IqCaptureSeconds);
+            RecordingSettingsChanged?.Invoke();
     }
     public int Volume
     {

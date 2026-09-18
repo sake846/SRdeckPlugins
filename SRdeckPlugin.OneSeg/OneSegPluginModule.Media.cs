@@ -135,7 +135,7 @@ public sealed partial class OneSegPluginModule
                 $"oneseg-analysis-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}-ch{channel.Number}");
             string wavPath = $"{basePath}.wav";
             TimeSpan captureDuration = TimeSpan.FromSeconds(Math.Clamp(settings.IqCaptureSeconds, 1, 60));
-            using (var capture = new OneSegIqCapture(wavPath, snapshot.SampleRateHz, captureDuration))
+            using (var capture = new BoundedIqWavWriter(wavPath, snapshot.SampleRateHz, captureDuration))
                 capture.WritePcm(snapshot.RawInterleaved);
 
             var document = new
@@ -144,6 +144,7 @@ public sealed partial class OneSegPluginModule
                 SavedAt = DateTimeOffset.Now,
                 CaptureMode = $"{captureDuration.TotalSeconds:0}-second rolling pre-trigger / channelized IQ",
                 Prefecture = prefecture.DisplayName,
+                Region = SelectedRegion().DisplayName,
                 prefecture.Id,
                 Channel = channel.Number,
                 CenterFrequencyHz = channel.CenterFrequencyHz,

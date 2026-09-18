@@ -446,8 +446,8 @@ public sealed partial class Ft8ViewModel : ObservableObject
         string locator = reception.Extra.Trim().ToUpperInvariant();
         string station = string.IsNullOrWhiteSpace(reception.FromCall) ? "不明局" : reception.FromCall;
         string id = $"ft8-{station}-{locator}".ToUpperInvariant();
-        int existing = MapMarkers.ToList().FindIndex(item => item.Id == id);
-        if (existing >= 0) MapMarkers.RemoveAt(existing);
+        GeoMapMarker? existing = MapMarkers.FirstOrDefault(item => item.Id == id);
+        if (existing is not null) MapMarkers.Remove(existing);
         var mapStation = new Ft8MapStation(id, latitude, longitude, station, locator, reception.ReceivedAt);
         mapStationsById[id] = mapStation;
         MapMarkers.Insert(0, CreateMapMarker(mapStation, DateTimeOffset.UtcNow));

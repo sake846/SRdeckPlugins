@@ -387,9 +387,9 @@
                              </Grid>
                              </Border>
                             <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows"/>
-                            <controls:TimelineDetailPane Grid.Row="3" DetailContent="{Binding SelectedTimelineFrame}"
+                            <controls:SelectionDetailPane Grid.Row="3" DetailContent="{Binding SelectedTimelineFrame}"
                                 EmptyText="時系列のフレームを選択すると、AVLC・ACARS・X.25 の詳細が表示されます">
-                                <controls:TimelineDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="4,2">
+                                <controls:SelectionDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="4,2">
                                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                         <TextBlock Text="{Binding Callsign}" Style="{DynamicResource PluginIdentityTextStyle}"/>
                                         <TextBlock Grid.Column="1" Text="{Binding ReceivedAt, StringFormat={}{0:yyyy/MM/dd HH:mm:ss.fff zzz}}" Style="{DynamicResource PluginTimelineDetailTimestampStyle}"/>
@@ -405,8 +405,8 @@
                                     <Expander Header="Raw frame (HEX)" Style="{DynamicResource PluginTimelineExpanderStyle}">
                                         <TextBlock Text="{Binding Hex}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap"/>
                                     </Expander>
-                                </StackPanel></DataTemplate></controls:TimelineDetailPane.DetailContentTemplate>
-                            </controls:TimelineDetailPane>
+                                </StackPanel></DataTemplate></controls:SelectionDetailPane.DetailContentTemplate>
+                            </controls:SelectionDetailPane>
                         </Grid>
                     </TabItem>
 

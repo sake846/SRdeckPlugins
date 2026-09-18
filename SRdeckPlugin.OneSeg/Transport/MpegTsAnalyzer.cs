@@ -220,7 +220,7 @@ internal sealed partial class MpegTsAnalyzer
     {
         if (publishedPrograms.Count == programs.Count && publishedPrograms.All(previous =>
             programs.TryGetValue(previous.ServiceId, out OneSegProgramInfo? current) &&
-            OneSegProgramComparison.Equivalent(previous, current))) return;
+            previous.IsEquivalentTo(current))) return;
         publishedPrograms = Programs;
         ProgramsChanged?.Invoke(publishedPrograms);
     }

@@ -13,7 +13,6 @@ public sealed partial class HfdlViewModel : ObservableObject
 {
     private static readonly TimeSpan DiagnosticWindow = TimeSpan.FromSeconds(120);
     private readonly Queue<(DateTimeOffset At, long Search, long Candidates, long Sync, long Valid, long Rejected)> diagnosticHistory = new();
-    private DateTimeOffset? lastSynchronizationAt;
     private DateTimeOffset? lastValidFrameAt;
     [ObservableProperty] private string _status = "停止中";
     private string selectedChannelId = HfdlPluginModule.DefaultChannelId;
@@ -97,8 +96,6 @@ public sealed partial class HfdlViewModel : ObservableObject
         OnPropertyChanged(nameof(IsKindMode));
         RefreshFilteredHistory();
     }
-    partial void OnValidFramesChanged(long value) => NotifyTotals();
-    partial void OnRejectedFramesChanged(long value) => NotifyTotals();
 
     public bool IsTimeSeriesMode
     {

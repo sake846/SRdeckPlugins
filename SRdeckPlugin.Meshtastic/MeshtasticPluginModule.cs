@@ -19,7 +19,7 @@ namespace SRdeckPlugin.Meshtastic;
 /// behind the generic plugin contracts.
 /// </summary>
 public sealed class MeshtasticPluginModule(
-    IMeshtasticReceiveService receiver,
+    MeshtasticReceiveService receiver,
     MeshtasticViewModel? viewModel)
     : PluginModuleBase, IIqBlockConsumer, IPluginViewProvider, IFrequencyOverlayProvider,
       IPluginProfileProvider, IPluginProcessingDiagnosticsProvider, IPluginProcessingWarmup
@@ -56,7 +56,7 @@ public sealed class MeshtasticPluginModule(
     {
     }
 
-    public MeshtasticPluginModule(IMeshtasticReceiveService receiver)
+    public MeshtasticPluginModule(MeshtasticReceiveService receiver)
         : this(receiver, new MeshtasticViewModel(receiver))
     {
         RegisterStreamReset(pretriggerBuffer.Reset);
@@ -320,7 +320,7 @@ public sealed class MeshtasticPluginModule(
             string basePath = Path.Combine(directory,
                 $"meshtastic-analysis-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}-{centerFrequencyHz}");
             string path = $"{basePath}.wav";
-            using (var capture = new MeshtasticIqCapture(
+            using (var capture = new BoundedIqWavWriter(
                        path, snapshot.SampleRateHz,
                        TimeSpan.FromSeconds(CaptureDurationSeconds)))
             {
@@ -339,8 +339,19 @@ public sealed class MeshtasticPluginModule(
                 InputMetadata = metadata
             };
             string diagnosticsPath = $"{basePath}-diagnostics.json";
-            File.WriteAllText(diagnosticsPath, JsonSerializer.Serialize(document,
-                new JsonSerializerOptions { WriteIndented = true }));
+            string temporaryDiagnosticsPath = $"{diagnosticsPath}.{Guid.NewGuid():N}.tmp";
+            string diagnosticsJson = JsonSerializer.Serialize(document,
+                new JsonSerializerOptions { WriteIndented = true });
+            try
+            {
+                File.WriteAllText(temporaryDiagnosticsPath, diagnosticsJson);
+                File.Move(temporaryDiagnosticsPath, diagnosticsPath);
+            }
+            finally
+            {
+                if (File.Exists(temporaryDiagnosticsPath))
+                    File.Delete(temporaryDiagnosticsPath);
+            }
             context.Dispatcher.Post(() =>
             {
                 if (viewModel is not null)

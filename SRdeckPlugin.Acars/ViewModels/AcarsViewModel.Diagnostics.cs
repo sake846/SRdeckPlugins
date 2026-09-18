@@ -94,30 +94,6 @@ public sealed partial class AcarsViewModel
         }
         else
         {
-            string acarsInputRateStr = snapshot.InputSampleRateHz >= 1_000_000
-                ? $"{snapshot.InputSampleRateHz / 1_000_000.0:F3} MS/s"
-                : $"{snapshot.InputSampleRateHz / 1_000.0:N1} kS/s";
-
-            double coarseRateHz = snapshot.CoarseDecimationFactor > 1
-                ? snapshot.InputSampleRateHz / (double)snapshot.CoarseDecimationFactor
-                : snapshot.InputSampleRateHz;
-            double fineRateHz = snapshot.IntermediateSampleRateHz;
-
-            bool hasCoarseStage = snapshot.CoarseDecimationFactor > 1 &&
-                Math.Abs(coarseRateHz - snapshot.InputSampleRateHz) > 0.1 &&
-                Math.Abs(coarseRateHz - fineRateHz) > 0.1 &&
-                Math.Abs(coarseRateHz - 48_000) > 0.1;
-
-            bool hasFineStage = snapshot.FineDecimationFactor > 1 &&
-                Math.Abs(fineRateHz - coarseRateHz) > 0.1 &&
-                Math.Abs(fineRateHz - snapshot.InputSampleRateHz) > 0.1 &&
-                Math.Abs(fineRateHz - 48_000) > 0.1;
-
-            var stages = new List<string> { acarsInputRateStr };
-            if (hasCoarseStage) stages.Add($"{coarseRateHz / 1_000.0:N1} kS/s");
-            if (hasFineStage) stages.Add($"{fineRateHz / 1_000.0:N1} kS/s");
-            stages.Add("48.0 kS/s");
-
             IntermediateRateText = SRdeckPlugin.Wpf.DiagnosticRateDisplay.FormatPath(
                 snapshot.InputSampleRateHz,
                 hasAcarsIntermediateRate ? snapshot.IntermediateSampleRateHz : 0,

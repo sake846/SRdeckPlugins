@@ -1,4 +1,3 @@
-using System;
 using System.Buffers.Binary;
 
 // Owned by the standalone Meshtastic plugin assembly.

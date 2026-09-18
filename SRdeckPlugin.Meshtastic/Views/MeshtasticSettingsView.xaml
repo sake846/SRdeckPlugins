@@ -72,7 +72,13 @@
                                     <ToggleButton Content="125 kHz" Width="68"
                                                   IsChecked="{Binding MeshtasticDiscoveryUses125Khz, Mode=TwoWay}"
                                                   Style="{DynamicResource PluginToggleButtonStyle}"
-                                                  VerticalAlignment="Center" />
+                                                  Margin="0,0,36,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="モニター" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                    <ToggleButton x:Name="DiscoveryBuzzerToggleButton"
+                                                  Content="受信ブザー"
+                                                  IsChecked="{Binding BuzzerEnabled, Mode=TwoWay}"
+                                                  Style="{DynamicResource PluginToggleButtonStyle}"
+                                                  Width="65" VerticalAlignment="Center" />
                                 </StackPanel>
 
                                 <!-- 方式・スロット (条件指定モード時) -->

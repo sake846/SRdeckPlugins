@@ -1,14 +1,7 @@
-using System.Buffers;
-using System.Buffers.Binary;
 using System.IO;
 using System.Text.Json;
-using System.Windows;
 using SRdeckPlugin.Contracts;
 using SRdeckPlugin.Sdk;
-using SRdeckPlugin.Analog.Dsp;
-using SRdeckPlugin.Wpf;
-using SRdeckPlugin.Analog.Views;
-using SRdeckPlugin.Analog.ViewModels;
 
 namespace SRdeckPlugin.Analog;
 
@@ -44,7 +37,7 @@ public sealed partial class AnalogPluginModule
             string basePath = Path.Combine(directory,
                 $"analog-analysis-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}-{snapshot.FrequencyHz}Hz");
             string path = $"{basePath}.wav";
-            using (var capture = new AnalogIqCapture(path, historySnapshot.SampleRateHz, TimeSpan.FromSeconds(3)))
+            using (var capture = new BoundedIqWavWriter(path, historySnapshot.SampleRateHz, TimeSpan.FromSeconds(3)))
             {
                 capture.WritePcm(historySnapshot.RawInterleaved);
             }
@@ -100,6 +93,7 @@ public sealed partial class AnalogPluginModule
             options.IsAfcEnabled,
             options.IsLowerSideband,
             options.IsStereoEnabled,
+            options.IsSsbCarrierFrequency,
             _demodulator.IsStereoDetected,
             Volatile.Read(ref _signalLevelDbfs),
             Volatile.Read(ref _signalLevelDbm),

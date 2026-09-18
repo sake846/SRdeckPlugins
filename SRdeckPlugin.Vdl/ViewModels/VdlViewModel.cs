@@ -13,7 +13,6 @@ namespace SRdeckPlugin.Vdl.ViewModels;
 
 public sealed partial class VdlViewModel : ObservableObject
 {
-    private const string AircraftColor = "#9AD4FF";
 
     private readonly ObservableCollection<VdlDecodedFrame> frames = [];
     private readonly ObservableCollection<VdlCategorySummary> callsignGroups = [];

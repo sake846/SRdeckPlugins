@@ -59,7 +59,7 @@ internal sealed class OneSegPatInjector
         section[9] = (byte)serviceId;
         section[10] = 0xff;
         section[11] = 0xc8;
-        uint crc = MpegCrc32(section[..12]);
+        uint crc = Transport.MpegTsAnalyzer.ComputeMpegCrc(section[..12]);
         section[12] = (byte)(crc >> 24);
         section[13] = (byte)(crc >> 16);
         section[14] = (byte)(crc >> 8);
@@ -67,15 +67,4 @@ internal sealed class OneSegPatInjector
         return packet;
     }
 
-    private static uint MpegCrc32(ReadOnlySpan<byte> bytes)
-    {
-        uint crc = 0xffffffff;
-        foreach (byte value in bytes)
-        {
-            crc ^= (uint)value << 24;
-            for (int bit = 0; bit < 8; bit++)
-                crc = (crc & 0x80000000) != 0 ? (crc << 1) ^ 0x04c11db7 : crc << 1;
-        }
-        return crc;
-    }
 }

@@ -4,9 +4,7 @@ namespace SRdeckPlugin.MaritimeVhf.Protocols;
 
 internal static class DscProtocolParser
 {
-    private static readonly HashSet<byte> FormatSpecifiers = [102, 112, 114, 116, 120, 123];
-
-    public static bool IsFormatSpecifier(byte value) => FormatSpecifiers.Contains(value);
+    public static bool IsFormatSpecifier(byte value) => value is 102 or 112 or 114 or 116 or 120 or 123;
 
     public static bool TryParse(
         ReadOnlySpan<byte> symbols,
@@ -22,8 +20,7 @@ internal static class DscProtocolParser
         int closingIndex = FindClosingSequence(symbols);
         if (closingIndex < 0) return false;
         byte eos = symbols[closingIndex];
-        byte expectedEcc = symbols[0];
-        for (int index = 2; index <= closingIndex; index++) expectedEcc ^= symbols[index];
+        byte expectedEcc = CalculateEcc(symbols[..closingIndex], eos);
         if (symbols[closingIndex + 1] != expectedEcc) return false;
 
         ReadOnlySpan<byte> content = symbols[2..closingIndex];
@@ -132,7 +129,7 @@ internal static class DscProtocolParser
         mmsi = string.Empty;
         if (values.Length < 5 || values[..5].ContainsAnyInRange((byte)100, byte.MaxValue))
             return false;
-        string digits = string.Concat(values[..5].ToArray().Select(value => value.ToString("00")));
+        string digits = $"{values[0]:D2}{values[1]:D2}{values[2]:D2}{values[3]:D2}{values[4]:D2}";
         if (digits.Length != 10) return false;
         mmsi = digits[..9];
         return true;
@@ -171,7 +168,7 @@ internal static class DscProtocolParser
         if (values.Length < 5) return;
         for (int index = 0; index < 5; index++)
             if (values[index] > 99) return;
-        string digits = string.Concat(values[..5].ToArray().Select(value => value.ToString("00")));
+        string digits = $"{values[0]:D2}{values[1]:D2}{values[2]:D2}{values[3]:D2}{values[4]:D2}";
         if (digits == "9999999999" || digits.Length != 10) return;
         int quadrant = digits[0] - '0';
         if (quadrant is < 0 or > 3 ||

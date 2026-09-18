@@ -201,10 +201,7 @@ internal sealed class OfdmCarrierDecoder
         int half = activeCarrierCount / 2;
         for (int carrier = 0; carrier < activeCarrierCount; carrier++)
         {
-            int signedBin = carrier - half + offset;
-            int bin = signedBin < 0 ? configuredFftSize + signedBin : signedBin;
-            bin %= configuredFftSize;
-            if (bin < 0) bin += configuredFftSize;
+            int bin = WrapBin(carrier - half + offset, configuredFftSize);
             activeBuffer[carrier] = fft[bin];
         }
     }

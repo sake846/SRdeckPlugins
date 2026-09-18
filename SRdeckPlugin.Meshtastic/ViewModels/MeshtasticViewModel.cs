@@ -1,16 +1,12 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -114,111 +110,124 @@ public sealed record MeshtasticDisplayItem(
     [JsonIgnore]
     public string DisplayDetails => FormatDetailsJapanese(Details);
 
+    private static readonly Regex DetailFieldPattern = new(
+        @"(?<![A-Za-z0-9])(?<key>[A-Za-z][A-Za-z0-9]*)=(?<value>[^\s]*)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly IReadOnlyDictionary<string, string> DetailLabels =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["latitude"] = "\u7DEF\u5EA6",
+            ["longitude"] = "\u7D4C\u5EA6",
+            ["altitudeM"] = "\u9AD8\u5EA6",
+            ["altitudeSource"] = "\u9AD8\u5EA6\u60C5\u5831\u6E90",
+            ["locationSource"] = "\u4F4D\u7F6E\u60C5\u5831\u6E90",
+            ["time"] = "\u6E2C\u4F4D\u6642\u523B",
+            ["pdop"] = "PDOP",
+            ["hdop"] = "HDOP",
+            ["vdop"] = "VDOP",
+            ["gpsAccuracyMm"] = "GPS\u7CBE\u5EA6",
+            ["groundSpeed"] = "\u5BFE\u5730\u901F\u5EA6",
+            ["groundTrackDeg"] = "\u5BFE\u5730\u9032\u884C\u65B9\u5411",
+            ["fixQuality"] = "\u6E2C\u4F4D\u54C1\u8CEA",
+            ["fixType"] = "\u6E2C\u4F4D\u7A2E\u5225",
+            ["satellites"] = "\u885B\u661F\u6570",
+            ["precisionBits"] = "\u7CBE\u5EA6\u30D3\u30C3\u30C8\u6570",
+            ["id"] = "ID",
+            ["longName"] = "\u30CE\u30FC\u30C9\u540D",
+            ["shortName"] = "\u77ED\u7E2E\u540D",
+            ["mac"] = "MAC",
+            ["hardware"] = "\u30CF\u30FC\u30C9\u30A6\u30A7\u30A2",
+            ["role"] = "\u5F79\u5272",
+            ["licensed"] = "\u514D\u8A31\u5C40",
+            ["unmessagable"] = "\u30E1\u30C3\u30BB\u30FC\u30B8\u4E0D\u53EF",
+            ["publicKey"] = "\u516C\u958B\u9375",
+            ["variant"] = "\u7A2E\u5225",
+            ["battery"] = "\u30D0\u30C3\u30C6\u30EA\u30FC",
+            ["voltage"] = "\u96FB\u5727",
+            ["channelUtilization"] = "\u30C1\u30E3\u30CD\u30EB\u5229\u7528\u7387",
+            ["airUtilTx"] = "\u9001\u4FE1\u5229\u7528\u7387",
+            ["uptime"] = "\u7A3C\u50CD\u6642\u9593",
+            ["temperature"] = "\u6E29\u5EA6",
+            ["humidity"] = "\u6E7F\u5EA6",
+            ["pressure"] = "\u6C17\u5727",
+            ["gasResistance"] = "\u30AC\u30B9\u62B5\u6297",
+            ["current"] = "\u96FB\u6D41",
+            ["iaq"] = "\u7A7A\u6C17\u8CEA\u6307\u6570",
+            ["distance"] = "\u8DDD\u96E2",
+            ["lux"] = "\u7167\u5EA6",
+            ["whiteLux"] = "\u767D\u8272\u7167\u5EA6",
+            ["irLux"] = "\u8D64\u5916\u7167\u5EA6",
+            ["uvLux"] = "UV\u7167\u5EA6",
+            ["windDirection"] = "\u98A8\u5411",
+            ["windSpeed"] = "\u98A8\u901F",
+            ["weight"] = "\u91CD\u91CF",
+            ["windGust"] = "\u6700\u5927\u77AC\u9593\u98A8\u901F",
+            ["windLull"] = "\u6700\u5C0F\u98A8\u901F",
+            ["radiation"] = "\u653E\u5C04\u7DDA\u91CF",
+            ["rainfall1h"] = "1\u6642\u9593\u96E8\u91CF",
+            ["rainfall24h"] = "24\u6642\u9593\u96E8\u91CF",
+            ["soilMoisture"] = "\u571F\u58CC\u6C34\u5206",
+            ["soilTemperature"] = "\u571F\u58CC\u6E29\u5EA6",
+            ["oneWireTemperature"] = "1-Wire\u6E29\u5EA6",
+            ["packetsTx"] = "\u9001\u4FE1\u30D1\u30B1\u30C3\u30C8\u6570",
+            ["packetsRx"] = "\u53D7\u4FE1\u30D1\u30B1\u30C3\u30C8\u6570",
+            ["packetsRxBad"] = "\u30A8\u30E9\u30FC\u30D1\u30B1\u30C3\u30C8\u6570",
+            ["onlineNodes"] = "\u30AA\u30F3\u30E9\u30A4\u30F3\u30CE\u30FC\u30C9\u6570",
+            ["totalNodes"] = "\u7DCF\u30CE\u30FC\u30C9\u6570",
+            ["rxDuplicates"] = "\u91CD\u8907\u53D7\u4FE1\u6570",
+            ["txRelay"] = "\u4E2D\u7D99\u9001\u4FE1\u6570",
+            ["txRelayCanceled"] = "\u4E2D\u7D99\u53D6\u6D88\u6570",
+            ["heapTotal"] = "\u7DCF\u30D2\u30FC\u30D7",
+            ["heapFree"] = "\u7A7A\u304D\u30D2\u30FC\u30D7",
+            ["txDropped"] = "\u7834\u68C4\u9001\u4FE1\u6570",
+            ["noiseFloor"] = "\u30CE\u30A4\u30BA\u30D5\u30ED\u30A2",
+            ["notification"] = "\u901A\u77E5",
+            ["errorReason"] = "\u30A8\u30E9\u30FC\u7406\u7531",
+            ["routeTowards"] = "\u5F80\u8DEF",
+            ["routeBack"] = "\u5FA9\u8DEF",
+            ["nodeId"] = "\u30CE\u30FC\u30C9ID",
+            ["lastSentBy"] = "\u9001\u4FE1\u5143",
+            ["interval"] = "\u9001\u4FE1\u9593\u9694",
+            ["neighbors"] = "\u30CD\u30A4\u30D0\u30FC",
+            ["lastRx"] = "\u53D7\u4FE1\u6642\u523B",
+            ["snr"] = "SNR"
+        };
+
     private static string FormatDetailsJapanese(string? details)
     {
         if (string.IsNullOrWhiteSpace(details)) return "-";
-        
-        string text = details;
-        
-        // Position
-        text = text.Replace("latitude=", "緯度=", StringComparison.Ordinal);
-        text = text.Replace("longitude=", "経度=", StringComparison.Ordinal);
-        text = text.Replace("altitudeM=", "高度=", StringComparison.Ordinal);
-        text = text.Replace("altitudeSource=MANUAL", "高度情報源=手動", StringComparison.Ordinal);
-        text = text.Replace("altitudeSource=INTERNAL", "高度情報源=内蔵", StringComparison.Ordinal);
-        text = text.Replace("altitudeSource=EXTERNAL", "高度情報源=外部", StringComparison.Ordinal);
-        text = text.Replace("altitudeSource=BAROMETRIC", "高度情報源=気圧計", StringComparison.Ordinal);
-        text = text.Replace("altitudeSource=UNSET", "高度情報源=未設定", StringComparison.Ordinal);
-        text = text.Replace("altitudeSource=", "高度情報源=", StringComparison.Ordinal);
-        text = text.Replace("locationSource=MANUAL", "位置情報源=手動", StringComparison.Ordinal);
-        text = text.Replace("locationSource=INTERNAL", "位置情報源=内蔵", StringComparison.Ordinal);
-        text = text.Replace("locationSource=EXTERNAL", "位置情報源=外部", StringComparison.Ordinal);
-        text = text.Replace("locationSource=UNSET", "位置情報源=未設定", StringComparison.Ordinal);
-        text = text.Replace("locationSource=", "位置情報源=", StringComparison.Ordinal);
-        text = text.Replace("time=", "測位時刻=", StringComparison.Ordinal);
-        text = text.Replace("pdop=", "PDOP=", StringComparison.Ordinal);
-        text = text.Replace("hdop=", "HDOP=", StringComparison.Ordinal);
-        text = text.Replace("vdop=", "VDOP=", StringComparison.Ordinal);
-        text = text.Replace("gpsAccuracyMm=", "GPS精度=", StringComparison.Ordinal);
-        text = text.Replace("groundSpeed=", "対地速度=", StringComparison.Ordinal);
-        text = text.Replace("groundTrackDeg=", "対地進行方向=", StringComparison.Ordinal);
-        text = text.Replace("fixQuality=", "測位品質=", StringComparison.Ordinal);
-        text = text.Replace("fixType=", "測位種別=", StringComparison.Ordinal);
-        text = text.Replace("satellites=", "衛星数=", StringComparison.Ordinal);
-        text = text.Replace("precisionBits=", "精度ビット数=", StringComparison.Ordinal);
-        
-        // NodeInfo
-        text = text.Replace("id=", "ID=", StringComparison.Ordinal);
-        text = text.Replace("longName=", "ノード名=", StringComparison.Ordinal);
-        text = text.Replace("shortName=", "短縮名=", StringComparison.Ordinal);
-        text = text.Replace("mac=", "MAC=", StringComparison.Ordinal);
-        text = text.Replace("hardware=", "ハードウェア=", StringComparison.Ordinal);
-        text = text.Replace("role=", "役割=", StringComparison.Ordinal);
-        text = text.Replace("licensed=True", "免許局=有", StringComparison.Ordinal);
-        text = text.Replace("licensed=False", "免許局=無", StringComparison.Ordinal);
-        text = text.Replace("licensed=", "免許局=", StringComparison.Ordinal);
-        text = text.Replace("unmessagable=True", "メッセージ不可=はい", StringComparison.Ordinal);
-        text = text.Replace("unmessagable=False", "メッセージ不可=いいえ", StringComparison.Ordinal);
-        text = text.Replace("unmessagable=", "メッセージ不可=", StringComparison.Ordinal);
-        text = text.Replace("publicKey=", "公開鍵=", StringComparison.Ordinal);
-        
-        // Telemetry
-        text = text.Replace("variant=", "種別=", StringComparison.Ordinal);
-        text = text.Replace("battery=", "バッテリー=", StringComparison.Ordinal);
-        text = text.Replace("voltage=", "電圧=", StringComparison.Ordinal);
-        text = text.Replace("channelUtilization=", "チャネル利用率=", StringComparison.Ordinal);
-        text = text.Replace("airUtilTx=", "送信利用率=", StringComparison.Ordinal);
-        text = text.Replace("uptime=", "稼働時間=", StringComparison.Ordinal);
-        text = text.Replace("temperature=", "温度=", StringComparison.Ordinal);
-        text = text.Replace("humidity=", "湿度=", StringComparison.Ordinal);
-        text = text.Replace("pressure=", "気圧=", StringComparison.Ordinal);
-        text = text.Replace("gasResistance=", "ガス抵抗=", StringComparison.Ordinal);
-        text = text.Replace("current=", "電流=", StringComparison.Ordinal);
-        text = text.Replace("iaq=", "空気質指数=", StringComparison.Ordinal);
-        text = text.Replace("distance=", "距離=", StringComparison.Ordinal);
-        text = text.Replace("lux=", "照度=", StringComparison.Ordinal);
-        text = text.Replace("whiteLux=", "白色照度=", StringComparison.Ordinal);
-        text = text.Replace("irLux=", "赤外照度=", StringComparison.Ordinal);
-        text = text.Replace("uvLux=", "UV照度=", StringComparison.Ordinal);
-        text = text.Replace("windDirection=", "風向=", StringComparison.Ordinal);
-        text = text.Replace("windSpeed=", "風速=", StringComparison.Ordinal);
-        text = text.Replace("weight=", "重量=", StringComparison.Ordinal);
-        text = text.Replace("windGust=", "最大瞬間風速=", StringComparison.Ordinal);
-        text = text.Replace("windLull=", "最小風速=", StringComparison.Ordinal);
-        text = text.Replace("radiation=", "放射線量=", StringComparison.Ordinal);
-        text = text.Replace("rainfall1h=", "1時間雨量=", StringComparison.Ordinal);
-        text = text.Replace("rainfall24h=", "24時間雨量=", StringComparison.Ordinal);
-        text = text.Replace("soilMoisture=", "土壌水分=", StringComparison.Ordinal);
-        text = text.Replace("soilTemperature=", "土壌温度=", StringComparison.Ordinal);
-        text = text.Replace("oneWireTemperature=", "1-Wire温度=", StringComparison.Ordinal);
-        text = text.Replace("packetsTx=", "送信パケット数=", StringComparison.Ordinal);
-        text = text.Replace("packetsRx=", "受信パケット数=", StringComparison.Ordinal);
-        text = text.Replace("packetsRxBad=", "エラーパケット数=", StringComparison.Ordinal);
-        text = text.Replace("onlineNodes=", "オンラインノード数=", StringComparison.Ordinal);
-        text = text.Replace("totalNodes=", "総ノード数=", StringComparison.Ordinal);
-        text = text.Replace("rxDuplicates=", "重複受信数=", StringComparison.Ordinal);
-        text = text.Replace("txRelay=", "中継送信数=", StringComparison.Ordinal);
-        text = text.Replace("txRelayCanceled=", "中継取消数=", StringComparison.Ordinal);
-        text = text.Replace("heapTotal=", "総ヒープ=", StringComparison.Ordinal);
-        text = text.Replace("heapFree=", "空きヒープ=", StringComparison.Ordinal);
-        text = text.Replace("txDropped=", "破棄送信数=", StringComparison.Ordinal);
-        text = text.Replace("noiseFloor=", "ノイズフロア=", StringComparison.Ordinal);
-        
-        // Other
-        text = text.Replace("notification=", "通知=", StringComparison.Ordinal);
-        text = text.Replace("errorReason=", "エラー理由=", StringComparison.Ordinal);
-        text = text.Replace("routeTowards=", "往路=", StringComparison.Ordinal);
-        text = text.Replace("routeBack=", "復路=", StringComparison.Ordinal);
-        text = text.Replace("nodeId=", "ノードID=", StringComparison.Ordinal);
-        text = text.Replace("lastSentBy=", "送信元=", StringComparison.Ordinal);
-        text = text.Replace("interval=", "送信間隔=", StringComparison.Ordinal);
-        text = text.Replace("neighbors=", "ネイバー=", StringComparison.Ordinal);
-        text = text.Replace("lastRx=", "受信時刻=", StringComparison.Ordinal);
-        text = text.Replace("snr=", "SNR=", StringComparison.Ordinal);
-
-        return text;
+        return DetailFieldPattern.Replace(details, TranslateDetailField);
     }
 
+    private static string TranslateDetailField(Match match)
+    {
+        string key = match.Groups["key"].Value;
+        string value = match.Groups["value"].Value;
+        if (key is "altitudeSource" or "locationSource")
+        {
+            value = value switch
+            {
+                "MANUAL" => "\u624B\u52D5",
+                "INTERNAL" => "\u5185\u8535",
+                "EXTERNAL" => "\u5916\u90E8",
+                "BAROMETRIC" => "\u6C17\u5727\u8A08",
+                "UNSET" => "\u672A\u8A2D\u5B9A",
+                _ => value
+            };
+        }
+        else if (key == "licensed")
+        {
+            value = value switch { "True" => "\u6709", "False" => "\u7121", _ => value };
+        }
+        else if (key == "unmessagable")
+        {
+            value = value switch { "True" => "\u306F\u3044", "False" => "\u3044\u3044\u3048", _ => value };
+        }
+        return DetailLabels.TryGetValue(key, out string? label)
+            ? $"{label}={value}"
+            : match.Value;
+    }
     [JsonIgnore]
     public IReadOnlyList<MeshtasticDetailField> DisplayFields => ParseDisplayFields(DisplayDetails);
 
@@ -514,34 +523,23 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
         }
     }
 
-    private int _packetCount;
-    private int _receptionCount;
-    private int _directReceptionCount;
-    private int _relayedReceptionCount;
-    private int _unknownRouteReceptionCount;
-    private float? _minimumRssiDbfs;
-    private float? _maximumRssiDbfs;
-    private float? _minimumRssiDbm;
-    private float? _maximumRssiDbm;
-    private float? _minimumSnrDb;
-    private float? _maximumSnrDb;
     private readonly HashSet<string> _receivedAppTypes = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyList<MeshtasticApplicationDisplayItem> ApplicationTypes =>
         MeshtasticDataParser.KnownApplicationNames
             .Select(name => new MeshtasticApplicationDisplayItem(name, _receivedAppTypes.Contains(name)))
             .ToArray();
-    public int PacketCount => _packetCount;
-    public int ReceptionCount => _receptionCount;
-    public int DirectReceptionCount => _directReceptionCount;
-    public int RelayedReceptionCount => _relayedReceptionCount;
-    public int UnknownRouteReceptionCount => _unknownRouteReceptionCount;
-    public string RouteCounts => $"直接 {_directReceptionCount} / 中継 {_relayedReceptionCount} / 不明 {_unknownRouteReceptionCount}";
-    public float? MinimumRssiDbfs => _minimumRssiDbfs;
-    public float? MaximumRssiDbfs => _maximumRssiDbfs;
-    public float? MinimumRssiDbm => _minimumRssiDbm;
-    public float? MaximumRssiDbm => _maximumRssiDbm;
-    public float? MinimumSnrDb => _minimumSnrDb;
-    public float? MaximumSnrDb => _maximumSnrDb;
+    public int PacketCount { get; private set; }
+    public int ReceptionCount { get; private set; }
+    public int DirectReceptionCount { get; private set; }
+    public int RelayedReceptionCount { get; private set; }
+    public int UnknownRouteReceptionCount { get; private set; }
+    public string RouteCounts => $"直接 {DirectReceptionCount} / 中継 {RelayedReceptionCount} / 不明 {UnknownRouteReceptionCount}";
+    public float? MinimumRssiDbfs { get; private set; }
+    public float? MaximumRssiDbfs { get; private set; }
+    public float? MinimumRssiDbm { get; private set; }
+    public float? MaximumRssiDbm { get; private set; }
+    public float? MinimumSnrDb { get; private set; }
+    public float? MaximumSnrDb { get; private set; }
     private MeshtasticNodeInfo? _nodeInfo;
     private MeshtasticPosition? _latestPosition;
     private MeshtasticTelemetry? _latestTelemetry;
@@ -587,13 +585,13 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
     public void Update(MeshtasticDataReception reception, string? receivedContent = null, string? modemPresetName = null,
         string? regionName = null)
     {
-        _receptionCount++;
-        if (!reception.IsDuplicate) _packetCount++;
+        ReceptionCount++;
+        if (!reception.IsDuplicate) PacketCount++;
         RecordSeenAt(reception.Packet.ReceivedAt);
         UpdateSignalRanges(reception.Quality);
         bool updateLatestReception = TrackPreferredPacketRoute(reception.Packet);
         RecordReceivedAppType(MeshtasticDataParser.GetNodeListApplicationName(reception.Data.PortNumber));
-        Counts = $"Packet {_packetCount} / Reception {_receptionCount}";
+        Counts = $"Packet {PacketCount} / Reception {ReceptionCount}";
         if (!updateLatestReception)
         {
             Details = BuildDetails();
@@ -653,12 +651,12 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
 
     public void Observe(MeshtasticPacketReception reception, string? receivedContent = null, string? modemPresetName = null)
     {
-        _receptionCount++;
-        if (!reception.IsDuplicate) _packetCount++;
+        ReceptionCount++;
+        if (!reception.IsDuplicate) PacketCount++;
         RecordSeenAt(reception.Packet.ReceivedAt);
         UpdateSignalRanges(reception.Quality);
         bool updateLatestReception = TrackPreferredPacketRoute(reception.Packet);
-        Counts = $"Packet {_packetCount} / Reception {_receptionCount}";
+        Counts = $"Packet {PacketCount} / Reception {ReceptionCount}";
         if (!updateLatestReception)
         {
             Details = BuildDetails();
@@ -698,9 +696,12 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
 
     private void UpdateSignalRanges(MeshtasticLoRaReceptionQuality quality)
     {
-        UpdateRange(ref _minimumRssiDbfs, ref _maximumRssiDbfs, quality.EstimatedRssiDbfs);
-        UpdateRange(ref _minimumRssiDbm, ref _maximumRssiDbm, quality.EstimatedRssiDbm);
-        UpdateRange(ref _minimumSnrDb, ref _maximumSnrDb, quality.EstimatedSnrDb);
+        (MinimumRssiDbfs, MaximumRssiDbfs) = UpdateRange(MinimumRssiDbfs, MaximumRssiDbfs,
+            quality.EstimatedRssiDbfs);
+        (MinimumRssiDbm, MaximumRssiDbm) = UpdateRange(MinimumRssiDbm, MaximumRssiDbm,
+            quality.EstimatedRssiDbm);
+        (MinimumSnrDb, MaximumSnrDb) = UpdateRange(MinimumSnrDb, MaximumSnrDb,
+            quality.EstimatedSnrDb);
         OnPropertyChanged(nameof(RssiRangeText));
         OnPropertyChanged(nameof(SnrRangeText));
         OnPropertyChanged(nameof(MinimumRssiDbfs));
@@ -711,20 +712,21 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
         OnPropertyChanged(nameof(MaximumSnrDb));
     }
 
-    private static void UpdateRange(ref float? minimum, ref float? maximum, float? value)
+    private static (float? Minimum, float? Maximum) UpdateRange(float? minimum, float? maximum, float? value)
     {
-        if (value is not float number || !float.IsFinite(number)) return;
-        minimum = minimum is float currentMinimum && currentMinimum < number ? currentMinimum : number;
-        maximum = maximum is float currentMaximum && currentMaximum > number ? currentMaximum : number;
+        if (value is not float number || !float.IsFinite(number)) return (minimum, maximum);
+        return (
+            minimum is float currentMinimum && currentMinimum < number ? currentMinimum : number,
+            maximum is float currentMaximum && currentMaximum > number ? currentMaximum : number);
     }
 
     private void AdjustPreferredRouteCount(bool? wasRelayed, int amount)
     {
         switch (wasRelayed)
         {
-            case false: _directReceptionCount += amount; break;
-            case true: _relayedReceptionCount += amount; break;
-            default: _unknownRouteReceptionCount += amount; break;
+            case false: DirectReceptionCount += amount; break;
+            case true: RelayedReceptionCount += amount; break;
+            default: UnknownRouteReceptionCount += amount; break;
         }
     }
 
@@ -850,8 +852,8 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
         Latitude = state.Latitude;
         Longitude = state.Longitude;
         AltitudeMeters = state.AltitudeMeters;
-        _packetCount = state.PacketCount;
-        _receptionCount = state.ReceptionCount;
+        PacketCount = state.PacketCount;
+        ReceptionCount = state.ReceptionCount;
         _preferredReceptionRouteByPacket.Clear();
         if (state.PreferredReceptionRoutes is { } preferredRoutes)
         {
@@ -862,29 +864,29 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
                                                 state.PreferredReceptionRoutes is not null;
         if (_hasCompletePreferredReceptionRoutes)
         {
-            _directReceptionCount = _preferredReceptionRouteByPacket.Values.Count(route => route == false);
-            _relayedReceptionCount = _preferredReceptionRouteByPacket.Values.Count(route => route == true);
-            _unknownRouteReceptionCount = _preferredReceptionRouteByPacket.Values.Count(route => route is null);
+            DirectReceptionCount = _preferredReceptionRouteByPacket.Values.Count(route => route == false);
+            RelayedReceptionCount = _preferredReceptionRouteByPacket.Values.Count(route => route == true);
+            UnknownRouteReceptionCount = _preferredReceptionRouteByPacket.Values.Count(route => route is null);
         }
         else
         {
-            _directReceptionCount = state.DirectReceptionCount;
-            _relayedReceptionCount = state.RelayedReceptionCount;
-            _unknownRouteReceptionCount = state.UnknownRouteReceptionCount;
+            DirectReceptionCount = state.DirectReceptionCount;
+            RelayedReceptionCount = state.RelayedReceptionCount;
+            UnknownRouteReceptionCount = state.UnknownRouteReceptionCount;
         }
         FirstSeenAt = state.FirstSeenAt;
         LastSeenAt = state.LastSeenAt;
         RadioSlot = state.RadioSlot ?? ParseRadioSlot(state.Mode);
         ModemPresetName = string.IsNullOrWhiteSpace(state.ModemPresetName) ? "-" : state.ModemPresetName;
         RegionName = string.IsNullOrWhiteSpace(state.RegionName) ? ParseRegionName(state.Mode) : state.RegionName;
-        _minimumRssiDbfs = state.MinimumRssiDbfs;
-        _maximumRssiDbfs = state.MaximumRssiDbfs;
-        _minimumRssiDbm = state.MinimumRssiDbm;
-        _maximumRssiDbm = state.MaximumRssiDbm;
-        _minimumSnrDb = state.MinimumSnrDb;
-        _maximumSnrDb = state.MaximumSnrDb;
+        MinimumRssiDbfs = state.MinimumRssiDbfs;
+        MaximumRssiDbfs = state.MaximumRssiDbfs;
+        MinimumRssiDbm = state.MinimumRssiDbm;
+        MaximumRssiDbm = state.MaximumRssiDbm;
+        MinimumSnrDb = state.MinimumSnrDb;
+        MaximumSnrDb = state.MaximumSnrDb;
         RestoreReceivedAppTypes(state.ReceivedAppTypes);
-        Counts = $"Packet {_packetCount} / Reception {_receptionCount}";
+        Counts = $"Packet {PacketCount} / Reception {ReceptionCount}";
         NotifyRouteCountsChanged();
         OnPropertyChanged(nameof(HasPosition));
         OnPropertyChanged(nameof(Coordinates));

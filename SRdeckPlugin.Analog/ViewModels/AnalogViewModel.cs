@@ -1,60 +1,38 @@
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Threading.Tasks;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
-using SRdeckPlugin.Analog.Dsp;
+using System.Windows.Input;
 using SRdeckPlugin.Wpf;
 
 namespace SRdeckPlugin.Analog.ViewModels;
 
-public sealed partial class AnalogViewModel : ObservableObject
+public sealed class AnalogViewModel
 {
     private readonly AnalogPluginModule _module;
-
-    public AnalogPluginModule Module => _module;
 
     public AnalogViewModel(AnalogPluginModule module)
     {
         _module = module;
-        _module.SelectedProfileChanged += (s, e) => OnPropertyChanged(nameof(SelectedProfileId));
-        _module.CaptureStatusChanged += (s, e) => OnPropertyChanged(nameof(CaptureStatus));
+        ResetPluginSettingsCommand = new AsyncCommand(ResetPluginSettingsAsync);
     }
 
-    public string? SelectedProfileId => _module.SelectedProfileId;
-    public string CaptureStatus => _module.CaptureStatus;
+    public ICommand ResetPluginSettingsCommand { get; }
 
-    [RelayCommand]
     private async Task ResetPluginSettingsAsync()
     {
         await PluginResetHelper.ConfirmAndResetSettingsAsync(
             "Analog",
-            async () =>
-            {
-                await _module.ResetSettingsAsync();
-            },
+            _module.ResetSettingsAsync,
             () => { });
     }
 
-    [RelayCommand]
-    private void ResetPluginData()
+    private sealed class AsyncCommand(Func<Task> execute) : ICommand
     {
-        PluginResetHelper.ConfirmAndClearData(
-            "Analog",
-            () => { });
-    }
+        public event EventHandler? CanExecuteChanged
+        {
+            add { }
+            remove { }
+        }
 
-    [RelayCommand]
-    private async Task ResetAllPluginAsync()
-    {
-        await PluginResetHelper.ConfirmAndResetAllAsync(
-            "Analog",
-            async () =>
-            {
-                await _module.ResetSettingsAsync();
-            },
-            () => { },
-            () => { });
+        public bool CanExecute(object? parameter) => true;
+
+        public async void Execute(object? parameter) => await execute();
     }
 }

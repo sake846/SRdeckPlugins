@@ -298,12 +298,6 @@ public sealed partial class VdlMode2Receiver
         return phase > Math.PI ? phase - 2 * Math.PI : phase;
     }
 
-    private void RejectBurst()
-    {
-        RejectedFrameCount++;
-        ResetBurst();
-    }
-
     private void ResetBurst()
     {
         state = ReceiverState.Searching;

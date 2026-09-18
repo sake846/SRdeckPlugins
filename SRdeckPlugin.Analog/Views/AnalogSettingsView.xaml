@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+             Foreground="{DynamicResource TextPrimaryBrush}"
              UseLayoutRounding="True"
              SnapsToDevicePixels="True">
     <Grid>
@@ -98,8 +99,9 @@
                                   SelectionChanged="StepComboBox_OnSelectionChanged" />
                     </Grid>
 
-                    <Grid Margin="0,0,0,8">
+                    <Grid Margin="0,0,0,14">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
@@ -135,8 +137,18 @@
                                     Click="StepUpButton_OnClick"
                                     ToolTip="周波数アップ" />
                         </StackPanel>
+                        <CheckBox x:Name="SsbCarrierFrequencyCheckBox"
+                                  Grid.Column="3"
+                                  Content="搬送波周波数指定"
+                                  Style="{DynamicResource PluginCheckBoxStyle}"
+                                  Margin="10,0,0,0"
+                                  VerticalAlignment="Center"
+                                  Visibility="Collapsed"
+                                  Checked="SsbCarrierFrequencyCheckBox_OnChanged"
+                                  Unchecked="SsbCarrierFrequencyCheckBox_OnChanged" />
                     </Grid>
 
+                    <!-- 受信動作: ミュート, AFC, ステレオ, スケルチ -->
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -153,7 +165,8 @@
                                       Style="{DynamicResource PluginToggleButtonStyle}"
                                       Content="ミュート"
                                       Width="60"
-                                      Margin="0,0,10,0"
+                                      VerticalAlignment="Center"
+                                      Margin="0,0,12,0"
                                       Checked="MuteButton_OnChanged"
                                       Unchecked="MuteButton_OnChanged" />
                         <ToggleButton x:Name="AfcButton"
@@ -161,7 +174,8 @@
                                       Style="{DynamicResource PluginToggleButtonStyle}"
                                       Content="AFC"
                                       Width="60"
-                                      Margin="0,0,10,0"
+                                      VerticalAlignment="Center"
+                                      Margin="0,0,12,0"
                                       Checked="AfcButton_OnChanged"
                                       Unchecked="AfcButton_OnChanged" />
                         <ToggleButton x:Name="StereoButton"
@@ -169,7 +183,8 @@
                                       Style="{DynamicResource PluginToggleButtonStyle}"
                                       Content="ステレオ"
                                       Width="60"
-                                      Margin="0,0,10,0"
+                                      VerticalAlignment="Center"
+                                      Margin="0,0,12,0"
                                       Checked="StereoButton_OnChanged"
                                       Unchecked="StereoButton_OnChanged" />
                         <ToggleButton x:Name="SquelchButton"
@@ -177,23 +192,25 @@
                                       Style="{DynamicResource PluginToggleButtonStyle}"
                                       Content="スケルチ"
                                       Width="60"
-                                      Margin="0,0,10,0"
+                                      VerticalAlignment="Center"
+                                      Margin="0,0,16,0"
                                       Checked="SquelchButton_OnChanged"
                                       Unchecked="SquelchButton_OnChanged" />
                         <TextBlock Grid.Column="4"
                                    Text="しきい値"
                                    Style="{DynamicResource PluginSettingsFieldLabelStyle}"
                                    VerticalAlignment="Center"
-                                   Margin="0,0,6,0" />
+                                   Margin="0,0,8,0" />
                         <Slider x:Name="SquelchThresholdSlider"
                                 Grid.Column="5"
                                 Minimum="-150"
                                 Maximum="0"
-                                Width="110"
+                                Width="104"
                                 TickFrequency="5"
                                 IsSnapToTickEnabled="True"
                                 VerticalAlignment="Center"
-                                Margin="0,0,8,0"
+                                Margin="8,0,12,0"
+                                PreviewMouseWheel="SquelchThresholdSlider_OnPreviewMouseWheel"
                                 ValueChanged="SquelchThresholdSlider_OnValueChanged" />
                         <StackPanel Grid.Column="6" Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBox x:Name="SquelchThresholdTextBox"
@@ -206,9 +223,9 @@
                                      GotKeyboardFocus="SquelchThresholdTextBox_OnGotKeyboardFocus"
                                      KeyDown="SquelchThresholdTextBox_OnKeyDown"
                                      LostFocus="SquelchThresholdTextBox_OnLostFocus" />
-                            <TextBlock Text="dBm / dBFS" Style="{DynamicResource PluginSettingsFieldLabelStyle}" VerticalAlignment="Center" Margin="4,0,0,0" />
+                            <TextBlock Text="dBm" Style="{DynamicResource PluginSettingsFieldLabelStyle}" VerticalAlignment="Center" Margin="6,0,0,0" />
                         </StackPanel>
-                        <StackPanel Grid.Column="7" Orientation="Horizontal" Margin="6,0,0,0" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="7" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
                             <Button x:Name="SquelchDownButton"
                                     Style="{DynamicResource PluginLeftStepButtonStyle}"
                                     Content="▼"

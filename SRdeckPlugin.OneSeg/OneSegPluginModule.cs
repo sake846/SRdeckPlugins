@@ -57,7 +57,14 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
         analyzer.ProgramsChanged += programs =>
         {
             if (Volatile.Read(ref channelScanInProgress) == 0)
-                Dispatch(() => viewModel.SetPrograms(programs));
+            {
+                OneSegStation[] receivedStations = CreateReceivedStations(programs);
+                Dispatch(() =>
+                {
+                    viewModel.SetPrograms(programs);
+                    if (receivedStations.Length > 0) UpdateReceivedStations(receivedStations);
+                });
+            }
         };
         analyzer.EventUpdated += value =>
         {
@@ -135,8 +142,11 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
         };
         viewModel.ChannelSelectionRequested = channel => _ = ChangeChannelFromViewAsync(channel);
         viewModel.PrefectureSelectionRequested = (prefecture, channel) => _ = ChangePrefectureFromViewAsync(prefecture, channel);
+        viewModel.RegionSelectionRequested = (prefecture, region, channel) =>
+            _ = ChangeRegionFromViewAsync(prefecture, region, channel);
         viewModel.CaptureRequested = StartIqCapture;
         viewModel.ScanRequested = isAppend => _ = ScanChannelsFromViewAsync(isAppend);
+        viewModel.StopScanRequested = StopScanFromView;
         viewModel.StationSelectionRequested = station => _ = ChangeStationFromViewAsync(station);
         viewModel.AudioTrackSelectionRequested = trackId =>
         {
@@ -144,14 +154,14 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
             lock (processingGate) mediaPlayer?.SelectAudioTrack(trackId);
             PersistSettings();
         };
-        viewModel.CaptionSettingsChanged = (enabled, fontSize, background, position) =>
+        viewModel.CaptionSettingsChanged = () =>
         {
             settings = settings with
             {
-                CaptionsEnabled = enabled,
-                CaptionFontSize = fontSize,
-                CaptionBackgroundEnabled = background,
-                CaptionPosition = position
+                CaptionsEnabled = viewModel.CaptionsEnabled,
+                CaptionFontSize = viewModel.CaptionFontSize,
+                CaptionBackgroundEnabled = viewModel.CaptionBackgroundEnabled,
+                CaptionPosition = viewModel.SelectedCaptionPosition.Id
             };
             PersistSettings();
         };
@@ -161,18 +171,18 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
             PersistSettings();
         };
         viewModel.RecordingChanged = enabled => SetRecording(enabled);
-        viewModel.RecordingSettingsChanged = (directory, segmentMinutes, maxBytes, storageLimitBytes, autoRecord, sidecar, iqDirectory, iqSeconds) =>
+        viewModel.RecordingSettingsChanged = () =>
         {
             settings = (settings with
             {
-                RecordingDirectory = string.IsNullOrWhiteSpace(directory) ? null : directory.Trim(),
-                RecordingSegmentMinutes = segmentMinutes,
-                RecordingMaxBytes = maxBytes,
-                RecordingStorageLimitBytes = storageLimitBytes,
-                AutoRecordOnStart = autoRecord,
-                RecordingSidecarEnabled = sidecar,
-                IqCaptureDirectory = string.IsNullOrWhiteSpace(iqDirectory) ? null : iqDirectory.Trim(),
-                IqCaptureSeconds = iqSeconds
+                RecordingDirectory = string.IsNullOrWhiteSpace(viewModel.RecordingDirectory) ? null : viewModel.RecordingDirectory.Trim(),
+                RecordingSegmentMinutes = viewModel.RecordingSegmentMinutes,
+                RecordingMaxBytes = viewModel.RecordingMaxBytes,
+                RecordingStorageLimitBytes = viewModel.RecordingStorageLimitBytes,
+                AutoRecordOnStart = viewModel.AutoRecordOnStart,
+                RecordingSidecarEnabled = viewModel.RecordingSidecarEnabled,
+                IqCaptureDirectory = string.IsNullOrWhiteSpace(viewModel.IqCaptureDirectory) ? null : viewModel.IqCaptureDirectory.Trim(),
+                IqCaptureSeconds = viewModel.IqCaptureSeconds
             }).Normalize();
             PersistSettings();
         };
@@ -193,7 +203,7 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
         }
         settings = new OneSegSettings().Normalize();
         OneSegChannel selected = SelectedChannel();
-        Dispatch(() => viewModel.Configure(settings, selected));
+        Dispatch(() => viewModel.Configure(settings, selected, preserveRegionPresets: true));
         mediaPlayer?.SetVolume(settings.Volume);
     }
 
@@ -205,7 +215,7 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
 
     public IReadOnlyList<PluginProfileDescriptor> Profiles => ProfileChannels()
         .Select(channel => new PluginProfileDescriptor(channel.Id, channel.DisplayName,
-            $"{SelectedPrefecture().DisplayName}の代表送信所候補 / {channel.FrequencyText}",
+            $"{SelectedPrefecture().DisplayName} / {SelectedRegion().DisplayName} / {channel.FrequencyText}",
             channel.Number == settings.Channel)).ToArray();
     public string? SelectedProfileId => SelectedChannel().Id;
     public IReadOnlyList<PluginChannelRequest> ChannelRequests
@@ -249,7 +259,7 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
             }
         }
         OneSegChannel selected = SelectedChannel();
-        Dispatch(() => viewModel.Configure(settings, selected));
+        Dispatch(() => viewModel.Configure(settings, selected, preserveRegionPresets: true));
         mediaPlayerInitialization = InitializeMediaPlayerAsync(hostContext);
         diagnosticsTimer = hostContext.TimeProvider.CreateTimer(_ =>
         {
@@ -289,15 +299,13 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
                 }
                 bool emergency = diagnostics.Tmcc?.EmergencyAlarm == true;
                 bool wasEmergency = Interlocked.Exchange(ref emergencyAlarmActive, emergency ? 1 : 0) != 0;
-                if (emergency && !wasEmergency)
+                long nowTicks = DateTimeOffset.UtcNow.Ticks;
+                long previousTicks = Interlocked.Read(ref lastEmergencyNotificationTicks);
+                if (ShouldNotifyEmergency(settings.EmergencyNotificationsEnabled,
+                    emergency, wasEmergency, nowTicks, previousTicks))
                 {
-                    long nowTicks = DateTimeOffset.UtcNow.Ticks;
-                    long previousTicks = Interlocked.Read(ref lastEmergencyNotificationTicks);
-                    if (nowTicks - previousTicks >= TimeSpan.FromSeconds(30).Ticks)
-                    {
-                        Interlocked.Exchange(ref lastEmergencyNotificationTicks, nowTicks);
-                        hostContext.Notifications.PlayShortReceptionAlarm();
-                    }
+                    Interlocked.Exchange(ref lastEmergencyNotificationTicks, nowTicks);
+                    hostContext.Notifications.PlayShortReceptionAlarm();
                 }
                 float? calibratedDbm = hostContext.ReceiverTelemetry?.SignalLevelDbm;
                 Dispatch(() =>
@@ -328,7 +336,7 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
         IPluginHostContext context = host ?? throw new InvalidOperationException("The plugin is not initialized.");
         PluginTuningResult result = await context.Tuning.RequestAsync(CreateTuningRequest(SelectedChannel()), cancellationToken).ConfigureAwait(false);
         ValidateTuning(result);
-        SetStatus($"待機中 / {SelectedPrefecture().DisplayName} / {SelectedChannel().DisplayName}");
+        SetStatus($"待機中 / {SelectedPrefecture().DisplayName} / {SelectedRegion().DisplayName} / {SelectedChannel().DisplayName}");
     }
 
     protected override ValueTask OnStartStreamAsync(CancellationToken cancellationToken)
@@ -339,10 +347,12 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
             analyzer.Reset();
             audioEvents.Clear();
             streamAudioComponentTypes.Clear();
+            Interlocked.Exchange(ref emergencyAlarmActive, 0);
+            Interlocked.Exchange(ref lastEmergencyNotificationTicks, 0);
             mediaPlayer?.Start(settings.Volume);
             if (settings.AutoRecordOnStart) OpenRecording();
         }
-        SetStatus($"受信中 / {SelectedPrefecture().DisplayName} / {SelectedChannel().DisplayName}");
+        SetStatus($"受信中 / {SelectedPrefecture().DisplayName} / {SelectedRegion().DisplayName} / {SelectedChannel().DisplayName}");
         return ValueTask.CompletedTask;
     }
 
@@ -373,6 +383,13 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
         return ValueTask.CompletedTask;
     }
 
+    internal static bool ShouldNotifyEmergency(bool enabled, bool emergency,
+        bool wasEmergency, long nowTicks, long previousTicks)
+    {
+        return enabled && emergency && !wasEmergency &&
+            nowTicks - previousTicks >= TimeSpan.FromSeconds(30).Ticks;
+    }
+
     public async ValueTask WarmUpProcessingAsync(
         PluginProcessingWarmupContext context,
         CancellationToken cancellationToken)
@@ -401,11 +418,13 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
             recordingStopped = CloseRecording("stream-stop");
             player = mediaPlayer;
             receiver.Reset();
+            Interlocked.Exchange(ref emergencyAlarmActive, 0);
+            Interlocked.Exchange(ref lastEmergencyNotificationTicks, 0);
         }
         await recordingStopped.ConfigureAwait(false);
         if (player is not null)
             await Task.Run(player.Stop).ConfigureAwait(false);
-        SetStatus($"待機中 / {SelectedPrefecture().DisplayName} / {SelectedChannel().DisplayName}");
+        SetStatus($"待機中 / {SelectedPrefecture().DisplayName} / {SelectedRegion().DisplayName} / {SelectedChannel().DisplayName}");
     }
 
     protected override ValueTask OnDeactivateAsync(CancellationToken cancellationToken)
@@ -419,13 +438,15 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
         OneSegPrefecture prefecture = SelectedPrefecture();
         OneSegChannel next = ProfileChannels().FirstOrDefault(item => item.Id == profileId)
             ?? throw new ArgumentException($"Unknown OneSeg profile '{profileId}'.", nameof(profileId));
-        await ApplySelectionAsync(prefecture, next, cancellationToken).ConfigureAwait(false);
+        await ApplySelectionAsync(prefecture, SelectedRegion(), next, cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask ApplySelectionAsync(OneSegPrefecture prefecture, OneSegChannel next,
+    private async ValueTask ApplySelectionAsync(OneSegPrefecture prefecture, OneSegRegionPreset region,
+        OneSegChannel next,
         CancellationToken cancellationToken, bool forceRestart = false)
     {
         if (!forceRestart && string.Equals(prefecture.Id, settings.PrefectureId,
+            StringComparison.OrdinalIgnoreCase) && string.Equals(region.Id, settings.RegionId,
             StringComparison.OrdinalIgnoreCase) && next.Number == settings.Channel) return;
         if (State is PluginLifecycleState.Active or PluginLifecycleState.Streaming)
         {
@@ -435,10 +456,12 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
         lock (processingGate)
         {
             bool regionChanged = !string.Equals(prefecture.Id, settings.PrefectureId,
+                StringComparison.OrdinalIgnoreCase) || !string.Equals(region.Id, settings.RegionId,
                 StringComparison.OrdinalIgnoreCase);
             settings = settings with
             {
                 PrefectureId = prefecture.Id,
+                RegionId = region.Id,
                 Channel = next.Number,
                 ScannedStations = regionChanged ? [] : settings.ScannedStations
             };
@@ -448,16 +471,18 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
             streamAudioComponentTypes.Clear();
             iqCaptureBuffer.Reset();
             lastReceivedCenterFrequencyHz = 0;
+            Interlocked.Exchange(ref emergencyAlarmActive, 0);
+            Interlocked.Exchange(ref lastEmergencyNotificationTicks, 0);
             if (State == PluginLifecycleState.Streaming) mediaPlayer?.Start(settings.Volume);
         }
         Dispatch(() =>
         {
             viewModel.ResetServiceData();
-            viewModel.Configure(settings, next);
+            viewModel.Configure(settings, next, preserveRegionPresets: true);
             viewModel.SetRecordingState(recording?.IsAccepting == true);
         });
         PersistSettings();
-        SetStatus($"{(State == PluginLifecycleState.Streaming ? "受信中" : "待機中")} / {prefecture.DisplayName} / {next.DisplayName}");
+        SetStatus($"{(State == PluginLifecycleState.Streaming ? "受信中" : "待機中")} / {prefecture.DisplayName} / {region.DisplayName} / {next.DisplayName}");
     }
 
     protected override ValueTask OnDisposeAsync(IPluginHostContext? hostContext)

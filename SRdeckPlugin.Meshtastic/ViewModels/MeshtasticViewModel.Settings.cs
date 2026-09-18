@@ -1,15 +1,10 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SRdeckPlugin.Wpf;
@@ -187,7 +182,7 @@ public partial class MeshtasticViewModel
             MeshtasticHistoryDisplayLimit = clamped;
             _isLoadingMeshtasticSettings = false;
         }
-        SaveMeshtasticHistorySettings();
+        SaveMeshtasticSettings();
     }
     partial void OnMeshtasticHistoryRetentionDaysChanged(int value)
     {
@@ -200,14 +195,9 @@ public partial class MeshtasticViewModel
             _isLoadingMeshtasticSettings = false;
         }
         _ = PruneMeshtasticHistoryFileAsync();
-        SaveMeshtasticHistorySettings();
-    }
-
-    private void SaveMeshtasticHistorySettings()
-    {
-        if (_isLoadingMeshtasticSettings) return;
         SaveMeshtasticSettings();
     }
+
     partial void OnMeshtasticRadioChannelChanged(int value)
     {
         if (!IsMeshtasticDiscoveryMode && !_isSwitchingMeshtasticMode)

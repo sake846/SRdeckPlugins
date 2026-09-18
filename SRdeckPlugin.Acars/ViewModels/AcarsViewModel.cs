@@ -12,7 +12,6 @@ namespace SRdeckPlugin.Acars.ViewModels;
 
 public sealed partial class AcarsViewModel : ObservableObject
 {
-    private const string AircraftColor = "#63a4ff";
     private const float MinimumInputRms = 0.00001f;
     private const float MaximumAgcGainWarning = 0.95f;
     private const float MinimumToneConfidence = 0.30f;
@@ -136,6 +135,12 @@ public sealed partial class AcarsViewModel : ObservableObject
     partial void OnMaximumHistoryChanged(int value)
     {
         int normalized = Math.Clamp(value, 100, 100_000);
+        if (value != normalized)
+        {
+            synchronizingSettings = true;
+            MaximumHistory = normalized;
+            synchronizingSettings = false;
+        }
         if (!synchronizingSettings) MaximumHistoryChanged?.Invoke(normalized);
     }
     partial void OnMaximumAircraftChanged(int value)

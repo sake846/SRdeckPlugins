@@ -1,15 +1,10 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -37,9 +32,6 @@ public partial class MeshtasticViewModel
         }
     }
 
-    private List<MeshtasticDisplayItem> ReadAllMeshtasticHistory() =>
-        PluginJsonLinesHistory.LoadAll<MeshtasticDisplayItem>(MeshtasticHistoryPath, MeshtasticHistoryJsonOptions).ToList();
-
     private async Task PruneMeshtasticHistoryFileAsync()
     {
         string path = MeshtasticHistoryPath;
@@ -59,9 +51,6 @@ public partial class MeshtasticViewModel
     private static void ApplyMeshtasticHistoryRetention(string path, PluginJsonLinesHistoryPolicy policy) =>
         PluginJsonLinesHistory.ApplyRetention(path, policy.MaximumEntries, policy.MaximumAge,
             DateTimeOffset.UtcNow, MeshtasticHistoryTimestamp, MeshtasticHistoryJsonOptions, policy.MaximumBytes);
-
-    private static string BuildMeshtasticTransmission(MeshtasticDataReception reception)
-        => MeshtasticRouteDisplay.Format(reception);
 
     private static string BuildMeshtasticSummary(SRdeckPlugin.Meshtastic.Protocols.MeshtasticData data)
     {
@@ -98,14 +87,22 @@ public partial class MeshtasticViewModel
             : $"{data.PortName} / {data.Payload.Length} bytes";
     }
 
+    private static readonly IReadOnlyDictionary<string, string> TelemetryMetricLabels =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["battery"] = "Bat",
+            ["voltage"] = "V",
+            ["channelUtilization"] = "Ch",
+            ["airUtilTx"] = "TX",
+            ["uptime"] = "Up"
+        };
+
     private static string FormatTelemetryMetric(string metric)
     {
-        return metric
-            .Replace("battery=", "Bat ", StringComparison.Ordinal)
-            .Replace("voltage=", "V ", StringComparison.Ordinal)
-            .Replace("channelUtilization=", "Ch ", StringComparison.Ordinal)
-            .Replace("airUtilTx=", "TX ", StringComparison.Ordinal)
-            .Replace("uptime=", "Up ", StringComparison.Ordinal);
+        int separator = metric.IndexOf('=');
+        return separator > 0 && TelemetryMetricLabels.TryGetValue(metric[..separator], out string? label)
+            ? $"{label} {metric[(separator + 1)..]}"
+            : metric;
     }
 
     [RelayCommand]
@@ -135,6 +132,7 @@ public partial class MeshtasticViewModel
 
     private void SetMeshtasticReceiverStatus(string status, OverallStatusKind statusKind)
     {
+        _meshtasticDiagnosticCache = null;
         MeshtasticReceiverStatus = status;
         MeshtasticReceiverStatusKind = statusKind;
     }

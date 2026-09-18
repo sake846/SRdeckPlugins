@@ -28,15 +28,19 @@ public sealed record OneSegStation(
 {
     // NIT's extended broadcaster descriptor. Older saved stations may not have this value.
     public byte? RemoteControlKeyId { get; init; }
+    [JsonIgnore]
+    public bool IsPreset { get; init; }
 
     [JsonIgnore]
     public string RemoteControlKeyText => RemoteControlKeyId is byte key ? $"{key}ch" : "--";
     [JsonIgnore]
-    public string DisplayName => $"{ServiceName}（UHF {ChannelNumber}ch）";
+    public string DisplayName => IsPreset ? ServiceName : $"{ServiceName}（UHF {ChannelNumber}ch）";
     [JsonIgnore]
-    public string QualityText => MerDb is double mer
-        ? $"MER {mer:F1} dB / TS {TransportPackets:N0} / RS棄却 {ReedSolomonRejected:N0}"
-        : $"MER -- / TS {TransportPackets:N0} / RS棄却 {ReedSolomonRejected:N0}";
+    public string QualityText => IsPreset
+        ? "未サーチ（地域プリセット）"
+        : MerDb is double mer
+            ? $"MER {mer:F1} dB / TS {TransportPackets:N0} / RS棄却 {ReedSolomonRejected:N0}"
+            : $"MER -- / TS {TransportPackets:N0} / RS棄却 {ReedSolomonRejected:N0}";
     [JsonIgnore]
     public double QualityScore => (MerDb ?? -30) -
         (ReedSolomonPackets + ReedSolomonRejected <= 0 ? 0 :
@@ -81,6 +85,19 @@ public sealed record OneSegPrefecture(
     public IReadOnlyList<OneSegChannel> CandidateChannels => CandidateChannelNumbers
         .Select(number => OneSegChannel.JapaneseUhfChannels.First(channel => channel.Number == number))
         .ToArray();
+    public IReadOnlyList<OneSegStation> PresetStations => CandidateChannels
+        .Select(channel => new OneSegStation(0,
+            $"{DisplayName} {channel.DisplayName}", "地域プリセット", channel.Number)
+        {
+            IsPreset = true
+        })
+        .ToArray();
+
+    /// <summary>
+    /// 受信地点をさらに絞り込むための送信所・中継局エリア候補です。
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<OneSegRegionPreset> Regions => OneSegRegionPreset.For(this);
 
     public static IReadOnlyList<OneSegPrefecture> All { get; } =
     [
@@ -138,6 +155,112 @@ public sealed record OneSegPrefecture(
         All.First(item => item.Id == "tokyo");
 }
 
+/// <summary>
+/// 都道府県内の主要送信所・中継局エリアと、そのエリアで優先して試す物理CHです。
+/// チャンネル割り当ては変更される可能性があるため、受信できない場合はサーチで確認します。
+/// </summary>
+public sealed record OneSegRegionPreset(
+    string Id,
+    string DisplayName,
+    string PrefectureId,
+    IReadOnlyList<int> CandidateChannelNumbers)
+{
+    private static readonly Dictionary<string, IReadOnlyList<OneSegRegionPreset>> RegionCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyList<OneSegChannel> CandidateChannels => CandidateChannelNumbers
+        .Distinct()
+        .Select(number => OneSegChannel.JapaneseUhfChannels.First(channel => channel.Number == number))
+        .ToArray();
+
+    public IReadOnlyList<OneSegStation> PresetStations => CandidateChannels
+        .Select(channel => new OneSegStation(0,
+            $"{DisplayName} {channel.DisplayName}", "地域プリセット", channel.Number)
+        {
+            IsPreset = true
+        })
+        .ToArray();
+
+    public static OneSegRegionPreset Find(OneSegPrefecture prefecture, string? id) =>
+        prefecture.Regions.FirstOrDefault(item =>
+            string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase)) ?? prefecture.Regions[0];
+
+    public static IReadOnlyList<OneSegRegionPreset> For(OneSegPrefecture prefecture)
+    {
+        lock (RegionCache)
+        {
+            if (RegionCache.TryGetValue(prefecture.Id, out IReadOnlyList<OneSegRegionPreset>? cached))
+                return cached;
+        }
+
+        // The examples below cover the main regional transmitters where a prefecture
+        // commonly has more than one independent channel plan. All other prefectures
+        // retain one "主要送信所" entry based on the existing prefecture candidates.
+        IReadOnlyList<OneSegRegionPreset> regions = prefecture.Id switch
+        {
+            "hokkaido" =>
+            [
+                Create(prefecture, "sapporo", "札幌（手稲山）", [13, 14, 15, 19, 21, 23, 25]),
+                Create(prefecture, "hakodate", "函館（御殿山）", [14, 15, 17, 18, 19, 23, 25]),
+                Create(prefecture, "asahikawa", "旭川（旭山）", [13, 14, 15, 19, 21, 23, 25])
+            ],
+            "yamagata" =>
+            [
+                Create(prefecture, "yamagata", "山形（西蔵王山）", [13, 14, 16, 18, 20, 22]),
+                Create(prefecture, "tsuruoka", "鶴岡（高館山）", [16, 18, 20, 27, 32, 34]),
+                Create(prefecture, "shinjo", "新庄（杢蔵山）", [15, 17, 19, 21, 23, 33])
+            ],
+            "fukushima" =>
+            [
+                Create(prefecture, "fukushima", "福島（笹森山）", [14, 15, 25, 26, 27, 29]),
+                Create(prefecture, "aizuwakamatsu", "会津若松", [14, 16, 18, 20, 22, 30])
+            ],
+            "tokyo" =>
+            [
+                Create(prefecture, "skytree", "東京スカイツリー", [16, 21, 22, 23, 24, 25, 26, 27]),
+                Create(prefecture, "hachioji", "八王子（ひよどり山）", [20, 21, 22, 23, 24, 25, 26, 27])
+            ],
+            "shizuoka" =>
+            [
+                Create(prefecture, "nihondaira", "静岡（日本平）", [13, 15, 17, 18, 19, 20]),
+                Create(prefecture, "hamamatsu", "浜松", [13, 20, 21, 22, 23, 25])
+            ],
+            "aichi" =>
+            [
+                Create(prefecture, "nagoya-seto", "名古屋（瀬戸）", [13, 18, 19, 20, 21, 22, 23]),
+                Create(prefecture, "toyohashi", "豊橋（本宮山）", [14, 15, 16, 17, 24, 26, 29])
+            ],
+            "tottori" =>
+            [
+                Create(prefecture, "tottori", "鳥取（毛無山）", [20, 29, 31, 36, 38]),
+                Create(prefecture, "kurayoshi", "倉吉（栗尾山）", [27, 29, 31, 36, 38])
+            ],
+            "kumamoto" =>
+            [
+                Create(prefecture, "kinpou", "熊本（金峰山）", [24, 28, 41, 42, 47, 49]),
+                Create(prefecture, "hitoyoshi", "人吉", [17, 18, 19, 20, 21, 25])
+            ],
+            "kagoshima" =>
+            [
+                Create(prefecture, "kagoshima", "鹿児島", [18, 29, 34, 36, 40, 42]),
+                Create(prefecture, "kanoya", "鹿屋", [17, 22, 41, 43, 47, 49])
+            ],
+            _ => [Create(prefecture, "main", $"{prefecture.DisplayName} 主要送信所", prefecture.CandidateChannelNumbers)]
+        };
+        lock (RegionCache)
+        {
+            if (RegionCache.TryGetValue(prefecture.Id, out IReadOnlyList<OneSegRegionPreset>? cached))
+                return cached;
+            RegionCache[prefecture.Id] = regions;
+            return regions;
+        }
+    }
+
+    private static OneSegRegionPreset Create(OneSegPrefecture prefecture,
+        string id, string displayName, IReadOnlyList<int> channels) =>
+        new($"{prefecture.Id}-{id}", displayName, prefecture.Id, channels);
+}
+
 public sealed record OneSegSettings(
     string PrefectureId = "tokyo",
     int Channel = 27,
@@ -159,16 +282,19 @@ public sealed record OneSegSettings(
     double CaptionFontSize = 16,
     bool CaptionBackgroundEnabled = true,
     string CaptionPosition = "Bottom",
-    bool EmergencyNotificationsEnabled = true)
+    bool EmergencyNotificationsEnabled = true,
+    string? RegionId = null)
 {
     public OneSegSettings Normalize()
     {
         OneSegPrefecture prefecture = OneSegPrefecture.Find(PrefectureId);
+        OneSegRegionPreset region = OneSegRegionPreset.Find(prefecture, RegionId);
         return this with
         {
             PrefectureId = prefecture.Id,
+            RegionId = region.Id,
             Channel = OneSegChannel.JapaneseUhfChannels.Any(item => item.Number == Channel)
-                ? Channel : prefecture.CandidateChannelNumbers[0],
+                ? Channel : region.CandidateChannelNumbers[0],
             RecordingDirectory = string.IsNullOrWhiteSpace(RecordingDirectory)
                 ? null : RecordingDirectory.Trim(),
             AutoRecordOnStart = AutoRecordOnStart,
@@ -181,7 +307,7 @@ public sealed record OneSegSettings(
             CaptionFontSize = 16,
             CaptionPosition = CaptionPosition is "Top" or "Center" or "Bottom"
                 ? CaptionPosition : "Bottom",
-            EmergencyNotificationsEnabled = true,
+            EmergencyNotificationsEnabled = EmergencyNotificationsEnabled,
             ScannedStations = (ScannedStations ?? []).Where(station =>
                     OneSegChannel.JapaneseUhfChannels.Any(channel =>
                         channel.Number == station.ChannelNumber) &&
@@ -286,7 +412,14 @@ public sealed record OneSegProgramInfo(
     string ProviderName,
     ushort PmtPid,
     ushort PcrPid,
-    IReadOnlyList<OneSegElementaryStream> Streams);
+    IReadOnlyList<OneSegElementaryStream> Streams)
+{
+    public bool IsEquivalentTo(OneSegProgramInfo other) =>
+        ReferenceEquals(this, other) ||
+        (ServiceId == other.ServiceId && ServiceName == other.ServiceName &&
+         ProviderName == other.ProviderName && PmtPid == other.PmtPid &&
+         PcrPid == other.PcrPid && Streams.SequenceEqual(other.Streams));
+}
 
 public sealed record OneSegEventInfo(
     ushort ServiceId,

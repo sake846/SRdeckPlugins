@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 
 // Owned by the standalone Meshtastic plugin assembly.
 namespace SRdeckPlugin.Meshtastic.Dsp;

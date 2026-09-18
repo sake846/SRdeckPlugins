@@ -10,7 +10,8 @@ internal sealed record AnalogReceiverOptions(
     float SquelchThresholdDbm = -80f,
     bool IsAfcEnabled = true,
     bool IsLowerSideband = false,
-    bool IsStereoEnabled = true);
+    bool IsStereoEnabled = true,
+    bool IsSsbCarrierFrequency = false);
 
 internal sealed record AnalogReceiverSnapshot(
     long FrequencyHz,
@@ -24,6 +25,7 @@ internal sealed record AnalogReceiverSnapshot(
     bool IsAfcEnabled,
     bool IsLowerSideband,
     bool IsStereoEnabled,
+    bool IsSsbCarrierFrequency,
     bool IsStereoDetected,
     float SignalLevelDbfs,
     float SignalLevelDbm,

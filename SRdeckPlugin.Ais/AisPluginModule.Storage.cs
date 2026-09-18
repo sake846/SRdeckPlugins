@@ -57,9 +57,6 @@ public sealed partial class AisPluginModule
         {
             string path = GetHistoryPath(context);
             ExportRecord[] loaded = PluginJsonLinesHistory.LoadAll<ExportRecord>(path)
-                .Where(item => settings.ChannelFilter == "both" ||
-                    (settings.ChannelFilter == "ais1" && item.Channel.Contains("1", StringComparison.OrdinalIgnoreCase)) ||
-                    (settings.ChannelFilter == "ais2" && item.Channel.Contains("2", StringComparison.OrdinalIgnoreCase)))
                 .TakeLast(settings.MaximumHistory).ToArray();
             if (File.Exists(path)) PluginJsonLinesHistory.Rewrite(path, loaded);
             lock (gate)
@@ -110,10 +107,6 @@ public sealed partial class AisPluginModule
         context.Logger.Log(PluginLogLevel.Warning, "ais.history.queue-full",
             "AIS decoded history queue is full; the record was not persisted.");
     }
-
-    private bool IsChannelSelectedForStorage(string channel) => settings.ChannelFilter == "both" ||
-        (settings.ChannelFilter == "ais1" && channel.Contains("1", StringComparison.OrdinalIgnoreCase)) ||
-        (settings.ChannelFilter == "ais2" && channel.Contains("2", StringComparison.OrdinalIgnoreCase));
 
     private PluginJsonLinesHistoryWriter<ExportRecord> CreateHistoryWriter(IPluginHostContext context)
     {

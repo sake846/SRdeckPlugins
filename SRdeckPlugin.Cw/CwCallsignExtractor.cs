@@ -14,14 +14,8 @@ public static partial class CwCallsignExtractor
             .ToArray();
     }
 
-    private static bool IsPlausible(string value)
-    {
-        if (value.Length is < 3 or > 12) return false;
-        if (!value.Any(char.IsAsciiLetterUpper) || !value.Any(char.IsAsciiDigit)) return false;
-        if (value.Count(character => character == '/') > 1) return false;
-        return value.All(character => char.IsAsciiLetterUpper(character) ||
-            char.IsAsciiDigit(character) || character == '/');
-    }
+    private static bool IsPlausible(string value) =>
+        value.Length is >= 3 and <= 12 && value.Any(char.IsAsciiLetterUpper) && value.Any(char.IsAsciiDigit);
 
     [GeneratedRegex(@"(?<![A-Z0-9/])[A-Z0-9]+(?:/[A-Z0-9]+)?(?![A-Z0-9/])",
         RegexOptions.CultureInvariant)]

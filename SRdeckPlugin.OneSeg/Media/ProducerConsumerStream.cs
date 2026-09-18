@@ -10,8 +10,7 @@ internal sealed class ProducerConsumerStream : Stream
     // turn into missing AAC packets. The consumer does not wait for this buffer
     // to fill, so the larger bound does not add playback latency.
     private const int QueueCapacityPackets = 4096;
-    private readonly BlockingCollection<byte[]> queue =
-        new(new ConcurrentQueue<byte[]>(), QueueCapacityPackets);
+    private readonly BlockingCollection<byte[]> queue = new(QueueCapacityPackets);
     private byte[]? current;
     private int currentOffset;
     private int disposed;

@@ -80,7 +80,6 @@ internal sealed partial class AnalogDemodulator
     private float _fmAfcAlpha;
     private float _fmPilotAlpha;
     private float _dcPole;
-    private float _dcDiffPole;
     private float _fmDeemphasisAlpha;
     private float _fmDeviationHz = 5_000f;
 
@@ -220,34 +219,18 @@ internal sealed partial class AnalogDemodulator
                 _ => throw new ArgumentOutOfRangeException(nameof(profileId), profileId, "Unknown analog profile.")
             };
 
-            float monoSample;
-            float leftSample = 0f;
-            float rightSample = 0f;
+            float monoSample = RemoveDc(ProcessCascade(_audioLowPass, demodulated));
+            float leftSample = monoSample;
+            float rightSample = monoSample;
 
             if (isStereoCapable)
             {
                 float diffSample = DemodulateFmStereoDiff(demodulated);
-                monoSample = ProcessCascade(_audioLowPass, demodulated);
-                monoSample = RemoveDc(monoSample);
-
                 if (IsStereoDetected)
                 {
-                    leftSample = monoSample + diffSample;
-                    rightSample = monoSample - diffSample;
-                    channels = 2;
+                    leftSample += diffSample;
+                    rightSample -= diffSample;
                 }
-                else
-                {
-                    leftSample = monoSample;
-                    rightSample = monoSample;
-                    channels = 2;
-                }
-            }
-            else
-            {
-                monoSample = ProcessCascade(_audioLowPass, demodulated);
-                monoSample = RemoveDc(monoSample);
-                channels = 1;
             }
 
             if (_audioResampler.TryProcess(
@@ -344,7 +327,6 @@ internal sealed partial class AnalogDemodulator
         _fmStereoAcquireSamples = Math.Max(1, (int)MathF.Ceiling(_processingSampleRateHz * 0.100f));
         _fmStereoReleaseSamples = Math.Max(1, (int)MathF.Ceiling(_processingSampleRateHz * 0.040f));
         _dcPole = MathF.Exp(-TwoPi * 30f / _processingSampleRateHz);
-        _dcDiffPole = _dcPole;
         _fmDeemphasisAlpha = 1f - MathF.Exp(-1f / (OutputSampleRateHz * 50e-6f));
         _fmDeviationHz = profileId == "fm" && bandwidthHz > 50_000 ? 75_000f : 5_000f;
 

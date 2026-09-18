@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using SRdeckPlugin.Meshtastic.Protocols;
 using SRdeckPlugin.Meshtastic.ViewModels;
 
@@ -141,7 +138,6 @@ public sealed class MeshtasticHistoryAnalyzer
     {
         int limit = Math.Max(0, displayLimit);
         return PreferDirectReceptions(messages.Where(item => item.IsTextMessage))
-            .OrderByDescending(item => item.ReceivedAt)
             .Take(limit)
             .ToArray();
     }

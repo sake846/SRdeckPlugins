@@ -1,6 +1,5 @@
 ﻿using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace SRdeckPlugin.Acars.Protocols;
 
@@ -31,11 +30,25 @@ public static partial class AcarsAdscDecoder
         decodedData = new AdscDecodedData();
         if (string.IsNullOrWhiteSpace(hexString)) return false;
 
-        string cleanHex = Regex.Replace(hexString.Trim(), @"[^A-Fa-f0-9]", string.Empty).ToUpperInvariant();
-        if (cleanHex.Length < 10) return false;
+        var cleanBuilder = new StringBuilder(hexString.Length);
+        foreach (char character in hexString)
+        {
+            if (Uri.IsHexDigit(character))
+            {
+                cleanBuilder.Append(char.ToUpperInvariant(character));
+                continue;
+            }
 
-        byte[]? bytes = HexToBytes(cleanHex);
-        if (bytes == null || bytes.Length < 5) return false;
+            // Formatted ARINC payloads may contain visual separators, but an
+            // arbitrary non-hex character must invalidate the whole vector.
+            if (char.IsWhiteSpace(character) || character is ':' or '-' or '/' or ',')
+                continue;
+            return false;
+        }
+        string cleanHex = cleanBuilder.ToString();
+        if (cleanHex.Length < 10 || (cleanHex.Length & 1) != 0) return false;
+
+        byte[] bytes = Convert.FromHexString(cleanHex);
 
         int index = 0;
         bool decodedAny = false;
@@ -97,6 +110,9 @@ public static partial class AcarsAdscDecoder
             }
         }
 
+        if (!decodedData.HasPosition && bytes.Length >= 8 &&
+            TryFallback24BitPosition(bytes, decodedData))
+            decodedAny = true;
         return decodedAny;
     }
 
@@ -308,15 +324,4 @@ public static partial class AcarsAdscDecoder
     private static bool IsValidLatLon(double lat, double lon) =>
         lat is >= -90.0 and <= 90.0 && lon is >= -180.0 and <= 180.0;
 
-    private static byte[]? HexToBytes(string hex)
-    {
-        if (hex.Length % 2 != 0) return null;
-        byte[] bytes = new byte[hex.Length / 2];
-        for (int i = 0; i < bytes.Length; i++)
-        {
-            if (!byte.TryParse(hex.Substring(i * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out bytes[i]))
-                return null;
-        }
-        return bytes;
-    }
 }

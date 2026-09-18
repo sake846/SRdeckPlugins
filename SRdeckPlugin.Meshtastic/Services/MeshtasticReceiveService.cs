@@ -1,11 +1,6 @@
-using System;
 using System.Buffers;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using SRdeck.DSP;
 using SRdeckPlugin.Meshtastic.Dsp;
 using SRdeckPlugin.Meshtastic.Protocols;
@@ -19,7 +14,7 @@ namespace SRdeckPlugin.Meshtastic.Services;
 /// shared ring promptly, then channelized on a dedicated worker so audio and
 /// display processing are not blocked by LoRa acquisition.
 /// </summary>
-public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
+public sealed partial class MeshtasticReceiveService : IDisposable
 {
     private const int QueueCapacity = 2048;
     private const int RingSafetyBlocks = 2;
@@ -464,17 +459,29 @@ public sealed partial class MeshtasticReceiveService : IMeshtasticReceiveService
                     }
 
                     if (!SpinWait.SpinUntil(
-                            () => Interlocked.Read(ref _processedBlocks) >= expectedProcessed,
+                            () => Interlocked.Read(ref _processedBlocks) >= expectedProcessed ||
+                                  cancellationToken.IsCancellationRequested ||
+                                  Volatile.Read(ref _disposed) != 0 ||
+                                  Volatile.Read(ref _workerFailure) is not null,
                             TimeSpan.FromSeconds(10)))
                     {
                         throw new TimeoutException(
                             "Meshtastic DSP warm-up timed out.");
                     }
+                    cancellationToken.ThrowIfCancellationRequested();
+                    ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+                    if (Volatile.Read(ref _workerFailure) is MeshtasticWorkerFailure failure)
+                        throw new InvalidOperationException(
+                            "Meshtastic DSP warm-up worker failed.", failure.Exception);
                 }
                 warmupCompleted = true;
             }
             finally
             {
+                long drainTarget = Interlocked.Read(ref _enqueuedWorkItems);
+                SpinWait.SpinUntil(
+                    () => Interlocked.Read(ref _completedWorkItems) >= drainTarget || _worker.IsCompleted,
+                    TimeSpan.FromSeconds(10));
                 if (warmupCompleted)
                 {
                     foreach (ChannelReceiver receiver in _channelReceivers)

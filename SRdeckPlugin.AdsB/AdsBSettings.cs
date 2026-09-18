@@ -8,7 +8,8 @@ public sealed record AdsBSettings(int MaximumAircraft = 500, int RetentionMinute
     int MaximumHistory = 10_000,
     bool SaveRawModeS = true,
     string HistoryRecordMode = "both",
-    bool EnableSuccessiveInterferenceCancellation = true)
+    bool EnableSuccessiveInterferenceCancellation = true,
+    bool BuzzerEnabled = true)
 {
     public AdsBSettings Normalize() => new(
         Math.Clamp(MaximumAircraft, 50, 5000),
@@ -18,7 +19,8 @@ public sealed record AdsBSettings(int MaximumAircraft = 500, int RetentionMinute
         MapState,
         Math.Clamp(MaximumTrailPoints, 10, 1000),
         Math.Clamp(MaximumHistory, 100, 1_000_000),
-        true,
-        "both",
-        EnableSuccessiveInterferenceCancellation);
+        SaveRawModeS,
+        HistoryRecordMode is "snapshot" or "message" or "both" ? HistoryRecordMode : "both",
+        EnableSuccessiveInterferenceCancellation,
+        BuzzerEnabled);
 }

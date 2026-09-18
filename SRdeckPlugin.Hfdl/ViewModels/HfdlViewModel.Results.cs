@@ -57,31 +57,6 @@ public sealed partial class HfdlViewModel
         }
         else
         {
-            string hfdlInputRateStr = value.InputSampleRateHz >= 1_000_000
-                ? $"{value.InputSampleRateHz / 1_000_000.0:F3} MS/s"
-                : $"{value.InputSampleRateHz / 1_000.0:N1} kS/s";
-            string hfdlWorkingRateStr = $"{HfdlReceiver.MonitorAudioSampleRateHz / 1_000.0:N1} kS/s";
-
-            double coarseRateHz = value.CoarseDecimationFactor > 1
-                ? value.InputSampleRateHz / (double)value.CoarseDecimationFactor
-                : value.InputSampleRateHz;
-            double fineRateHz = value.IntermediateSampleRateHz;
-
-            bool hasCoarseStage = value.CoarseDecimationFactor > 1 &&
-                Math.Abs(coarseRateHz - value.InputSampleRateHz) > 0.1 &&
-                Math.Abs(coarseRateHz - fineRateHz) > 0.1 &&
-                Math.Abs(coarseRateHz - HfdlReceiver.MonitorAudioSampleRateHz) > 0.1;
-
-            bool hasFineStage = value.FineDecimationFactor > 1 &&
-                Math.Abs(fineRateHz - coarseRateHz) > 0.1 &&
-                Math.Abs(fineRateHz - value.InputSampleRateHz) > 0.1 &&
-                Math.Abs(fineRateHz - HfdlReceiver.MonitorAudioSampleRateHz) > 0.1;
-
-            var stages = new List<string> { hfdlInputRateStr };
-            if (hasCoarseStage) stages.Add($"{coarseRateHz / 1_000.0:N1} kS/s");
-            if (hasFineStage) stages.Add($"{fineRateHz / 1_000.0:N1} kS/s");
-            stages.Add(hfdlWorkingRateStr);
-
             IntermediateRateText = SRdeckPlugin.Wpf.DiagnosticRateDisplay.FormatPath(
                 value.InputSampleRateHz,
                 hasHfdlIntermediateRate ? value.IntermediateSampleRateHz : 0,
@@ -209,12 +184,10 @@ public sealed partial class HfdlViewModel
                 value.SynchronizationCount < previous.Sync || value.ValidFrameCount < previous.Valid || value.RejectedFrameCount < previous.Rejected)
             {
                 diagnosticHistory.Clear();
-                lastSynchronizationAt = null;
                 lastValidFrameAt = null;
             }
             else
             {
-                if (value.SynchronizationCount > previous.Sync) lastSynchronizationAt = measuredAt;
                 if (value.ValidFrameCount > previous.Valid) lastValidFrameAt = measuredAt;
             }
         }
@@ -342,12 +315,6 @@ public sealed partial class HfdlViewModel
 
     private static string DisplayKey(string? value, string fallback) =>
         string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
-
-    private void NotifyTotals()
-    {
-        OnPropertyChanged(nameof(TotalFrames));
-        OnPropertyChanged(nameof(AcceptanceRate));
-    }
 
     private void NotifyChannelSelectionChanged()
     {

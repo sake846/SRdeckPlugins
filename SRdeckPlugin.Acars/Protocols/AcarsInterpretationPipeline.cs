@@ -35,12 +35,6 @@ internal sealed class AcarsInterpretationPipeline
         this.rules = rules;
     }
 
-    public bool TryInterpret(AcarsInterpretationInput input, out string summary)
-    {
-        bool matched = TryInterpret(input, out summary, out bool isInterpreted);
-        return matched && isInterpreted;
-    }
-
     public bool TryInterpret(
         AcarsInterpretationInput input,
         out string summary,

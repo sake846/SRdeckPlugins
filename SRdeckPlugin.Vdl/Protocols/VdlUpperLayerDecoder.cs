@@ -18,7 +18,7 @@ public sealed class VdlUpperLayerDecoder
             return new(frame, null, null, null, "AVLC", "AVLCヘッダーが短すぎます");
         AvlcPacket avlc = parsedAvlc;
 
-        if (avlc.Kind == AvlcFrameKind.Information && avlc.Information.AsSpan().StartsWith(new byte[] { 0xff, 0xff, 0x01 }))
+        if (avlc.Kind == AvlcFrameKind.Information && avlc.Information.AsSpan().StartsWith<byte>([0xff, 0xff, 0x01]))
         {
             if (!TryParseAcars(avlc.Information.AsSpan(3), out VdlAcarsMessage? parsedAcars) || parsedAcars is null)
                 return new(frame, avlc, null, null, "ACARS", "ACARSヘッダーまたは終端が不正です");

@@ -1,5 +1,3 @@
-using System;
-using System.Buffers.Binary;
 using System.Text;
 
 // Owned by the standalone Meshtastic plugin assembly.
@@ -189,35 +187,25 @@ public static class MeshtasticDataParser
         byte[] payload = [];
         bool wantResponse = false;
         uint? destination = null, source = null, requestId = null, replyId = null, emoji = null, bitfield = null;
-        int offset = 0;
+        var reader = new MeshtasticProtobufReader(bytes);
 
         try
         {
-            while (offset < bytes.Length)
+            while (reader.TryReadField(out int field, out int wireType))
             {
-                ulong tag = ReadVarint(bytes, ref offset);
-                int field = checked((int)(tag >> 3));
-                int wireType = (int)(tag & 7);
-                if (field == 0) throw new FormatException("protobuf field number is zero");
-
                 switch (field)
                 {
                     case 1 when wireType == 0:
-                        portNumber = checked((uint)ReadVarint(bytes, ref offset));
+                        portNumber = checked((uint)reader.ReadVarint(wireType));
                         break;
                     case 2 when wireType == 2:
-                        int length = checked((int)ReadVarint(bytes, ref offset));
-                        EnsureAvailable(bytes, offset, length);
-                        payload = bytes.Slice(offset, length).ToArray();
-                        offset += length;
+                        payload = reader.ReadBytes(wireType).ToArray();
                         break;
                     case 3 when wireType == 0:
-                        wantResponse = ReadVarint(bytes, ref offset) != 0;
+                        wantResponse = reader.ReadVarint(wireType) != 0;
                         break;
                     case >= 4 and <= 8 when wireType == 5:
-                        EnsureAvailable(bytes, offset, 4);
-                        uint fixedValue = BinaryPrimitives.ReadUInt32LittleEndian(bytes[offset..]);
-                        offset += 4;
+                        uint fixedValue = reader.ReadFixed32(wireType);
                         if (field == 4) destination = fixedValue;
                         else if (field == 5) source = fixedValue;
                         else if (field == 6) requestId = fixedValue;
@@ -225,10 +213,10 @@ public static class MeshtasticDataParser
                         else emoji = fixedValue;
                         break;
                     case 9 when wireType == 0:
-                        bitfield = checked((uint)ReadVarint(bytes, ref offset));
+                        bitfield = checked((uint)reader.ReadVarint(wireType));
                         break;
                     default:
-                        SkipField(bytes, ref offset, wireType);
+                        reader.Skip(wireType);
                         break;
                 }
             }
@@ -243,49 +231,5 @@ public static class MeshtasticDataParser
             error = exception.Message;
             return false;
         }
-    }
-
-    private static ulong ReadVarint(ReadOnlySpan<byte> bytes, ref int offset)
-    {
-        ulong result = 0;
-        for (int shift = 0; shift < 64; shift += 7)
-        {
-            EnsureAvailable(bytes, offset, 1);
-            byte value = bytes[offset++];
-            result |= (ulong)(value & 0x7F) << shift;
-            if ((value & 0x80) == 0) return result;
-        }
-        throw new FormatException("protobuf varint is too long");
-    }
-
-    private static void SkipField(ReadOnlySpan<byte> bytes, ref int offset, int wireType)
-    {
-        switch (wireType)
-        {
-            case 0:
-                ReadVarint(bytes, ref offset);
-                break;
-            case 1:
-                EnsureAvailable(bytes, offset, 8);
-                offset += 8;
-                break;
-            case 2:
-                int length = checked((int)ReadVarint(bytes, ref offset));
-                EnsureAvailable(bytes, offset, length);
-                offset += length;
-                break;
-            case 5:
-                EnsureAvailable(bytes, offset, 4);
-                offset += 4;
-                break;
-            default:
-                throw new FormatException($"unsupported protobuf wire type {wireType}");
-        }
-    }
-
-    private static void EnsureAvailable(ReadOnlySpan<byte> bytes, int offset, int count)
-    {
-        if (count < 0 || offset < 0 || offset > bytes.Length - count)
-            throw new FormatException("truncated protobuf data");
     }
 }

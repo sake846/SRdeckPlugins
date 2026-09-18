@@ -1,14 +1,5 @@
-using System.Buffers;
-using System.Buffers.Binary;
-using System.IO;
 using System.Text.Json;
-using System.Windows;
 using SRdeckPlugin.Contracts;
-using SRdeckPlugin.Sdk;
-using SRdeckPlugin.Analog.Dsp;
-using SRdeckPlugin.Wpf;
-using SRdeckPlugin.Analog.Views;
-using SRdeckPlugin.Analog.ViewModels;
 
 namespace SRdeckPlugin.Analog;
 
@@ -21,6 +12,7 @@ public sealed partial class AnalogPluginModule
     {
         ArgumentNullException.ThrowIfNull(update);
         AnalogReceiverOptions? changedOptions = null;
+        bool displayRequestChanged = false;
         await _receiverGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -36,9 +28,11 @@ public sealed partial class AnalogPluginModule
             }
             Volatile.Write(ref _receiverOptions, after);
             changedOptions = after;
+            displayRequestChanged = after.BandwidthHz != before.BandwidthHz;
             if (after.BandwidthHz != before.BandwidthHz ||
                 after.IsAfcEnabled != before.IsAfcEnabled ||
-                after.IsLowerSideband != before.IsLowerSideband)
+                after.IsLowerSideband != before.IsLowerSideband ||
+                after.IsSsbCarrierFrequency != before.IsSsbCarrierFrequency)
             {
                 _demodulator.Reset();
             }
@@ -58,6 +52,8 @@ public sealed partial class AnalogPluginModule
             await SaveSettingsAsync(
                 _selectedProfileId, changedOptions, cancellationToken).ConfigureAwait(false);
             NotifyReceiverStateChanged(force: true);
+            if (displayRequestChanged)
+                WaterfallDisplayRequestChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -81,16 +77,26 @@ public sealed partial class AnalogPluginModule
             Math.Max(96_000, options.BandwidthHz * 3),
             96_000,
             2_400_000);
+        bool isSsbCarrierFrequency = profileId == "ssb" && options.IsSsbCarrierFrequency;
+        long preferredCenterFrequencyHz = options.FrequencyHz;
+        if (isSsbCarrierFrequency)
+        {
+            long offsetHz = options.BandwidthHz / 2L;
+            preferredCenterFrequencyHz = options.IsLowerSideband
+                ? Math.Max(1L, options.FrequencyHz - offsetHz)
+                : Math.Min((long)int.MaxValue, options.FrequencyHz + offsetHz);
+        }
         var request = new PluginTuningRequest(
             $"analog.{profileId}",
             $"アナログ受信 {profileId.ToUpperInvariant()}",
             [new TuningTarget(options.FrequencyHz, options.BandwidthHz)],
-            options.FrequencyHz,
+            preferredCenterFrequencyHz,
             minimumSampleRate,
             options.StepHz,
             true,
             false,
-            PluginGainPreference.Automatic);
+            PluginGainPreference.Automatic,
+            PreservePreferredCenterFrequency: isSsbCarrierFrequency);
         PluginTuningResult result = await _hostContext.Tuning.RequestAsync(request, cancellationToken)
             .ConfigureAwait(false);
         _tuningStatus = result.Outcome switch
@@ -110,7 +116,11 @@ public sealed partial class AnalogPluginModule
         {
             AnalogReceiverOptions options = Volatile.Read(ref _receiverOptions);
             long stepHz = Math.Max(1, options.StepHz);
-            long targetFreqHz = result.TargetFrequencyHz > 0 ? result.TargetFrequencyHz : result.CenterFrequencyHz;
+            long targetFreqHz = result.TargetFrequencyHz > 0
+                ? result.TargetFrequencyHz
+                : options.IsSsbCarrierFrequency && _selectedProfileId == "ssb"
+                    ? result.CenterFrequencyHz + (options.IsLowerSideband ? options.BandwidthHz / 2L : -options.BandwidthHz / 2L)
+                    : result.CenterFrequencyHz;
             long roundedFreqHz = ((targetFreqHz + stepHz / 2) / stepHz) * stepHz;
             if (roundedFreqHz != options.FrequencyHz)
             {
@@ -127,12 +137,11 @@ public sealed partial class AnalogPluginModule
     }
 
     private void UpdateSignalLevel(
-        float inputLevelDbfs,
         float channelLevelDbfs,
         double blockDurationSeconds,
         AnalogReceiverOptions options)
     {
-        if (!float.IsFinite(inputLevelDbfs) || !float.IsFinite(channelLevelDbfs)) return;
+        if (!float.IsFinite(channelLevelDbfs)) return;
         long previousMeasurementTicks = Interlocked.Read(ref _lastInputMeasuredUtcTicks);
         float alpha = 1f - MathF.Exp(-(float)Math.Max(blockDurationSeconds, 0) / 0.25f);
         alpha = Math.Clamp(alpha, 0.01f, 1f);
@@ -145,7 +154,8 @@ public sealed partial class AnalogPluginModule
         bool hasCalibration = calibratedDbm is not null && float.IsFinite(calibratedDbm.Value);
         if (hasCalibration)
         {
-            float channelLevelDbm = calibratedDbm!.Value + channelLevelDbfs - inputLevelDbfs;
+            // Host telemetry already integrates the tuned receive bandwidth.
+            float channelLevelDbm = calibratedDbm!.Value;
             if (previousMeasurementTicks == 0 || !_hasCalibratedSignalLevelDbm)
                 _signalLevelDbm = channelLevelDbm;
             else
@@ -153,7 +163,7 @@ public sealed partial class AnalogPluginModule
         }
         Volatile.Write(ref _hasCalibratedSignalLevelDbm, hasCalibration);
         float signalLevelForSquelch = hasCalibration
-            ? calibratedDbm!.Value + channelLevelDbfs - inputLevelDbfs
+            ? calibratedDbm!.Value
             : channelLevelDbfs;
         bool wasOpen = _isSquelchOpen;
         _isSquelchOpen = !options.IsSquelchEnabled ||
@@ -216,7 +226,8 @@ public sealed partial class AnalogPluginModule
                     squelchDbm,
                     settings.IsAfcEnabled,
                     settings.IsLowerSideband,
-                    settings.IsStereoEnabled));
+                    settings.IsStereoEnabled,
+                    settings.IsSsbCarrierFrequency));
             }
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException)
@@ -259,7 +270,8 @@ public sealed partial class AnalogPluginModule
                     options.SquelchThresholdDbm,
                     options.IsAfcEnabled,
                     options.IsLowerSideband,
-                    options.IsStereoEnabled))),
+                    options.IsStereoEnabled,
+                    options.IsSsbCarrierFrequency))),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -289,10 +301,12 @@ public sealed partial class AnalogPluginModule
         bool IsAfcEnabled = true,
         bool IsLowerSideband = false,
         bool IsStereoEnabled = true,
+        bool IsSsbCarrierFrequency = false,
         float? SquelchThresholdDbfs = null);
 
     public async ValueTask ResetSettingsAsync()
     {
+        bool displayRequestChanged = false;
         await _profileGate.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -309,9 +323,12 @@ public sealed partial class AnalogPluginModule
                     await _receiverGate.WaitAsync().ConfigureAwait(false);
                     try
                     {
+                        int previousBandwidthHz = Volatile.Read(ref _receiverOptions).BandwidthHz;
                         _selectedProfileId = "am";
                         Volatile.Write(ref _receiverOptions,
                             ValidateOptions(new AnalogReceiverOptions()));
+                        displayRequestChanged =
+                            Volatile.Read(ref _receiverOptions).BandwidthHz != previousBandwidthHz;
                         ResetDemodulatorState();
                         _pretriggerBuffer.Reset();
                         _isSquelchOpen = true;
@@ -338,5 +355,7 @@ public sealed partial class AnalogPluginModule
         }
         NotifyReceiverStateChanged(force: true);
         SelectedProfileChanged?.Invoke(this, EventArgs.Empty);
+        if (displayRequestChanged)
+            WaterfallDisplayRequestChanged?.Invoke(this, EventArgs.Empty);
     }
 }

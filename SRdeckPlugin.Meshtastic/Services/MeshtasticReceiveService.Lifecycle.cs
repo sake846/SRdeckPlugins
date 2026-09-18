@@ -1,6 +1,3 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace SRdeckPlugin.Meshtastic.Services;
 
@@ -114,6 +111,11 @@ public sealed partial class MeshtasticReceiveService
         _lastProcessedSequence = -1;
         _lastProcessedSampleEnd = -1;
         _lastProcessedConfigurationVersion = -1;
+        lock (_recentPacketsGate)
+        {
+            _recentPackets.Clear();
+            _recentPacketOrder.Clear();
+        }
         Interlocked.Increment(ref _ringGeneration);
         Volatile.Write(ref _targetInPassband, 0);
     }

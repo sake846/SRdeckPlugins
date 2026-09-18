@@ -43,8 +43,22 @@ public sealed record AdsBMessage(
 
 public sealed record AdsBPosition(double Latitude, double Longitude, DateTimeOffset ReceivedAt);
 
+public sealed record AdsBMessageRow
+{
+    public DateTimeOffset ReceivedAt { get; init; }
+    public string Icao { get; init; } = string.Empty;
+    public string Callsign { get; init; } = string.Empty;
+    public string Kind { get; init; } = string.Empty;
+    public string Summary { get; init; } = string.Empty;
+    public int? AltitudeFeet { get; init; }
+    public double? SpeedKnots { get; init; }
+}
+
 public sealed class AircraftState
 {
+    // ponytail: fields are values or immutable strings; deep-copy any future mutable references.
+    internal AircraftState Copy() => (AircraftState)MemberwiseClone();
+
     public required string Icao { get; init; }
     public string Callsign { get; set; } = string.Empty;
     public int? AltitudeFeet { get; set; }

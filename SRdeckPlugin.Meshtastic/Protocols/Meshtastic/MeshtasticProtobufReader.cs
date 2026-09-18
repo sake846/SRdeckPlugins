@@ -1,4 +1,3 @@
-using System;
 using System.Buffers.Binary;
 
 // Owned by the standalone Meshtastic plugin assembly.
@@ -98,11 +97,14 @@ internal ref struct MeshtasticProtobufReader
     private ulong ReadVarint()
     {
         ulong result = 0;
-        for (int shift = 0; shift < 64; shift += 7)
+        for (int index = 0; index < 10; index++)
         {
             EnsureAvailable(1);
             byte value = _bytes[_offset++];
-            result |= (ulong)(value & 0x7F) << shift;
+            if (index == 9 && (value & 0x7E) != 0)
+                throw new OverflowException("protobuf varint exceeds 64 bits");
+
+            result |= (ulong)(value & 0x7F) << (index * 7);
             if ((value & 0x80) == 0) return result;
         }
         throw new FormatException("protobuf varint is too long");

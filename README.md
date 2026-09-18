@@ -25,8 +25,8 @@ For detailed plugin specifications, reception procedures, and development guides
 
 ## Release metadata
 
-- Release version: `1.0.4`
-- Required SRdeck platform package version: `1.0.4`
+- Release version: `1.0.5`
+- Required SRdeck platform package version: `1.0.5`
 
 ## Building
 
@@ -36,7 +36,7 @@ For detailed plugin specifications, reception procedures, and development guides
 - .NET 10 SDK (`dotnet --info` should show an installed 10.x SDK)
 - Git
 - The four SRdeck platform NuGet packages with the same version as
-  `1.0.4`
+  `1.0.5`
 
 The plugin projects consume `SRdeckPlugin.Contracts`, `SRdeckPlugin.Sdk`,
 `SRdeckPlugin.Wpf`, and `SRdeckCore.SignalProcessing` as NuGet packages. The
@@ -46,8 +46,8 @@ mix packages from different SRdeck releases.
 ### 1. Clone the matching source snapshot
 
 ```powershell
-$releaseVersion = "1.0.4"
-$platformVersion = "1.0.4"
+$releaseVersion = "1.0.5"
+$platformVersion = "1.0.5"
 
 git clone --branch "v$releaseVersion" --depth 1 https://github.com/sake846/SRdeckPlugins.git
 Set-Location .\SRdeckPlugins
@@ -58,10 +58,10 @@ Set-Location .\SRdeckPlugins
 Create a local package directory and download these four files from the
 matching [SRdeck release](https://github.com/sake846/SRdeck/releases):
 
-- `SRdeckCore.SignalProcessing.1.0.4.nupkg`
-- `SRdeckPlugin.Contracts.1.0.4.nupkg`
-- `SRdeckPlugin.Sdk.1.0.4.nupkg`
-- `SRdeckPlugin.Wpf.1.0.4.nupkg`
+- `SRdeckCore.SignalProcessing.1.0.5.nupkg`
+- `SRdeckPlugin.Contracts.1.0.5.nupkg`
+- `SRdeckPlugin.Sdk.1.0.5.nupkg`
+- `SRdeckPlugin.Wpf.1.0.5.nupkg`
 
 If GitHub CLI is installed, the files can be downloaded automatically:
 

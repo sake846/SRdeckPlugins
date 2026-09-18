@@ -290,7 +290,7 @@ public sealed partial class HfdlPluginModule
             string basePath = Path.Combine(directory,
                 $"hfdl-analysis-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}-{selectedChannel.FrequencyHz}");
             string path = $"{basePath}.wav";
-            using (var capture = new HfdlIqCapture(path, snapshot.SampleRateHz,
+            using (var capture = new BoundedIqWavWriter(path, snapshot.SampleRateHz,
                 TimeSpan.FromSeconds(IqCaptureDurationSeconds)))
             {
                 capture.WritePcm(snapshot.RawInterleaved);

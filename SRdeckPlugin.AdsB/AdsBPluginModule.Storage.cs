@@ -24,8 +24,15 @@ public sealed partial class AdsBPluginModule
         DateTimeOffset cutoff = now.AddMinutes(-settings.RetentionMinutes);
         foreach (string key in aircraft.Where(item => item.Value.LastSeen < cutoff).Select(item => item.Key).ToArray())
             aircraft.Remove(key);
-        while (aircraft.Count > settings.MaximumAircraft)
-            aircraft.Remove(aircraft.MinBy(item => item.Value.LastSeen).Key);
+        int excess = aircraft.Count - settings.MaximumAircraft;
+        if (excess > 0)
+        {
+            foreach (string key in aircraft.OrderBy(item => item.Value.LastSeen)
+                         .Take(excess).Select(item => item.Key).ToArray())
+            {
+                aircraft.Remove(key);
+            }
+        }
     }
 
     private void PruneStoredHistory()
@@ -146,7 +153,7 @@ public sealed partial class AdsBPluginModule
         IPluginHostContext? context = host;
         if (context is null) return;
         AircraftState[] snapshot;
-        lock (gate) snapshot = aircraft.Values.Select(Clone).ToArray();
+        lock (gate) snapshot = aircraft.Values.Select(value => value.Copy()).ToArray();
         long valid = receiver.ValidFrameCount;
         long rejected = receiver.RejectedFrameCount;
         long sicRecovered = receiver.SicRecoveredFrameCount;
@@ -237,34 +244,6 @@ public sealed partial class AdsBPluginModule
             ? $"ADS-B は 2.0 MS/s 以上が必要です（現在 {sampleRateHz / 1_000_000.0:F1} MS/s）。受信を停止して RATE を 2 MS/s 以上に変更してください。"
             : "ADS-B は 2.0 MS/s 以上が必要です。受信を停止して RATE を 2 MS/s 以上に変更してください。";
 
-    private static AircraftState Clone(AircraftState value) => new()
-    {
-        Icao = value.Icao,
-        Callsign = value.Callsign,
-        AltitudeFeet = value.AltitudeFeet,
-        BarometricAltitudeFeet = value.BarometricAltitudeFeet,
-        GeometricAltitudeFeet = value.GeometricAltitudeFeet,
-        GroundSpeedKnots = value.GroundSpeedKnots,
-        TrackDegrees = value.TrackDegrees,
-        AirspeedKnots = value.AirspeedKnots,
-        HeadingDegrees = value.HeadingDegrees,
-        SelectedAltitudeFeet = value.SelectedAltitudeFeet,
-        SelectedHeadingDegrees = value.SelectedHeadingDegrees,
-        SelectedHeadingIsTrack = value.SelectedHeadingIsTrack,
-        EmergencyState = value.EmergencyState,
-        Squawk = value.Squawk,
-        AdsBVersion = value.AdsBVersion,
-        NacP = value.NacP,
-        Sil = value.Sil,
-        NicA = value.NicA,
-        NicBaro = value.NicBaro,
-        IsOnGround = value.IsOnGround,
-        VerticalRateFeetPerMinute = value.VerticalRateFeetPerMinute,
-        Latitude = value.Latitude,
-        Longitude = value.Longitude,
-        LastSeen = value.LastSeen,
-        MessageCount = value.MessageCount
-    };
     private static string Csv(string? value) => $"\"{(value ?? string.Empty).Replace("\"", "\"\"")}\"";
     private static string Invariant(object? value) => value is IFormattable item ? item.ToString(null, CultureInfo.InvariantCulture) : string.Empty;
     private static PluginResultSeverity EmergencySeverity(string? emergency) => emergency switch
@@ -306,7 +285,7 @@ public sealed partial class AdsBPluginModule
             string basePath = Path.Combine(directory,
                 $"adsb-analysis-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}-1090MHz");
             string path = $"{basePath}.wav";
-            using (var capture = new AdsBIqCapture(path, snapshot.SampleRateHz, TimeSpan.FromSeconds(3)))
+            using (var capture = new BoundedIqWavWriter(path, snapshot.SampleRateHz, TimeSpan.FromSeconds(3)))
             {
                 capture.WritePcm(snapshot.RawInterleaved);
             }

@@ -237,7 +237,7 @@ public sealed partial class AdsBPluginModule
             Longitude = position?.Longitude,
             Raw = Convert.ToHexString(frame.Bytes)
         });
-        host?.Notifications.PlayShortReceptionAlarm();
+        if (settings.BuzzerEnabled) host?.Notifications.PlayShortReceptionAlarm();
         ResultPublished?.Invoke(this, new(new PluginResultSummary(
             $"{message.Icao}-{frame.SamplePosition}", Descriptor.Id, frame.ReceivedAt, frame.StreamId,
             message.Kind, EmergencySeverity(message.EmergencyState), message.Icao, message.Summary,

@@ -308,11 +308,6 @@ public sealed partial class CwPluginModule
     private void ResetMonitorAudioState()
     {
         monitorAudioPhase = 0;
-        ResetMonitorAudioLevel();
-    }
-
-    private void ResetMonitorAudioLevel()
-    {
         monitorPower = 0;
         monitorGain = 1f;
     }

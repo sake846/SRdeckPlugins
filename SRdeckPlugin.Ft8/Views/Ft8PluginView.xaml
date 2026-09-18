@@ -301,9 +301,9 @@
                 </Grid>
                 </Border>
                 <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows"/>
-                <controls:TimelineDetailPane Grid.Row="3" DetailContent="{Binding SelectedTimelineReception}"
+                <controls:SelectionDetailPane Grid.Row="3" DetailContent="{Binding SelectedTimelineReception}"
                     EmptyText="時系列の復号結果を選択すると、スロットとデコード詳細が表示されます">
-                    <controls:TimelineDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="4,2">
+                    <controls:SelectionDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="4,2">
                         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding FromCall}" Style="{DynamicResource PluginIdentityTextStyle}"/>
                             <TextBlock Grid.Column="1" Text="{Binding LocalReceivedAt, StringFormat={}{0:yyyy/MM/dd HH:mm:ss.fff}}" Style="{DynamicResource PluginTimelineDetailTimestampStyle}"/>
@@ -318,8 +318,8 @@
                         <Expander Header="ペイロード (HEX)" Style="{DynamicResource PluginTimelineExpanderStyle}">
                             <TextBlock Text="{Binding PayloadHex}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap"/>
                         </Expander>
-                    </StackPanel></DataTemplate></controls:TimelineDetailPane.DetailContentTemplate>
-                </controls:TimelineDetailPane>
+                    </StackPanel></DataTemplate></controls:SelectionDetailPane.DetailContentTemplate>
+                </controls:SelectionDetailPane>
                 </Grid>
             </TabItem>
 

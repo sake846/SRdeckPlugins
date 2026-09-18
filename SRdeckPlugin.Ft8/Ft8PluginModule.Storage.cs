@@ -79,8 +79,7 @@ public sealed partial class Ft8PluginModule
     {
         IPluginHostContext? context = host;
         if (context is null) return;
-        Ft8Reception persisted = settings.SavePayload ? reception : reception with { Payload = [] };
-        if (historyWriter?.TryEnqueue(persisted) == true) return;
+        if (historyWriter?.TryEnqueue(reception) == true) return;
         context.Logger.Log(PluginLogLevel.Warning, "ft8.history.queue-full",
             "FT8 decoded history queue is full; the record was not persisted.");
     }
@@ -205,7 +204,7 @@ public sealed partial class Ft8PluginModule
                 $"ft8-analysis-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}-" +
                 $"{selectedBand.Band}-{selectedBand.DialFrequencyHz}");
             string path = $"{basePath}.wav";
-            using (var capture = new Ft8IqCapture(
+            using (var capture = new BoundedIqWavWriter(
                        path, snapshot.SampleRateHz, TimeSpan.FromSeconds(CaptureDurationSeconds)))
             {
                 capture.WritePcm(snapshot.RawInterleaved);

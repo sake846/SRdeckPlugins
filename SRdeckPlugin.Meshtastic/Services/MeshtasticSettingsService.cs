@@ -1,4 +1,4 @@
-using System;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using SRdeckPlugin.Contracts;
@@ -29,13 +29,18 @@ internal sealed record PersistedPluginSettings(
 /// </summary>
 internal sealed class MeshtasticSettingsService
 {
+    private const int MinimumHistoryDisplayLimit = 100;
+    private const int MaximumHistoryDisplayLimit = 100_000;
+    private const int MinimumHistoryRetentionDays = 1;
+    private const int MaximumHistoryRetentionDays = 3650;
+    private readonly object _gate = new();
     private IPluginHostContext? _hostContext;
 
     public string PluginDataDirectory => _hostContext?.Settings.DataDirectory ?? DefaultPluginDataDirectory;
     public string StatePath => Path.Combine(PluginDataDirectory, "state.json");
     public string HistoryPath => Path.Combine(PluginDataDirectory, "meshtastic-history.jsonl");
 
-    private static string DefaultPluginDataDirectory
+    internal static string DefaultPluginDataDirectory
     {
         get
         {
@@ -46,51 +51,140 @@ internal sealed class MeshtasticSettingsService
         }
     }
 
-    public void Attach(IPluginHostContext hostContext) => _hostContext = hostContext;
+    public void Attach(IPluginHostContext hostContext)
+    {
+        ArgumentNullException.ThrowIfNull(hostContext);
+        lock (_gate) _hostContext = hostContext;
+    }
 
-    public void Detach() => _hostContext = null;
+    public void Detach()
+    {
+        lock (_gate) _hostContext = null;
+    }
 
     public PersistedPluginSettings Load()
     {
-        try
+        lock (_gate)
         {
-            PluginSettingsDocument? document = _hostContext?.Settings.LoadAsync()
-                .AsTask().GetAwaiter().GetResult();
-            if (document is not null)
+            try
             {
-                PersistedPluginSettings? persisted = JsonSerializer.Deserialize<PersistedPluginSettings>(document.Json);
-                if (persisted is not null) return persisted;
+                PluginSettingsDocument? document = _hostContext?.Settings.LoadAsync()
+                    .AsTask().GetAwaiter().GetResult();
+                if (document is not null)
+                {
+                    PersistedPluginSettings? persisted = JsonSerializer.Deserialize<PersistedPluginSettings>(document.Json);
+                    if (persisted is not null) return Normalize(persisted);
+                }
             }
-        }
-        catch (Exception exception)
-        {
-            _hostContext?.Logger.Log(
-                PluginLogLevel.Warning,
-                "settings.load",
-                "Meshtastic plugin settings could not be loaded; default settings will be used.",
-                exception);
-        }
+            catch (Exception exception)
+            {
+                _hostContext?.Logger.Log(
+                    PluginLogLevel.Warning,
+                    "settings.load",
+                    "Meshtastic plugin settings could not be loaded; default settings will be used.",
+                    exception);
+            }
 
-        return new PersistedPluginSettings(
-            MeshtasticRegion.JP,
-            MeshtasticModemPreset.LongFast,
-            true,
-            MeshtasticJpLongFastProfile.DefaultChannel,
-            MeshtasticJpLongFastProfile.DefaultChannel.ToString(),
-            MeshtasticJpLongFastProfile.DefaultChannel.ToString(),
-            10_000,
-            90);
+            return CreateDefaults();
+        }
     }
 
     public void Save(PersistedPluginSettings settings)
     {
-        if (_hostContext is null) return;
+        ArgumentNullException.ThrowIfNull(settings);
+        lock (_gate)
+        {
+            if (_hostContext is null) return;
 
-        string json = JsonSerializer.Serialize(settings);
-        _hostContext.Settings.SaveAsync(new PluginSettingsDocument(
-                1,
-                json))
-            .AsTask().GetAwaiter().GetResult();
+            try
+            {
+                string json = JsonSerializer.Serialize(Normalize(settings));
+                _hostContext.Settings.SaveAsync(new PluginSettingsDocument(1, json))
+                    .AsTask().GetAwaiter().GetResult();
+            }
+            catch (Exception exception)
+            {
+                _hostContext.Logger.Log(
+                    PluginLogLevel.Warning,
+                    "settings.save-failed",
+                    "Meshtastic plugin settings could not be saved; the previous persisted value will be retained.",
+                    exception);
+            }
+        }
+    }
+
+    private static PersistedPluginSettings CreateDefaults() => new(
+        MeshtasticRegion.JP,
+        MeshtasticModemPreset.LongFast,
+        true,
+        MeshtasticJpLongFastProfile.DefaultChannel,
+        MeshtasticJpLongFastProfile.DefaultChannel.ToString(CultureInfo.InvariantCulture),
+        MeshtasticJpLongFastProfile.DefaultChannel.ToString(CultureInfo.InvariantCulture),
+        10_000,
+        90);
+
+    private static PersistedPluginSettings Normalize(PersistedPluginSettings settings)
+    {
+        // An empty object is what System.Text.Json produces for a first-run or
+        // pre-schema document. Treat it as a missing document instead of
+        // letting false/zero defaults reach the ViewModel.
+        if (settings.Region == MeshtasticRegion.JP &&
+            settings.ModemPreset == MeshtasticModemPreset.LongFast &&
+            !settings.IsDiscoveryMode && settings.RadioChannel == 0 &&
+            string.IsNullOrWhiteSpace(settings.RadioChannels250) &&
+            string.IsNullOrWhiteSpace(settings.RadioChannels125) &&
+            settings.HistoryDisplayLimit == 0 && settings.HistoryRetentionDays == 0 &&
+            settings.LastSpecifiedModemPreset == MeshtasticModemPreset.LongFast)
+        {
+            return CreateDefaults();
+        }
+
+        MeshtasticRegion region = Enum.IsDefined(settings.Region) ? settings.Region : MeshtasticRegion.JP;
+        MeshtasticModemPreset preset = Enum.IsDefined(settings.ModemPreset)
+            ? settings.ModemPreset
+            : MeshtasticModemPreset.LongFast;
+        MeshtasticModemPreset lastSpecifiedPreset =
+            Enum.IsDefined(settings.LastSpecifiedModemPreset) &&
+            !MeshtasticJpLongFastProfile.IsAutoSf(settings.LastSpecifiedModemPreset)
+                ? settings.LastSpecifiedModemPreset
+                : MeshtasticModemPreset.LongFast;
+
+        MeshtasticRegionProfile regionProfile = MeshtasticJpLongFastProfile.GetRegion(region);
+        MeshtasticLoRaProfile profile = MeshtasticJpLongFastProfile.GetProfile(preset);
+        int maximumChannel = Math.Max(1, regionProfile.GetMaximumChannel(profile.BandwidthHz));
+        int channel = settings.RadioChannel <= 0
+            ? Math.Clamp(MeshtasticJpLongFastProfile.DefaultChannel, 1, maximumChannel)
+            : Math.Clamp(settings.RadioChannel, 1, maximumChannel);
+        string fallbackChannel = channel.ToString(CultureInfo.InvariantCulture);
+
+        return settings with
+        {
+            Region = region,
+            ModemPreset = preset,
+            RadioChannel = channel,
+            RadioChannels250 = NormalizeChannels(settings.RadioChannels250, regionProfile.GetMaximumChannel(250_000), fallbackChannel),
+            RadioChannels125 = NormalizeChannels(settings.RadioChannels125, regionProfile.GetMaximumChannel(125_000), fallbackChannel),
+            HistoryDisplayLimit = Math.Clamp(settings.HistoryDisplayLimit, MinimumHistoryDisplayLimit, MaximumHistoryDisplayLimit),
+            HistoryRetentionDays = Math.Clamp(settings.HistoryRetentionDays, MinimumHistoryRetentionDays, MaximumHistoryRetentionDays),
+            LastSpecifiedModemPreset = lastSpecifiedPreset
+        };
+    }
+
+    private static string NormalizeChannels(string? text, int maximumChannel, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(text) || maximumChannel < 1) return fallback;
+        var channels = new System.Collections.Generic.SortedSet<int>();
+        foreach (string part in text.Split([',', ' ', '\u3001'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!int.TryParse(part, NumberStyles.Integer, CultureInfo.InvariantCulture, out int channel) ||
+                channel < 1 || channel > maximumChannel)
+                return fallback;
+            channels.Add(channel);
+        }
+
+        return channels.Count == 0
+            ? fallback
+            : string.Join(',', channels.Select(value => value.ToString(CultureInfo.InvariantCulture)));
     }
 
 }

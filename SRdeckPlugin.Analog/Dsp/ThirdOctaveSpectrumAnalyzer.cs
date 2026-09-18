@@ -22,12 +22,13 @@ internal sealed class ThirdOctaveSpectrumAnalyzer
     private readonly float[] real = new float[FftSize];
     private readonly float[] imaginary = new float[FftSize];
     private readonly float[] pending = new float[FftSize];
-    private float[] published = Enumerable.Repeat(FloorDb, NominalCenters.Length).ToArray();
+    private float[] published = new float[NominalCenters.Length];
     private int pendingCount;
     private double windowSum;
 
     public ThirdOctaveSpectrumAnalyzer()
     {
+        Array.Fill(published, FloorDb);
         for (int index = 0; index < FftSize; index++)
         {
             float value = 0.5f - (0.5f * MathF.Cos(2 * MathF.PI * index / (FftSize - 1)));
@@ -35,8 +36,6 @@ internal sealed class ThirdOctaveSpectrumAnalyzer
             windowSum += value;
         }
     }
-
-    public static ReadOnlySpan<float> CenterFrequenciesHz => NominalCenters;
 
     public void Process(ReadOnlySpan<float> interleavedSamples, int channels, int sampleRateHz)
     {
@@ -57,13 +56,15 @@ internal sealed class ThirdOctaveSpectrumAnalyzer
         }
     }
 
-    public float[] GetLevelsDb() => Volatile.Read(ref published).ToArray();
+    public float[] GetLevelsDb() => Volatile.Read(ref published);
 
     public void Reset()
     {
         pendingCount = 0;
         Array.Clear(pending);
-        Volatile.Write(ref published, Enumerable.Repeat(FloorDb, NominalCenters.Length).ToArray());
+        float[] reset = new float[NominalCenters.Length];
+        Array.Fill(reset, FloorDb);
+        Volatile.Write(ref published, reset);
     }
 
     private void Analyze(int sampleRateHz)

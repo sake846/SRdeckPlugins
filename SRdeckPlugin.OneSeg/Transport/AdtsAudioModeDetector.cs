@@ -1,4 +1,4 @@
-﻿namespace SRdeckPlugin.OneSeg.Transport;
+namespace SRdeckPlugin.OneSeg.Transport;
 
 /// <summary>
 /// Detects the ARIB AAC coding mode from ADTS fixed headers. ARIB STD-B32
@@ -17,7 +17,7 @@ internal sealed class AdtsAudioModeDetector
 
     public byte? Push(ReadOnlySpan<byte> value)
     {
-        if (!value.IsEmpty) pending.AddRange(value.ToArray());
+        if (!value.IsEmpty) pending.AddRange(value);
         byte? componentType = DetectComponentType(
             System.Runtime.InteropServices.CollectionsMarshal.AsSpan(pending));
         if (componentType is byte detected)

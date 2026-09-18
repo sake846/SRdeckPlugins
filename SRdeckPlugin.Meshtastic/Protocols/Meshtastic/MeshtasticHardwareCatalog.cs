@@ -1,6 +1,6 @@
-using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using SRdeckPlugin.Meshtastic.Services;
 
 namespace SRdeckPlugin.Meshtastic.Protocols;
 
@@ -12,6 +12,11 @@ internal static class MeshtasticHardwareCatalog
     private static string? _configuredDataDirectory;
     private static Lazy<IReadOnlyDictionary<uint, string>> ProductNames =
         new(() => LoadProductNames(null));
+    private static readonly Lazy<IReadOnlyDictionary<uint, string>> DefaultProductNames = new(() =>
+    {
+        using Stream stream = typeof(MeshtasticHardwareCatalog).Assembly.GetManifestResourceStream(ResourceName)!;
+        return ReadProductNames(stream);
+    });
 
     public static void ConfigureDataDirectory(string dataDirectory)
     {
@@ -49,28 +54,35 @@ internal static class MeshtasticHardwareCatalog
 
     private static IReadOnlyDictionary<uint, string> LoadProductNames(string? configuredDataDirectory)
     {
-        string dataDirectory = configuredDataDirectory ?? GetDefaultPluginDataDirectory();
+        string dataDirectory = configuredDataDirectory ?? MeshtasticSettingsService.DefaultPluginDataDirectory;
         string path = Path.Combine(dataDirectory, FileName);
         try
         {
             EnsureCatalogFile(path);
             using FileStream stream = File.OpenRead(path);
-            HardwareCatalogFile? catalog = JsonSerializer.Deserialize<HardwareCatalogFile>(
-                stream,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            Dictionary<uint, string> productNames = [];
-            foreach (HardwareModelDefinition model in catalog?.Models ?? [])
-            {
-                if (!string.IsNullOrWhiteSpace(model.ProductName))
-                    productNames[model.Id] = model.ProductName.Trim();
-            }
-
-            return productNames;
+            return ReadProductNames(stream);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
         {
             return new Dictionary<uint, string>();
         }
+    }
+
+    public static string GetDefaultProductName(uint hardwareId) =>
+        DefaultProductNames.Value.TryGetValue(hardwareId, out string? name)
+            ? name : $"不明なハードウェア ({hardwareId})";
+
+    private static IReadOnlyDictionary<uint, string> ReadProductNames(Stream stream)
+    {
+        HardwareCatalogFile? catalog = JsonSerializer.Deserialize<HardwareCatalogFile>(
+            stream, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Dictionary<uint, string> productNames = [];
+        foreach (HardwareModelDefinition model in catalog?.Models ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(model.ProductName))
+                productNames[model.Id] = model.ProductName.Trim();
+        }
+        return productNames;
     }
 
     private static void EnsureCatalogFile(string path)
@@ -94,14 +106,6 @@ internal static class MeshtasticHardwareCatalog
         {
             // The built-in catalog remains available if AppData cannot be written.
         }
-    }
-
-    private static string GetDefaultPluginDataDirectory()
-    {
-        string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return string.IsNullOrWhiteSpace(appData)
-            ? Path.Combine(AppContext.BaseDirectory, "SRdeck", "plugins", "meshtastic")
-            : Path.Combine(appData, "SRdeck", "plugins", "meshtastic");
     }
 
     private sealed class HardwareCatalogFile

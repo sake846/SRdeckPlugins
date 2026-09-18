@@ -79,7 +79,7 @@ internal sealed class RecentAisFrameCache(
         nextPrunePosition = checked(position + pruneIntervalSamples);
     }
 
-    private static ulong Hash(ReadOnlySpan<byte> payload)
+    internal static ulong Hash(ReadOnlySpan<byte> payload)
     {
         const ulong offset = 14_695_981_039_346_656_037UL;
         const ulong prime = 1_099_511_628_211UL;

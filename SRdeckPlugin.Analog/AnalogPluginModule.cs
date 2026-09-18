@@ -1,7 +1,5 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.IO;
-using System.Text.Json;
 using System.Windows;
 using SRdeckPlugin.Contracts;
 using SRdeckPlugin.Sdk;
@@ -22,7 +20,9 @@ public sealed partial class AnalogPluginModule :
     IPluginProfileProvider,
     IPluginViewProvider,
     IPluginProcessingDiagnosticsProvider,
-    IPluginProcessingWarmup
+    IPluginProcessingWarmup,
+    IWaterfallDisplayProvider,
+    IWaterfallDisplayRequestChangedProvider
 {
     private static readonly IReadOnlyList<PluginProfileDescriptor> SupportedProfiles =
     [
@@ -74,7 +74,8 @@ public sealed partial class AnalogPluginModule :
         new Version(1, 0),
         new Version(1, 0),
         PluginCapabilities.IqConsumer | PluginCapabilities.AudioProducer |
-        PluginCapabilities.MainView | PluginCapabilities.SettingsView | PluginCapabilities.Headless,
+        PluginCapabilities.MainView | PluginCapabilities.SettingsView |
+        PluginCapabilities.WaterfallDisplay | PluginCapabilities.Headless,
         "SRdeck",
         "GPL-3.0",
         IsEnabledByDefault: true);
@@ -87,6 +88,10 @@ public sealed partial class AnalogPluginModule :
     public PluginIqPreferences IqPreferences { get; } = new(3);
     public IReadOnlyList<PluginProfileDescriptor> Profiles => SupportedProfiles;
     public string? SelectedProfileId => _selectedProfileId;
+    public WaterfallDisplayRequest WaterfallDisplayRequest => new(
+        WaterfallTimeMode.ThreeMinutes,
+        Volatile.Read(ref _receiverOptions).BandwidthHz * 10);
+    public event EventHandler? WaterfallDisplayRequestChanged;
     internal event EventHandler? SelectedProfileChanged;
     internal event EventHandler? ReceiverStateChanged;
 
@@ -138,12 +143,15 @@ public sealed partial class AnalogPluginModule :
             throw new InvalidOperationException("The analog profile cannot change while streaming.");
         if (!SupportedProfiles.Any(profile => string.Equals(profile.Id, profileId, StringComparison.Ordinal)))
             throw new ArgumentException($"Unknown analog profile '{profileId}'.", nameof(profileId));
+        int previousBandwidthHz = _receiverOptions.BandwidthHz;
         _selectedProfileId = profileId;
         _receiverOptions = ApplyProfileDefaults(_receiverOptions, profileId);
         ResetDemodulatorState();
         _pretriggerBuffer.Reset();
         await SaveSettingsAsync(cancellationToken).ConfigureAwait(false);
         SelectedProfileChanged?.Invoke(this, EventArgs.Empty);
+        if (_receiverOptions.BandwidthHz != previousBandwidthHz)
+            WaterfallDisplayRequestChanged?.Invoke(this, EventArgs.Empty);
     }
 
     internal async ValueTask ChangeProfileFromViewAsync(
@@ -279,7 +287,6 @@ public sealed partial class AnalogPluginModule :
                         channelSamples.AsSpan(0, channelSampleCount), channelSampleRateHz);
                 }
                 UpdateSignalLevel(
-                    _demodulator.InputLevelDbfs,
                     _demodulator.ChannelLevelDbfs,
                     block.Samples.Length / (double)inputRate,
                     options);

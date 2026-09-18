@@ -1,4 +1,3 @@
-using System;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
@@ -28,18 +27,19 @@ public static class MeshtasticChannelDecryptor
     public static bool TryDecrypt(MeshtasticRadioPacket packet, string channelName, ReadOnlySpan<byte> key, out byte[] plaintext)
     {
         ArgumentNullException.ThrowIfNull(packet);
-        if (packet.ChannelHash != CalculateChannelHash(channelName, key) || packet.EncryptedPayload.Length == 0)
+        if (key.Length is not (16 or 24 or 32) ||
+            packet.ChannelHash != CalculateChannelHash(channelName, key) ||
+            packet.EncryptedPayload.Length == 0)
         {
             plaintext = [];
             return false;
         }
 
-        Span<byte> counter = stackalloc byte[16];
-        BinaryPrimitives.WriteUInt64LittleEndian(counter, packet.PacketId);
-        BinaryPrimitives.WriteUInt32LittleEndian(counter[8..], packet.From);
+        byte[] counterBlock = new byte[16];
+        BinaryPrimitives.WriteUInt64LittleEndian(counterBlock, packet.PacketId);
+        BinaryPrimitives.WriteUInt32LittleEndian(counterBlock.AsSpan(8), packet.From);
 
         plaintext = new byte[packet.EncryptedPayload.Length];
-        byte[] counterBlock = counter.ToArray();
         byte[] keyStream = new byte[16];
 
         using Aes aes = Aes.Create();

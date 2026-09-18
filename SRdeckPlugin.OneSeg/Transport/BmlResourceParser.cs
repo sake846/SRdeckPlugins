@@ -105,9 +105,10 @@ internal static class BmlResourceParser
     private static int IndexOf(byte[] source, ReadOnlySpan<byte> value, int start)
     {
         if (value.IsEmpty) return start;
-        for (int offset = Math.Max(0, start); offset + value.Length <= source.Length; offset++)
-            if (source.AsSpan(offset, value.Length).SequenceEqual(value)) return offset;
-        return -1;
+        start = Math.Max(0, start);
+        if (start > source.Length) return -1;
+        int offset = source.AsSpan(start).IndexOf(value);
+        return offset < 0 ? -1 : start + offset;
     }
 
     private static string? HeaderValue(string headers, string name)

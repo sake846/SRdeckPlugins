@@ -43,6 +43,10 @@ public static class ModeSCrc
 
         uint receivedSyndrome = ComputeSyndrome(message);
 
+        foreach (float confidence in bitConfidence)
+            if (!float.IsFinite(confidence) || confidence < 0 || confidence > 1)
+                return false;
+
         Span<int> candidateStorage = stackalloc int[8];
         int candidateCount = 0;
         for (int bit = 0; bit < ExtendedSquitterBits; bit++)

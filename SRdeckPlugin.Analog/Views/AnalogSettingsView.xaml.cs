@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using SRdeckPlugin.Contracts;
+using SRdeckPlugin.Wpf;
 
 namespace SRdeckPlugin.Analog.Views;
 
@@ -127,7 +127,7 @@ public partial class AnalogSettingsView : UserControl
             SynchronizeControls(forceFrequencyText: true);
             return;
         }
-        if (!FrequencyInputParser.TryParse(FrequencyTextBox.Text, unit, out long frequencyHz))
+        if (!SRdeckPlugin.Wpf.FrequencyInputParser.TryParse(FrequencyTextBox.Text, unit, out long frequencyHz))
         {
             StatusTextBlock.Text = "受信周波数を1～2,147,483,647 Hzで入力してください。";
             return;
@@ -176,7 +176,18 @@ public partial class AnalogSettingsView : UserControl
         if (_isSynchronizing || _plugin is null || SidebandComboBox.SelectedItem is not ComboBoxItem item ||
             !bool.TryParse(item.Tag?.ToString(), out bool lower)) return;
         await RunChangeAsync(() => _plugin.UpdateReceiverOptionsAsync(
-            options => options with { IsLowerSideband = lower }, requestTuning: false));
+            options => options with { IsLowerSideband = lower }, requestTuning: true));
+    }
+
+    private async void SsbCarrierFrequencyCheckBox_OnChanged(object sender, RoutedEventArgs e)
+    {
+        if (_isSynchronizing || _plugin is null) return;
+        await RunChangeAsync(() => _plugin.UpdateReceiverOptionsAsync(
+            options => options with
+            {
+                IsSsbCarrierFrequency = SsbCarrierFrequencyCheckBox.IsChecked == true
+            },
+            requestTuning: true));
     }
 
     private async void MuteButton_OnChanged(object sender, RoutedEventArgs e)
@@ -216,6 +227,30 @@ public partial class AnalogSettingsView : UserControl
             synchronizeSquelchText: true);
     }
 
+    private void SquelchThresholdSlider_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        e.Handled = true;
+        int delta = e.Delta > 0 ? 1 : -1;
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            delta *= 5;
+        }
+        _ = AdjustSquelchThresholdAsync(delta);
+    }
+
+    internal async ValueTask AdjustSquelchThresholdAsync(float deltaDbm)
+    {
+        if (_plugin is null) return;
+        AnalogReceiverSnapshot snapshot = _plugin.GetReceiverSnapshot();
+        float current = snapshot.SquelchThresholdDbm;
+        float newThreshold = Math.Clamp(MathF.Round(current + deltaDbm), -150f, 0f);
+        if (Math.Abs(newThreshold - current) < 0.001f) return;
+
+        await _plugin.UpdateReceiverOptionsAsync(
+            options => options with { SquelchThresholdDbm = newThreshold },
+            requestTuning: false);
+    }
+
     private void SquelchThresholdTextBox_OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (!_isSynchronizing && !SquelchThresholdTextBox.IsKeyboardFocusWithin)
@@ -250,7 +285,7 @@ public partial class AnalogSettingsView : UserControl
         if (_plugin is null) return;
         if (!FrequencyInputParser.TryParseSquelchThreshold(SquelchThresholdTextBox.Text, out float threshold))
         {
-            StatusTextBlock.Text = "SQしきい値を-150～0 dBm（未校正時はdBFS、例: -80 や 80）で入力してください。";
+            StatusTextBlock.Text = "SQしきい値を-150～0 dBm（例: -80 や 80）で入力してください。";
             SynchronizeControls(forceSquelchText: true);
             return;
         }
@@ -304,6 +339,8 @@ public partial class AnalogSettingsView : UserControl
             SidebandLabel.Visibility = isSsb ? Visibility.Visible : Visibility.Collapsed;
             SidebandComboBox.Visibility = isSsb ? Visibility.Visible : Visibility.Collapsed;
             SidebandComboBox.SelectedIndex = snapshot.IsLowerSideband ? 1 : 0;
+            SsbCarrierFrequencyCheckBox.Visibility = isSsb ? Visibility.Visible : Visibility.Collapsed;
+            SsbCarrierFrequencyCheckBox.IsChecked = snapshot.IsSsbCarrierFrequency;
             bool isWideFm = _plugin.SelectedProfileId == "fm" && snapshot.BandwidthHz > 50_000;
             AfcButton.IsEnabled = _plugin.SelectedProfileId == "fm";
             AfcButton.IsChecked = snapshot.IsAfcEnabled;
@@ -325,8 +362,24 @@ public partial class AnalogSettingsView : UserControl
                 if (forceFrequencyText)
                     _isFrequencyEditing = false;
             }
-            StatusTextBlock.Text = snapshot.TuningStatus;
-            StatusTextBlock.ToolTip = snapshot.TuningStatus;
+            string profile = _plugin.Profiles.FirstOrDefault(
+                candidate => candidate.Id == _plugin.SelectedProfileId)?.DisplayName ??
+                _plugin.SelectedProfileId?.ToUpperInvariant() ?? "—";
+            string frequency = snapshot.FrequencyHz > 0
+                ? $"{snapshot.FrequencyHz / 1_000_000.0:F3} MHz"
+                : "周波数未設定";
+            string summary = $"周波数: {frequency} , 方式: {profile} , 帯域: {snapshot.BandwidthHz / 1_000.0:F1} kHz";
+            if (snapshot.IsMuted)
+                summary += " , ミュート";
+            if (_plugin.SelectedProfileId == "fm" && snapshot.IsAfcEnabled)
+                summary += " , AFC";
+            if (snapshot.IsSquelchEnabled)
+            {
+                string squelch = snapshot.IsSquelchOpen ? "OPEN" : "CLOSED";
+                summary += $" , スケルチ状態: {squelch}  {snapshot.SquelchThresholdDbm:F0} dBm";
+            }
+            StatusTextBlock.Text = summary;
+            StatusTextBlock.ToolTip = $"{summary}\n{snapshot.TuningStatus}";
             CaptureStatusTextBlock.Text = _plugin.CaptureStatus;
         }
         finally
@@ -385,6 +438,7 @@ public partial class AnalogSettingsView : UserControl
         StepComboBox.IsEnabled = enabled;
         BandwidthComboBox.IsEnabled = enabled;
         SidebandComboBox.IsEnabled = enabled;
+        SsbCarrierFrequencyCheckBox.IsEnabled = enabled && _plugin?.SelectedProfileId == "ssb";
         SquelchThresholdSlider.IsEnabled = enabled && (SquelchButton.IsChecked == true);
         SquelchThresholdTextBox.IsEnabled = enabled;
         SquelchDownButton.IsEnabled = enabled;

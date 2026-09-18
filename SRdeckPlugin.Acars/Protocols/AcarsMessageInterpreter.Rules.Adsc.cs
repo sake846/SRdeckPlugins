@@ -40,6 +40,7 @@ public static partial class AcarsMessageInterpreter
                     adscInfo.Add($"位置: {latH}{Math.Abs(adsc.Latitude!.Value):00.0000}° {lonH}{Math.Abs(adsc.Longitude!.Value):000.0000}°");
                 }
                 if (adsc.AltitudeFeet.HasValue) adscInfo.Add($"高度: {adsc.AltitudeFeet:N0} ft");
+                if (!string.IsNullOrEmpty(adsc.NextWaypointInfo)) adscInfo.Add(adsc.NextWaypointInfo);
                 if (adsc.GroundSpeedKnots.HasValue) adscInfo.Add($"対地速度: {adsc.GroundSpeedKnots} kt");
                 if (adsc.TrueTrackDegrees.HasValue) adscInfo.Add($"方位: {adsc.TrueTrackDegrees}°");
                 if (adsc.WindDirectionDegrees.HasValue && adsc.WindSpeedKnots.HasValue)
@@ -70,6 +71,7 @@ public static partial class AcarsMessageInterpreter
             char lonH = adscStandalone.Longitude >= 0 ? 'E' : 'W';
             List<string> parts = [$"位置: {latH}{Math.Abs(adscStandalone.Latitude!.Value):00.0000}° {lonH}{Math.Abs(adscStandalone.Longitude!.Value):000.0000}°"];
             if (adscStandalone.AltitudeFeet.HasValue) parts.Add($"高度: {adscStandalone.AltitudeFeet:N0} ft");
+            if (!string.IsNullOrEmpty(adscStandalone.NextWaypointInfo)) parts.Add(adscStandalone.NextWaypointInfo);
             if (adscStandalone.GroundSpeedKnots.HasValue) parts.Add($"速度: {adscStandalone.GroundSpeedKnots} kt");
             if (adscStandalone.WindDirectionDegrees.HasValue && adscStandalone.WindSpeedKnots.HasValue)
                 parts.Add($"風: {adscStandalone.WindDirectionDegrees}° {adscStandalone.WindSpeedKnots}kt");
@@ -160,6 +162,7 @@ public static partial class AcarsMessageInterpreter
                         adscInfo.Add($"位置: {latH}{Math.Abs(adscUniv.Latitude!.Value):00.0000}° {lonH}{Math.Abs(adscUniv.Longitude!.Value):000.0000}°");
                     }
                     if (adscUniv.AltitudeFeet.HasValue) adscInfo.Add($"高度: {adscUniv.AltitudeFeet:N0} ft");
+                    if (!string.IsNullOrEmpty(adscUniv.NextWaypointInfo)) adscInfo.Add(adscUniv.NextWaypointInfo);
                     if (adscUniv.GroundSpeedKnots.HasValue) adscInfo.Add($"対地速度: {adscUniv.GroundSpeedKnots} kt");
                     if (adscUniv.WindDirectionDegrees.HasValue && adscUniv.WindSpeedKnots.HasValue)
                         adscInfo.Add($"風向風速: {adscUniv.WindDirectionDegrees}° {adscUniv.WindSpeedKnots}kt");

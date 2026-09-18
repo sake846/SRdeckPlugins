@@ -84,9 +84,6 @@ public sealed partial class Ft8PluginModule : PluginModuleBase, IIqBlockConsumer
             settings = settings.Normalize();
             if (wasAudioEnabled && !settings.MonitorAudioEnabled) host?.Audio.Reset();
             PruneStoredHistory();
-            lock (gate)
-                if (history.Count > settings.MaximumHistory)
-                    history.RemoveRange(0, history.Count - settings.MaximumHistory);
             PersistSettings();
         };
         viewModel.MaximumStationsChanged = value => { settings = settings with { MaximumStations = value }; PersistSettings(); };

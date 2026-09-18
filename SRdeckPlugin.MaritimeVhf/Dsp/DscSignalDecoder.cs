@@ -34,7 +34,7 @@ internal sealed class DscSignalDecoder
         Guid streamId,
         long samplePosition)
     {
-        for (int index = 0; index < samples.Length; index++) audio.Add(samples[index]);
+        audio.AddRange(samples);
         samplesSinceDecode += samples.Length;
         if (audio.Count > MaximumBufferedSamples)
             audio.RemoveRange(0, audio.Count - MaximumBufferedSamples);
@@ -74,9 +74,9 @@ internal sealed class DscSignalDecoder
             bool[] bits = DemodulateBits(samples, phase);
             for (int bitStart = 0; bitStart + 240 <= bits.Length; bitStart++)
             {
-                if (!TryAcquirePhasing(bits, bitStart, out int dxParity,
+                if (!TryAcquirePhasing(bits, bitStart,
                         out int firstFormatCharacter)) continue;
-                if (!TryReconstructLogical(bits, bitStart, dxParity, firstFormatCharacter,
+                if (!TryReconstructLogical(bits, bitStart, firstFormatCharacter,
                         out byte[] logical, out int finalRawCharacter)) continue;
                 if (!DscProtocolParser.TryParse(logical, receivedAt, streamId,
                         samplePosition, out message)) continue;
@@ -116,10 +116,8 @@ internal sealed class DscSignalDecoder
     private static bool TryAcquirePhasing(
         ReadOnlySpan<bool> bits,
         int bitStart,
-        out int dxParity,
         out int firstFormatCharacter)
     {
-        dxParity = 0;
         firstFormatCharacter = 0;
         for (int candidateDxParity = 0; candidateDxParity <= 1; candidateDxParity++)
         {
@@ -139,7 +137,6 @@ internal sealed class DscSignalDecoder
                 !TryReadSymbol(bits, bitStart, firstFormat + 2, out byte format2) ||
                 format1 != format2 || !DscProtocolParser.IsFormatSpecifier(format1) || score < 9)
                 continue;
-            dxParity = candidateDxParity;
             firstFormatCharacter = firstFormat;
             return true;
         }
@@ -149,12 +146,10 @@ internal sealed class DscSignalDecoder
     private static bool TryReconstructLogical(
         ReadOnlySpan<bool> bits,
         int bitStart,
-        int dxParity,
         int firstFormatCharacter,
         out byte[] logical,
         out int finalRawCharacter)
     {
-        _ = dxParity;
         var values = new List<byte>(48);
         finalRawCharacter = 0;
         for (int rawCharacter = firstFormatCharacter;

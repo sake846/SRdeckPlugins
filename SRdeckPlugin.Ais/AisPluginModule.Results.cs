@@ -32,9 +32,6 @@ public sealed partial class AisPluginModule
             records = persisted.Where(item =>
                 (request.From is null || item.ReceivedAt >= request.From) &&
                 (request.To is null || item.ReceivedAt <= request.To))
-                    .Where(item => settings.ChannelFilter == "both" ||
-                        (settings.ChannelFilter == "ais1" && item.Channel.Contains("1", StringComparison.OrdinalIgnoreCase)) ||
-                        (settings.ChannelFilter == "ais2" && item.Channel.Contains("2", StringComparison.OrdinalIgnoreCase)))
                     .TakeLast(settings.MaximumHistory).ToArray();
         }
         else
@@ -129,7 +126,6 @@ public sealed partial class AisPluginModule
 
     private void Publish(AisFrame frame, AisMessage message)
     {
-        bool saveRecord = IsChannelSelectedForStorage(frame.Channel);
         string displayName;
         lock (gate)
         {
@@ -151,13 +147,10 @@ public sealed partial class AisPluginModule
                 message.PositionAccurate, message.UtcSecond, message.AidType, message.Summary,
                 settings.SaveRawFrames ? Convert.ToHexString(frame.Payload) : string.Empty,
                 frame.StreamId, frame.SamplePosition, frame.SignalQuality);
-            if (saveRecord)
-            {
-                history.Add(record);
-                if (history.Count > settings.MaximumHistory)
-                    history.RemoveRange(0, history.Count - settings.MaximumHistory);
-                AppendHistory(record);
-            }
+            history.Add(record);
+            if (history.Count > settings.MaximumHistory)
+                history.RemoveRange(0, history.Count - settings.MaximumHistory);
+            AppendHistory(record);
         }
         var row = new AisMessageRow(frame.ReceivedAt.ToLocalTime(), frame.Channel, message.Mmsi,
             message.MessageType, message.Kind, displayName, message.Summary,
@@ -216,8 +209,9 @@ public sealed partial class AisPluginModule
                     messageDrainPosted = false;
                     return;
                 }
-                batch = pendingMessages.Take(100).ToArray();
-                foreach (AisMessageRow _ in batch) pendingMessages.Dequeue();
+                batch = new AisMessageRow[Math.Min(100, pendingMessages.Count)];
+                for (int index = 0; index < batch.Length; index++)
+                    batch[index] = pendingMessages.Dequeue();
             }
             foreach (AisMessageRow row in batch) viewModel.AddMessage(row);
         }

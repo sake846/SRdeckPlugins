@@ -64,6 +64,7 @@ public sealed partial class AdsBViewModel : ObservableObject
     private bool saveRawModeS = true;
     private string historyRecordMode = "both";
     private bool enableSuccessiveInterferenceCancellation = true;
+    private bool buzzerEnabled = true;
     private int maximumTrailPoints = 300;
     private double? receiverLatitude;
     private double? receiverLongitude;
@@ -97,8 +98,6 @@ public sealed partial class AdsBViewModel : ObservableObject
         RefreshFilteredHistory();
         RefreshFilteredAircraft();
     }
-    partial void OnValidFramesChanged(long value) => NotifyTotals();
-    partial void OnRejectedFramesChanged(long value) => NotifyTotals();
     partial void OnInputSampleRateHzChanged(int value)
     {
         OnPropertyChanged(nameof(InputSampleRateText));
@@ -173,7 +172,7 @@ public sealed partial class AdsBViewModel : ObservableObject
     [RelayCommand]
     private void StartCapture() => CaptureRequested?.Invoke();
 
-    internal Action<int, int, int, int, double?, double?, bool>? SettingsChanged { get; set; }
+    internal Action<AdsBSettings>? SettingsChanged { get; set; }
     internal Action? ClearRequested { get; set; }
     internal Action? CaptureRequested { get; set; }
     internal Action<bool>? SaveRawModeSChanged { get; set; }
@@ -205,6 +204,11 @@ public sealed partial class AdsBViewModel : ObservableObject
     public int RetentionMinutes { get => retentionMinutes; set { retentionMinutes = Math.Clamp(value, 1, 240); SettingsUpdated(); } }
     public int MaximumHistory { get => maximumHistory; set { maximumHistory = Math.Clamp(value, 100, 1_000_000); SettingsUpdated(); } }
     public bool SaveRawModeS { get => saveRawModeS; set { if (saveRawModeS == value) return; saveRawModeS=value; SaveRawModeSChanged?.Invoke(value); OnPropertyChanged(); } }
+    public bool BuzzerEnabled
+    {
+        get => buzzerEnabled;
+        set { if (SetProperty(ref buzzerEnabled, value)) SettingsUpdated(); }
+    }
     public string HistoryRecordMode { get => historyRecordMode; set { string n=value is "snapshot" or "message" or "both" ? value : "both"; if(historyRecordMode==n)return; historyRecordMode=n; HistoryRecordModeChanged?.Invoke(n); OnPropertyChanged(); } }
     public bool EnableSuccessiveInterferenceCancellation
     {
@@ -229,28 +233,20 @@ public sealed partial class AdsBViewModel : ObservableObject
     }
     public double? ReceiverLatitude { get => receiverLatitude; set { receiverLatitude = value is >= -90 and <= 90 ? value : null; SettingsUpdated(); } }
     public double? ReceiverLongitude { get => receiverLongitude; set { receiverLongitude = value is >= -180 and <= 180 ? value : null; SettingsUpdated(); } }
-    internal void SynchronizeSettings(int aircraftLimit, int retention, int historyLimit, int trailPoints,
-        double? latitude, double? longitude, bool saveRaw = true, string recordMode = "both",
-        bool enableSic = true)
+    internal void SynchronizeSettings(AdsBSettings settings)
     {
-        maximumAircraft = aircraftLimit;
-        retentionMinutes = retention;
-        maximumHistory = historyLimit;
-        saveRawModeS = saveRaw;
-        historyRecordMode = recordMode;
-        enableSuccessiveInterferenceCancellation = enableSic;
-        maximumTrailPoints = trailPoints;
-        receiverLatitude = latitude;
-        receiverLongitude = longitude;
-        OnPropertyChanged(nameof(MaximumAircraft));
-        OnPropertyChanged(nameof(RetentionMinutes));
-        OnPropertyChanged(nameof(MaximumHistory));
-        OnPropertyChanged(nameof(SaveRawModeS)); OnPropertyChanged(nameof(HistoryRecordMode));
-        OnPropertyChanged(nameof(EnableSuccessiveInterferenceCancellation));
-        OnPropertyChanged(nameof(MaximumTrailPoints));
-        OnPropertyChanged(nameof(ReceiverLatitude));
-        OnPropertyChanged(nameof(ReceiverLongitude));
-        OnPropertyChanged(nameof(SettingStatus));
+        AdsBSettings normalized = settings.Normalize();
+        maximumAircraft = normalized.MaximumAircraft;
+        retentionMinutes = normalized.RetentionMinutes;
+        maximumHistory = normalized.MaximumHistory;
+        saveRawModeS = normalized.SaveRawModeS;
+        historyRecordMode = normalized.HistoryRecordMode;
+        enableSuccessiveInterferenceCancellation = normalized.EnableSuccessiveInterferenceCancellation;
+        buzzerEnabled = normalized.BuzzerEnabled;
+        maximumTrailPoints = normalized.MaximumTrailPoints;
+        receiverLatitude = normalized.ReceiverLatitude;
+        receiverLongitude = normalized.ReceiverLongitude;
+        OnPropertyChanged(string.Empty);
     }
 
     public void Apply(IReadOnlyCollection<AircraftState> states, long valid, long rejected,
@@ -458,20 +454,20 @@ public sealed partial class AdsBViewModel : ObservableObject
 
     [ObservableProperty] private AircraftRow? _selectedAircraft;
 
-    private void NotifyTotals()
-    {
-        OnPropertyChanged(nameof(TotalFrames));
-        OnPropertyChanged(nameof(AcceptanceRate));
-    }
     private void SettingsUpdated()
     {
-        OnPropertyChanged(nameof(MaximumAircraft)); OnPropertyChanged(nameof(RetentionMinutes));
-        OnPropertyChanged(nameof(MaximumHistory));
-        OnPropertyChanged(nameof(MaximumTrailPoints));
-        OnPropertyChanged(nameof(ReceiverLatitude)); OnPropertyChanged(nameof(ReceiverLongitude));
-        OnPropertyChanged(nameof(SettingStatus));
-        SettingsChanged?.Invoke(maximumAircraft, retentionMinutes, maximumHistory, maximumTrailPoints,
-            receiverLatitude, receiverLongitude, enableSuccessiveInterferenceCancellation);
+        OnPropertyChanged(string.Empty);
+        SettingsChanged?.Invoke(new AdsBSettings(
+            MaximumAircraft: maximumAircraft,
+            RetentionMinutes: retentionMinutes,
+            ReceiverLatitude: receiverLatitude,
+            ReceiverLongitude: receiverLongitude,
+            MaximumTrailPoints: maximumTrailPoints,
+            MaximumHistory: maximumHistory,
+            SaveRawModeS: saveRawModeS,
+            HistoryRecordMode: historyRecordMode,
+            EnableSuccessiveInterferenceCancellation: enableSuccessiveInterferenceCancellation,
+            BuzzerEnabled: buzzerEnabled));
     }
 
     public Func<ValueTask>? ResetSettingsRequested { get; set; }

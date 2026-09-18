@@ -66,6 +66,7 @@ public partial class MeshtasticViewModel
         }
         if (failure is not null) MeshtasticLastFailureStatus = failure;
         ApplyMeshtasticStatistics(_meshtasticReceiveService.Snapshot);
+        _meshtasticDiagnosticCache = null;
         OnPropertyChanged(nameof(MeshtasticDiagnosticStatusKind));
         OnPropertyChanged(nameof(MeshtasticDiagnosticStatusText));
         OnPropertyChanged(nameof(MeshtasticDiagnosticPhase));

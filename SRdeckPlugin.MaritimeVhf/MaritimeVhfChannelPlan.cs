@@ -17,8 +17,7 @@ public static class MaritimeVhfChannelPlan
         Channels.Single(channel => channel.Number == "16");
 
     public static MaritimeVhfChannel? Find(int channelNumber) =>
-        Channels.FirstOrDefault(channel =>
-            int.TryParse(channel.Number, out int value) && value == channelNumber);
+        Find(channelNumber.ToString("00"));
 
     public static MaritimeVhfChannel? Find(string? channelNumber) =>
         Channels.FirstOrDefault(channel =>
@@ -27,7 +26,7 @@ public static class MaritimeVhfChannelPlan
     private static IReadOnlyList<MaritimeVhfChannel> Build()
     {
         var channels = new List<MaritimeVhfChannel>(55);
-        for (int frequencyIndex = 0; frequencyIndex <= 29; frequencyIndex++)
+        for (int frequencyIndex = 0; frequencyIndex <= 57; frequencyIndex++)
         {
             int number = frequencyIndex % 2 == 0
                 ? 60 + frequencyIndex / 2
@@ -35,20 +34,8 @@ public static class MaritimeVhfChannelPlan
             if (number == 70) continue;
             long ship = 156_025_000L + frequencyIndex * 25_000L;
             long coast = 160_625_000L + frequencyIndex * 25_000L;
-            bool simplex = number is 6 or 7 or 8 or 9 or 10 or 11 or 12 or 13 or 14 or
-                15 or 16 or 17 or 67 or 68 or 69 or 71 or 72 or 73 or 74;
-            channels.Add(new(number.ToString("00"), ship, simplex ? ship : coast,
-                UsageFor(number)));
-        }
-
-        for (int frequencyIndex = 30; frequencyIndex <= 57; frequencyIndex++)
-        {
-            int number = frequencyIndex % 2 == 0
-                ? 60 + frequencyIndex / 2
-                : 1 + frequencyIndex / 2;
-            long ship = 156_025_000L + frequencyIndex * 25_000L;
-            long coast = 160_625_000L + frequencyIndex * 25_000L;
-            bool simplex = number is 16 or 17 or 75 or 76 or 77 or 87 or 88;
+            bool simplex = number is >= 6 and <= 17 or >= 67 and <= 69 or
+                >= 71 and <= 77 or 87 or 88;
             channels.Add(new(number.ToString("00"), ship, simplex ? ship : coast,
                 UsageFor(number), number is 75 or 76));
         }

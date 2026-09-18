@@ -47,7 +47,7 @@ internal sealed partial class MpegTsAnalyzer
             captionGroups.Remove(key);
             return;
         }
-        group.Data.AddRange(data.ToArray());
+        group.Data.AddRange(data);
         group.NextLink++;
         if (link != lastLink) return;
         captionGroups.Remove(key);
@@ -284,7 +284,9 @@ internal sealed partial class MpegTsAnalyzer
         return high * 10 + low;
     }
 
-    private static bool CrcIsValid(ReadOnlySpan<byte> section)
+    private static bool CrcIsValid(ReadOnlySpan<byte> section) => ComputeMpegCrc(section) == 0;
+
+    internal static uint ComputeMpegCrc(ReadOnlySpan<byte> section)
     {
         uint crc = 0xffffffff;
         foreach (byte value in section)
@@ -292,7 +294,7 @@ internal sealed partial class MpegTsAnalyzer
             crc ^= (uint)value << 24;
             for (int bit = 0; bit < 8; bit++) crc = (crc & 0x80000000) != 0 ? (crc << 1) ^ 0x04c11db7 : crc << 1;
         }
-        return crc == 0;
+        return crc;
     }
 
     private sealed class SectionAssembler
@@ -308,14 +310,14 @@ internal sealed partial class MpegTsAnalyzer
                 int position = 1;
                 if (buffer.Count > 0 && pointer > 0 && position + pointer <= payload.Length)
                 {
-                    buffer.AddRange(payload.Slice(position, pointer).ToArray());
+                    buffer.AddRange(payload.Slice(position, pointer));
                     Extract(result);
                 }
                 buffer.Clear();
                 position += pointer;
-                if (position < payload.Length) buffer.AddRange(payload[position..].ToArray());
+                if (position < payload.Length) buffer.AddRange(payload[position..]);
             }
-            else buffer.AddRange(payload.ToArray());
+            else buffer.AddRange(payload);
             Extract(result);
             return result;
         }
@@ -346,7 +348,7 @@ internal sealed partial class MpegTsAnalyzer
                     result.Add(buffer.ToArray());
                 buffer.Clear();
             }
-            buffer.AddRange(payload.ToArray());
+            buffer.AddRange(payload);
             while (buffer.Count >= 6)
             {
                 if (buffer[0] != 0 || buffer[1] != 0 || buffer[2] != 1)

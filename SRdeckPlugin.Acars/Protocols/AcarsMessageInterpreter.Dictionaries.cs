@@ -23,7 +23,7 @@ public static partial class AcarsMessageInterpreter
         ["HIJ"] = "広島", ["RJFM"] = "宮崎", ["KMI"] = "宮崎", ["RODN"] = "嘉手納",
         ["RJOY"] = "八尾", ["RJOE"] = "明野", ["RJCH"] = "函館", ["HKD"] = "函館",
         ["RJEC"] = "旭川", ["AKJ"] = "旭川", ["RJCB"] = "帯広", ["OBO"] = "帯広",
-        ["RJFR"] = "北九州", ["KKJ"] = "北九州", ["RJFM"] = "宮崎", ["ROIG"] = "石垣",
+        ["RJFR"] = "北九州", ["KKJ"] = "北九州", ["ROIG"] = "石垣",
         ["ISG"] = "石垣", ["ROMY"] = "宮古", ["MMY"] = "宮古",
 
         // Major International Airports - Asia / Pacific

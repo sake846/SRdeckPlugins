@@ -17,8 +17,17 @@ public sealed class CprDecoder
 
     public void ConfigureReceiverReference(double? latitude, double? longitude)
     {
-        receiverLatitude = latitude is >= -90 and <= 90 ? latitude : null;
-        receiverLongitude = longitude is >= -180 and <= 180 ? longitude : null;
+        double? normalizedLatitude = latitude is >= -90 and <= 90 ? latitude : null;
+        double? normalizedLongitude = longitude is >= -180 and <= 180 ? longitude : null;
+        if (receiverLatitude == normalizedLatitude && receiverLongitude == normalizedLongitude) return;
+        receiverLatitude = normalizedLatitude;
+        receiverLongitude = normalizedLongitude;
+        // A receiver reference defines the local CPR frame. Do not let a position
+        // decoded with the previous reference survive a configuration boundary.
+        pairs.Clear();
+        additionsSincePrune = 0;
+        referenceLatitude = referenceLongitude = 0;
+        referenceCount = 0;
     }
 
     public AdsBPosition? Add(string icao, bool odd, int latitude, int longitude, DateTimeOffset receivedAt)
@@ -52,6 +61,11 @@ public sealed class CprDecoder
     {
         pairs.TryGetValue(icao, out Pair pair);
         var frame = new CprFrame(latitude / 131072.0, longitude / 131072.0, receivedAt);
+        if (++additionsSincePrune >= 256)
+        {
+            Prune(receivedAt);
+            additionsSincePrune = 0;
+        }
         AdsBPosition? reference = pair.Position is not null &&
             receivedAt - pair.Position.ReceivedAt <= LocalReferenceMaximumAge
             ? pair.Position
@@ -162,7 +176,10 @@ public sealed class CprDecoder
         if (seconds < 0) return false;
         double latitudeDistanceNm = (current.Latitude - previous.Latitude) * 60;
         double meanLatitude = (current.Latitude + previous.Latitude) * Math.PI / 360;
-        double longitudeDistanceNm = (current.Longitude - previous.Longitude) * 60 * Math.Cos(meanLatitude);
+        double longitudeDelta = current.Longitude - previous.Longitude;
+        if (longitudeDelta > 180) longitudeDelta -= 360;
+        else if (longitudeDelta < -180) longitudeDelta += 360;
+        double longitudeDistanceNm = longitudeDelta * 60 * Math.Cos(meanLatitude);
         double distanceNm = Math.Sqrt(latitudeDistanceNm * latitudeDistanceNm +
             longitudeDistanceNm * longitudeDistanceNm);
         return distanceNm <= 5 + seconds * (1_500.0 / 3_600);

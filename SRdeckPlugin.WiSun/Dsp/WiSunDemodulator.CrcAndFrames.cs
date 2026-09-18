@@ -3,6 +3,8 @@ using SRdeckPlugin.WiSun.Models;
 
 using SRdeckCore.SignalProcessing;
 
+using System.Buffers.Binary;
+
 namespace SRdeckPlugin.WiSun.Dsp;
 
 /// <summary>
@@ -39,12 +41,11 @@ public sealed partial class WiSunDemodulator
         if (fcsLength == 2)
         {
             calculated = ComputeCrc16(payload);
-            received = (ushort)(receivedBytes[0] | receivedBytes[1] << 8);
+            received = BinaryPrimitives.ReadUInt16LittleEndian(receivedBytes);
             return;
         }
         calculated = ComputeCrc32(payload);
-        received = (uint)(receivedBytes[0] | receivedBytes[1] << 8 |
-            receivedBytes[2] << 16 | receivedBytes[3] << 24);
+        received = BinaryPrimitives.ReadUInt32LittleEndian(receivedBytes);
     }
 
     private static string FormatFcs(ulong value, int fcsLength) =>

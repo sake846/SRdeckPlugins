@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Globalization;
+﻿using System.Globalization;
 
 namespace SRdeckPlugin.WiSun.Models;
 
@@ -223,7 +221,7 @@ public sealed class WiSunAddressResolver
     {
         value = 0;
         if (offset + 2 > frame.Length) return false;
-        value = (ushort)(frame[offset] | frame[offset + 1] << 8);
+        value = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(frame.AsSpan(offset));
         offset += 2;
         return true;
     }
@@ -237,10 +235,8 @@ public sealed class WiSunAddressResolver
         if (offset + 8 > frame.Length) return false;
 
         Span<byte> canonicalAddress = stackalloc byte[8];
-        for (int i = 0; i < canonicalAddress.Length; i++)
-        {
-            canonicalAddress[i] = frame[offset + canonicalAddress.Length - 1 - i];
-        }
+        frame.AsSpan(offset, canonicalAddress.Length).CopyTo(canonicalAddress);
+        canonicalAddress.Reverse();
 
         offset += canonicalAddress.Length;
         address = $"0x{Convert.ToHexString(canonicalAddress)}";

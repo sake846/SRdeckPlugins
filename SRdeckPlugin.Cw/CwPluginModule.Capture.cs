@@ -54,7 +54,7 @@ public sealed partial class CwPluginModule
             string basePath = Path.Combine(directory,
                 $"cw-skimmer-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}-{center}");
             string path = $"{basePath}.wav";
-            using (var capture = new CwIqCapture(
+            using (var capture = new BoundedIqWavWriter(
                        path, snapshot.SampleRateHz,
                        TimeSpan.FromSeconds(CaptureDurationSeconds)))
             {

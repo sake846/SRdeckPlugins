@@ -15,7 +15,7 @@
 
   <Border Grid.Row="1" Style="{DynamicResource PluginFlatOuterPanelStyle}" Margin="6,0,6,6">
    <Grid>
-     <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+     <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <Border Style="{DynamicResource PluginStatusHeaderStyle}">
      <Grid>
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -27,22 +27,25 @@
      </Grid>
     </Border>
 
-   <UniformGrid Grid.Row="1" Columns="4" Margin="10,4,10,14">
-     <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="OFDM同期" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding OfdmLockStatus}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
-     <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="TMCC同期" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding TmccLockStatus}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
-     <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="MER" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding MerStatus}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
-     <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="RS品質（累計）" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding RsQualityStatus}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
-    </UniformGrid>
-
-    <TabControl Grid.Row="2" Style="{DynamicResource PluginTabControlStyle}" Padding="0" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10">
+    <TabControl Grid.Row="1" Style="{DynamicResource PluginTabControlStyle}" Padding="0" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10">
     <TabItem Header="概要">
      <Grid Margin="10,8">
-      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-       <Border Grid.Row="0" Margin="0,0,0,6" Padding="8,5" Visibility="{Binding EmergencyVisibility}"
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+      <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6" VerticalAlignment="Center">
+       <TextBlock Text="OFDM同期: " Foreground="{DynamicResource TextDimBrush}"/>
+       <TextBlock Text="{Binding OfdmLockStatus}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontWeight="SemiBold" Margin="0,0,14,0"/>
+       <TextBlock Text="TMCC同期: " Foreground="{DynamicResource TextDimBrush}"/>
+       <TextBlock Text="{Binding TmccLockStatus}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontWeight="SemiBold" Margin="0,0,14,0"/>
+       <TextBlock Text="MER: " Foreground="{DynamicResource TextDimBrush}"/>
+       <TextBlock Text="{Binding MerStatus}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontWeight="SemiBold" Margin="0,0,14,0"/>
+       <TextBlock Text="RS品質（累計）: " Foreground="{DynamicResource TextDimBrush}"/>
+       <TextBlock Text="{Binding RsQualityStatus}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontWeight="SemiBold"/>
+      </StackPanel>
+       <Border Grid.Row="1" Margin="0,0,0,6" Padding="8,5" Visibility="{Binding EmergencyVisibility}"
               Background="{DynamicResource PluginStatusErrorBackgroundBrush}" BorderBrush="{DynamicResource PluginStatusErrorBorderBrush}" BorderThickness="1" CornerRadius="3">
        <TextBlock Text="{Binding EmergencyStatus}" Foreground="{DynamicResource PluginStatusErrorForegroundBrush}" FontWeight="SemiBold"/>
       </Border>
-       <Grid Grid.Row="1">
+       <Grid Grid.Row="2">
         <Grid.RowDefinitions><RowDefinition Height="320"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <vlc:VideoView x:Name="VideoSurface" Grid.Row="0" MediaPlayer="{Binding MediaPlayer}" VerticalAlignment="Stretch"/>
         <Border x:Name="CaptionOverlay" Grid.Row="1" Height="{Binding CaptionAreaHeight}" VerticalAlignment="Bottom"
@@ -52,7 +55,7 @@
          <TextBlock x:Name="CaptionText" Text="{Binding Caption}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="{Binding CaptionFontSize}" TextAlignment="Center" TextWrapping="Wrap" VerticalAlignment="Center"/>
         </Border>
       </Grid>
-       <Border Grid.Row="2" Background="{DynamicResource InstrumentBaseBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="0,1,0,0" Padding="10,6">
+       <Border Grid.Row="3" Background="{DynamicResource InstrumentBaseBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="0,1,0,0" Padding="10,6">
        <Grid>
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -62,7 +65,7 @@
         <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding NextProgramText}" Foreground="{DynamicResource TextDimBrush}" TextTrimming="CharacterEllipsis"/>
        </Grid>
       </Border>
-       <DataGrid x:Name="OverviewProgramGuide" Grid.Row="3" ItemsSource="{Binding Events}"
+       <DataGrid x:Name="OverviewProgramGuide" Grid.Row="4" ItemsSource="{Binding Events}"
                 Style="{DynamicResource PluginDataGridStyle}" EnableRowVirtualization="True" EnableColumnVirtualization="True">
        <DataGrid.Columns>
         <DataGridTextColumn Header="時間" Binding="{Binding TimeRangeText}" Width="100"/>
@@ -75,7 +78,7 @@
     </TabItem>
 
    <TabItem Header="局一覧">
-    <DataGrid ItemsSource="{Binding Stations}" SelectedItem="{Binding SelectedStation}" Style="{DynamicResource PluginDataGridStyle}" EnableRowVirtualization="True" EnableColumnVirtualization="True">
+    <DataGrid x:Name="StationListDataGrid" ItemsSource="{Binding Stations}" SelectedItem="{Binding SelectedStation}" Style="{DynamicResource PluginDataGridStyle}" EnableRowVirtualization="True" EnableColumnVirtualization="True">
      <DataGrid.Columns>
        <DataGridTextColumn Header="CH" Binding="{Binding RemoteControlKeyText}" Width="50"/>
       <DataGridTextColumn Header="放送局" Binding="{Binding ServiceName}" Width="*"/>

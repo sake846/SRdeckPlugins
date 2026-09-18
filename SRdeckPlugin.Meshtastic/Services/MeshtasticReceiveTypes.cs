@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using SRdeck.DSP;
 using SRdeckPlugin.Meshtastic.Dsp;
 using SRdeckPlugin.Meshtastic.Protocols;
@@ -157,44 +153,4 @@ public sealed record MeshtasticLoRaReceptionQuality(
         }
         return value;
     }
-}
-
-public interface IMeshtasticReceiveService : IDisposable
-{
-    MeshtasticReceiveSnapshot Snapshot { get; }
-    void ResetStatistics();
-    void StartStream();
-    ValueTask StopStreamAsync(CancellationToken cancellationToken = default);
-    void UpdateRingProgress(IqSampleRingBuffer buffer, long absoluteSampleEnd);
-    event Action<LoRaPreambleDetection>? PreambleDetected;
-    event Action<LoRaFrameSynchronization>? FrameSynchronized;
-    event Action<LoRaExplicitHeader>? ExplicitHeaderDecoded;
-    event Action<LoRaPayloadFrame>? PayloadDecoded;
-    event Action<LoRaAcquisitionDiagnostic>? AcquisitionDiagnostic;
-    event Action<MeshtasticPacketReception>? MeshtasticPacketReceived;
-    event Action<MeshtasticDataReception>? MeshtasticDataReceived;
-    event Action<MeshtasticWorkerFailure>? WorkerFailed;
-
-    bool TryConfigureChannels(MeshtasticRegion region, MeshtasticModemPreset preset, IReadOnlyList<MeshtasticBandwidthSlots> bandwidthSlots, out string error);
-
-    bool TrySubmit(
-        IqSampleRingBuffer buffer,
-        int blockStartPointer,
-        int sampleCount,
-        int sampleRateHz,
-        int inputCenterFrequencyHz,
-        long absoluteSampleEnd);
-
-    bool TrySubmitNormalized(
-        ReadOnlySpan<Complex32> samples,
-        int sampleRateHz,
-        int inputCenterFrequencyHz,
-        long sequence,
-        long absoluteSampleStart,
-        IqDiscontinuity discontinuity = IqDiscontinuity.None);
-    ValueTask WarmUpProcessingAsync(
-        int sampleRateHz,
-        int inputCenterFrequencyHz,
-        int blockCount,
-        CancellationToken cancellationToken);
 }
