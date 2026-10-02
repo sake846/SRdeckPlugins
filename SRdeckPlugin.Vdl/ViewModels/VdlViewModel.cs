@@ -21,7 +21,7 @@ public sealed partial class VdlViewModel : ObservableObject
     private readonly ObservableCollection<VdlCategorySummary> filteredCallsignGroups = [];
     private readonly ObservableCollection<VdlCategorySummary> filteredProtocolGroups = [];
     private readonly ObservableCollection<GeoMapMarker> mapMarkers = [];
-    private readonly Dictionary<string, GeoMapMarker> mapMarkersByAircraft = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (GeoMapMarker Marker, DateTimeOffset LastReceivedAt)> mapMarkersByAircraft = new(StringComparer.OrdinalIgnoreCase);
     private readonly Queue<DiagnosticWindowSample> diagnosticWindow = new();
     private DateTimeOffset? lastValidFrameObservedAt;
 
@@ -279,7 +279,7 @@ public sealed partial class VdlViewModel : ObservableObject
             if (SetProperty(ref retentionMinutes, n))
             {
                 RetentionMinutesChanged?.Invoke(n);
-                RebuildCategories();
+                RefreshMapMarkers();
             }
         }
     }
@@ -345,6 +345,7 @@ public sealed partial class VdlViewModel : ObservableObject
         OnPropertyChanged(nameof(MaximumTrailPoints));
         OnPropertyChanged(nameof(SaveRawFrames));
         OnPropertyChanged(nameof(PreambleVerificationSymbols));
+        RefreshMapMarkers();
     }
 
     public Func<ValueTask>? ResetSettingsRequested { get; set; }

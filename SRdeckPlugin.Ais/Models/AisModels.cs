@@ -1,4 +1,4 @@
-﻿namespace SRdeckPlugin.Ais.Models;
+namespace SRdeckPlugin.Ais.Models;
 
 public sealed record AisFrame(
     byte[] Payload,
@@ -103,4 +103,21 @@ public sealed record AisMessageRow(
     double? Latitude,
     double? Longitude,
     double? SpeedKnots,
-    double? CourseDegrees);
+    double? CourseDegrees)
+{
+    public bool HasPosition => Latitude.HasValue && Longitude.HasValue;
+
+    public string LatitudeDisplay => HasPosition
+        ? $"緯度 {Math.Abs(Latitude!.Value):F4}° {(Latitude.Value >= 0 ? 'N' : 'S')}"
+        : Summary;
+
+    public string LongitudeDisplay => HasPosition
+        ? $"経度 {Math.Abs(Longitude!.Value):F4}° {(Longitude.Value >= 0 ? 'E' : 'W')}"
+        : string.Empty;
+
+    public string SpeedDisplay => SpeedKnots.HasValue ? $"速度 {SpeedKnots.Value:F1} kt" : string.Empty;
+
+    public string CourseDisplay => CourseDegrees.HasValue ? $"針路 {CourseDegrees.Value:F1}°" : string.Empty;
+
+    public string MmsiText => Mmsi.ToString("000000000");
+}

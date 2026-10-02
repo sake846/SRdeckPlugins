@@ -31,7 +31,6 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="36"/>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
@@ -61,35 +60,8 @@
                     </Grid>
                 </Border>
 
-                <UniformGrid Grid.Row="1" Columns="4" Margin="10,4,10,14">
-                    <Border Style="{DynamicResource PluginMetricCardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="受信パケット（保持中）" Foreground="{DynamicResource TextDimBrush}" FontSize="11"/>
-                            <TextBlock Text="{Binding PacketCount, StringFormat=N0}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{DynamicResource PluginMetricCardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="検出 PAN（保持中）" Foreground="{DynamicResource TextDimBrush}" FontSize="11"/>
-                            <TextBlock Text="{Binding PanCount}" Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{DynamicResource PluginMetricCardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="識別ノード（保持中）" Foreground="{DynamicResource TextDimBrush}" FontSize="11"/>
-                            <TextBlock Text="{Binding NodeCount}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{DynamicResource PluginMetricCardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="CRC正常率（累計）" Foreground="{DynamicResource TextDimBrush}" FontSize="11"/>
-                            <TextBlock Text="{Binding CrcPassRateText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </Border>
-                </UniformGrid>
-
                 <!-- Tabbed Content Area -->
-                <TabControl Grid.Row="2"
+                <TabControl Grid.Row="1"
                             Style="{DynamicResource PluginTabControlStyle}"
                             SelectedIndex="{Binding SelectedTabIndex}"
                             Padding="0"
@@ -98,78 +70,118 @@
 
                     <!-- Tab 1: 概要 (Overview) -->
                     <TabItem Header="概要">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel Margin="10,8">
-                                <TextBlock Text="最近の受信" Style="{DynamicResource PluginPrimarySectionHeaderStyle}"
-                                           Margin="2,2,0,5"/>
+                        <Grid Margin="10,8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
 
-                                <!-- Received Log Container -->
-                                <Border Style="{DynamicResource PluginMetricCardStyle}" Margin="0,0,0,8">
+                            <TextBlock Grid.Row="0" Text="受信の概況" Style="{DynamicResource PluginPrimarySectionHeaderStyle}"
+                                       Margin="2,0,0,5"/>
+
+                            <!-- Metric Cards -->
+                            <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,8">
+                                <Border Style="{DynamicResource PluginMetricCardStyle}">
                                     <StackPanel>
-                                        <TextBlock Text="受信ログ" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,6"/>
-                                        <TextBlock Text="受信ログはありません" Foreground="{DynamicResource TextDimBrush}"
-                                                   HorizontalAlignment="Center" Margin="0,4"
-                                                   FontFamily="{DynamicResource DisplayFontFamily}">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding RecentCommunications.Count}" Value="0">
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="104">
-                                            <ItemsControl ItemsSource="{Binding RecentCommunications}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Grid Margin="0,2">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="58"/>
-                                                                <ColumnDefinition Width="95"/>
-                                                                <ColumnDefinition Width="*"/>
-                                                                <ColumnDefinition Width="70"/>
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding Timestamp, StringFormat=HH:mm:ss}"
-                                                                       Foreground="{DynamicResource TextDimBrush}"
-                                                                       FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                            <TextBlock Grid.Column="1" Text="{Binding PanIdText, Mode=OneWay}"
-                                                                       Foreground="{DynamicResource PluginDisplayAccentTertiaryBrush}"
-                                                                       FontFamily="{DynamicResource DisplayFontFamily}"
-                                                                       TextTrimming="CharacterEllipsis"/>
-                                                            <TextBlock Grid.Column="2" Text="{Binding CommunicationText, Mode=OneWay}"
-                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                                       FontFamily="{DynamicResource DisplayFontFamily}"
-                                                                       TextTrimming="CharacterEllipsis"/>
-                                                            <TextBlock Grid.Column="3" Text="{Binding FrameType}"
-                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                                       TextTrimming="CharacterEllipsis" HorizontalAlignment="Right"/>
-                                                        </Grid>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </ScrollViewer>
+                                        <TextBlock Text="受信パケット（保持中）" Foreground="{DynamicResource TextDimBrush}" FontSize="11"/>
+                                        <TextBlock Text="{Binding PacketCount, StringFormat=N0}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,0"/>
                                     </StackPanel>
                                 </Border>
+                                <Border Style="{DynamicResource PluginMetricCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="検出 PAN（保持中）" Foreground="{DynamicResource TextDimBrush}" FontSize="11"/>
+                                        <TextBlock Text="{Binding PanCount}" Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{DynamicResource PluginMetricCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="識別ノード（保持中）" Foreground="{DynamicResource TextDimBrush}" FontSize="11"/>
+                                        <TextBlock Text="{Binding NodeCount}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{DynamicResource PluginMetricCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="CRC正常率（累計）" Foreground="{DynamicResource TextDimBrush}" FontSize="11"/>
+                                        <TextBlock Text="{Binding CrcPassRateText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </UniformGrid>
 
-                                <TextBlock Text="Wi-SUN パケットを受信すると直近の通信が表示されます。PAN 別の詳細は一覧で確認できます。"
-                                           Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" HorizontalAlignment="Center"
-                                           Margin="8,12" TextWrapping="Wrap">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding RecentPanGroups.Count}" Value="0">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </StackPanel>
-                        </ScrollViewer>
+                            <TextBlock Grid.Row="2" Text="最近の受信" Style="{DynamicResource PluginPrimarySectionHeaderStyle}"
+                                       Margin="2,2,0,5"/>
+
+                            <!-- Received Log Container -->
+                            <Border Grid.Row="3" Style="{DynamicResource PluginMetricCardStyle}" Margin="0,0,0,4">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="受信ログ" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,6"/>
+                                    <TextBlock Grid.Row="1" Text="受信ログはありません" Foreground="{DynamicResource TextDimBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4"
+                                               FontFamily="{DynamicResource DisplayFontFamily}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding RecentCommunications.Count}" Value="0">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsControl ItemsSource="{Binding RecentCommunications}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,2">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="58"/>
+                                                            <ColumnDefinition Width="95"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="70"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Timestamp, StringFormat=HH:mm:ss}"
+                                                                   Foreground="{DynamicResource TextDimBrush}"
+                                                                   FontFamily="{DynamicResource DisplayFontFamily}"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding PanIdText, Mode=OneWay}"
+                                                                   Foreground="{DynamicResource PluginDisplayAccentTertiaryBrush}"
+                                                                   FontFamily="{DynamicResource DisplayFontFamily}"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Grid.Column="2" Text="{Binding CommunicationText, Mode=OneWay}"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                   FontFamily="{DynamicResource DisplayFontFamily}"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Grid.Column="3" Text="{Binding FrameType}"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                   TextTrimming="CharacterEllipsis" HorizontalAlignment="Right"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Grid.Row="3" Text="Wi-SUN パケットを受信すると直近の通信が表示されます。PAN 別の詳細は一覧で確認できます。"
+                                       Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" HorizontalAlignment="Center"
+                                       Margin="8,8" TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RecentPanGroups.Count}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
                     </TabItem>
 
                     <!-- Tab 2: PAN / ノード一覧 -->

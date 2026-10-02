@@ -11,7 +11,7 @@ namespace SRdeckPlugin.Ais.ViewModels;
 
 public sealed partial class AisViewModel : ObservableObject
 {
-    private const int MessageDisplayLimit = 2000;
+    private const int MessageDisplayLimit = 1000;
     private const int MinimumDualChannelSampleRateHz = 240_000;
     private static readonly TimeSpan DiagnosticWindow = TimeSpan.FromSeconds(60);
     private readonly Dictionary<uint, List<GeoMapPoint>> trails = [];
@@ -120,22 +120,34 @@ public sealed partial class AisViewModel : ObservableObject
         RefreshFilteredTargets();
     }
 
-    private void RefreshFilteredTargets()
+    public int FilteredCount => FilteredMessages.Count;
+
+    public void RefreshFilteredTargets()
     {
         FilteredTargets.Clear();
         string filter = SearchText?.Trim() ?? string.Empty;
         foreach (AisTargetRow row in Targets)
         {
-            if (filter.Length == 0 || $"{row.MmsiText} {row.DisplayName} {row.CallSign} {row.Destination}".Contains(filter, StringComparison.OrdinalIgnoreCase))
+            if (filter.Length == 0 ||
+                row.MmsiText.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                row.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                row.CallSign.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                row.Destination.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                row.ShipTypeText.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                row.NavigationStatusText.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            {
                 FilteredTargets.Add(row);
+            }
         }
         if (SelectedTarget is null || !FilteredTargets.Contains(SelectedTarget))
             SelectedTarget = FilteredTargets.FirstOrDefault();
+        OnPropertyChanged(nameof(FilteredTargets));
     }
+
+    public void SelectTarget(AisTargetRow? row) => SelectedTarget = row;
     partial void OnInputSampleRateHzChanged(int value) => OnPropertyChanged(nameof(InputSampleRateText));
     partial void OnCenterFrequencyHzChanged(long value) => OnPropertyChanged(nameof(CenterFrequencyText));
 
-    public int FilteredCount => FilteredMessages.Count;
     public int PositionedTargetCount => MapMarkers.Count;
 
     public long TotalFrames => HypothesisValidFrames + HypothesisRejectedFrames;
@@ -145,7 +157,7 @@ public sealed partial class AisViewModel : ObservableObject
         InputSampleRateHz >= 1_000_000 ? $"{InputSampleRateHz / 1_000_000.0:F2} MS/s" : $"{InputSampleRateHz / 1_000.0:F1} kS/s";
     public string CenterFrequencyText => CenterFrequencyHz <= 0 ? "—" : $"{CenterFrequencyHz / 1_000_000.0:F3} MHz";
     public string DemodulationMethodText => "複素整合相関 + coherent Viterbi MLSE";
-    public string SettingStatus => $"AIS 1 / AIS 2 / SQ {(SquelchEnabled ? $"{SquelchThresholdDbm:F0} dBm" : "OFF")} / GATE {(DemodulationGateEnabled ? "ON" : "OFF")} / {MaximumTargets:N0}局 / {RetentionMinutes}分";
+    public string SettingStatus => $"AIS 1 / AIS 2 / SQ {(SquelchEnabled ? $"{SquelchThresholdDbm:F0} dBm" : "OFF")} / GATE {(DemodulationGateEnabled ? "ON" : "OFF")} / {MaximumTargets:N0}局 / 地図保持{RetentionMinutes}分 / 航跡{MaximumTrailPoints}点";
 
     public int MaximumTargets
     {
@@ -163,7 +175,11 @@ public sealed partial class AisViewModel : ObservableObject
         set
         {
             int normalized = Math.Clamp(value, 1, 1440);
-            if (SetProperty(ref retentionMinutes, normalized)) SettingsUpdated();
+            if (SetProperty(ref retentionMinutes, normalized))
+            {
+                RefreshMapMarkers();
+                SettingsUpdated();
+            }
         }
     }
 
@@ -401,20 +417,66 @@ public sealed partial class AisTargetRow(uint mmsi) : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsAidToNavigation))]
     private string _aidType = string.Empty;
     [ObservableProperty] private string _channel = string.Empty;
+    [ObservableProperty] private DateTimeOffset _firstSeen = DateTimeOffset.Now;
     [ObservableProperty] private DateTimeOffset _lastSeen;
     [ObservableProperty] private long _messages;
     [ObservableProperty] private bool _isBaseStation;
+    [ObservableProperty] private string _latestSummary = "メッセージ待機中";
 
     public uint Mmsi { get; } = mmsi;
     public ObservableCollection<AisMessageRow> History { get; } = [];
     public string MmsiText => Mmsi.ToString("000000000");
     public string ShipTypeText => ShipTypeName(ShipType);
     public bool IsAidToNavigation => AidType.Length > 0;
+    public bool HasPosition => Latitude.HasValue && Longitude.HasValue;
+
+    public string FirstSeenText => FirstSeen.ToString("HH:mm:ss");
+
+    public string DurationText
+    {
+        get
+        {
+            TimeSpan duration = LastSeen - FirstSeen;
+            if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
+            if (duration < TimeSpan.FromMinutes(1)) return "1分未満";
+            if (duration < TimeSpan.FromHours(1)) return $"{(int)duration.TotalMinutes}分";
+            return $"{(int)duration.TotalHours}時間{duration.Minutes}分";
+        }
+    }
+
+    public string ActivityStatusText
+    {
+        get
+        {
+            TimeSpan sinceLast = DateTimeOffset.Now - LastSeen;
+            if (sinceLast <= TimeSpan.FromMinutes(1)) return "補足中";
+            if (sinceLast < TimeSpan.FromHours(1)) return $"{(int)sinceLast.TotalMinutes}分前";
+            if (sinceLast < TimeSpan.FromDays(1)) return $"{(int)sinceLast.TotalHours}時間前";
+            return $"{(int)sinceLast.TotalDays}日前";
+        }
+    }
+
+    public string LatitudeDisplay => Latitude.HasValue
+        ? $"緯度 {Math.Abs(Latitude.Value):F4}° {(Latitude.Value >= 0 ? "N" : "S")}"
+        : (Longitude.HasValue ? string.Empty : "位置未取得");
+
+    public string LongitudeDisplay => Longitude.HasValue
+        ? $"経度 {Math.Abs(Longitude.Value):F4}° {(Longitude.Value >= 0 ? "E" : "W")}"
+        : string.Empty;
+
+    public string SpeedDisplay => SpeedKnots.HasValue ? $"速度 {SpeedKnots.Value:F1} kt" : string.Empty;
+
+    public string CourseDisplay => CourseDegrees.HasValue ? $"針路 {CourseDegrees.Value:F1}°" : string.Empty;
+
+    public string HeadingDisplay => HeadingDegrees.HasValue && HeadingDegrees.Value is >= 0 and < 360
+        ? $"方位 {HeadingDegrees.Value}°" : string.Empty;
 
     public void AddHistory(AisMessageRow message)
     {
         History.Insert(0, message);
         while (History.Count > HistoryLimit) History.RemoveAt(History.Count - 1);
+        if (!string.IsNullOrWhiteSpace(message.Summary))
+            LatestSummary = message.Summary;
     }
 
     public void ReplaceHistory(IEnumerable<AisMessageRow> messages)
@@ -425,6 +487,11 @@ public sealed partial class AisTargetRow(uint mmsi) : ObservableObject
 
     public void Apply(AisTargetState state)
     {
+        DateTimeOffset seen = state.LastSeen.ToLocalTime();
+        if (FirstSeen == default || FirstSeen > seen)
+        {
+            FirstSeen = seen;
+        }
         DisplayName = ResolveDisplayName(state.VesselName, state.CallSign);
         CallSign = state.CallSign;
         ShipType = state.ShipType;
@@ -439,8 +506,23 @@ public sealed partial class AisTargetRow(uint mmsi) : ObservableObject
         AidType = state.AidType;
         IsBaseStation = state.IsBaseStation;
         Channel = state.LastChannel;
-        LastSeen = state.LastSeen.ToLocalTime();
+        LastSeen = seen;
         Messages = state.MessageCount;
+
+        OnPropertyChanged(nameof(DurationText));
+        OnPropertyChanged(nameof(ActivityStatusText));
+        OnPropertyChanged(nameof(FirstSeenText));
+        OnPropertyChanged(nameof(HasPosition));
+        OnPropertyChanged(nameof(LatitudeDisplay));
+        OnPropertyChanged(nameof(LongitudeDisplay));
+        OnPropertyChanged(nameof(SpeedDisplay));
+        OnPropertyChanged(nameof(CourseDisplay));
+        OnPropertyChanged(nameof(HeadingDisplay));
+        if (LatestSummary == "メッセージ待機中" && !string.IsNullOrWhiteSpace(NavigationStatusText))
+        {
+            LatestSummary = $"{DisplayName} ({NavigationStatusText}) / 速度 {SpeedKnots:F1} kt / 針路 {CourseDegrees:F1}°";
+        }
+        OnPropertyChanged(nameof(LatestSummary));
     }
 
     private string ResolveDisplayName(string vesselName, string callSign) =>

@@ -151,7 +151,7 @@ public sealed partial class WiSunViewModel
             : groups.FirstOrDefault();
 
         WiSunPacketFrame[] recentCommunications = Packets
-            .Take(30)
+            .Take(100)
             .Select(packet => packet with
             {
                 Timestamp = packet.Timestamp.ToLocalTime(),

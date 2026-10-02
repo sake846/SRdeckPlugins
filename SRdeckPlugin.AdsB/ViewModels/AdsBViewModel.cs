@@ -197,11 +197,22 @@ public sealed partial class AdsBViewModel : ObservableObject
     public string NoiseFloorText => double.IsFinite(NoiseFloorDbm)
         ? $"{NoiseFloorDbm:F1} dBm"
         : (double.IsFinite(NoiseFloorDbfs) ? $"{NoiseFloorDbfs:F1} dBFS" : "—");
-    public string SettingStatus => $"1090.000 MHz / {MaximumAircraft:N0}機 / {RetentionMinutes}分 / 航跡{MaximumTrailPoints}点 / " +
+    public string SettingStatus => $"1090.000 MHz / {MaximumAircraft:N0}機 / 地図保持{RetentionMinutes}分 / 航跡{MaximumTrailPoints}点 / " +
         (ReceiverLatitude is null || ReceiverLongitude is null ? "位置未設定" : $"{ReceiverLatitude:F4}, {ReceiverLongitude:F4}") +
         $" / SIC {(EnableSuccessiveInterferenceCancellation ? "有効" : "無効")}";
     public int MaximumAircraft { get => maximumAircraft; set { maximumAircraft = Math.Clamp(value, 50, 5000); SettingsUpdated(); } }
-    public int RetentionMinutes { get => retentionMinutes; set { retentionMinutes = Math.Clamp(value, 1, 240); SettingsUpdated(); } }
+    public int RetentionMinutes
+    {
+        get => retentionMinutes;
+        set
+        {
+            int normalized = Math.Clamp(value, 1, 240);
+            if (retentionMinutes == normalized) return;
+            retentionMinutes = normalized;
+            RefreshMapMarkers();
+            SettingsUpdated();
+        }
+    }
     public int MaximumHistory { get => maximumHistory; set { maximumHistory = Math.Clamp(value, 100, 1_000_000); SettingsUpdated(); } }
     public bool SaveRawModeS { get => saveRawModeS; set { if (saveRawModeS == value) return; saveRawModeS=value; SaveRawModeSChanged?.Invoke(value); OnPropertyChanged(); } }
     public bool BuzzerEnabled
@@ -258,16 +269,17 @@ public sealed partial class AdsBViewModel : ObservableObject
         foreach (string staleIcao in trails.Keys.Where(icao => !activeAircraft.Contains(icao)).ToArray())
             trails.Remove(staleIcao);
         var rows = Aircraft.ToDictionary(row => row.Icao, StringComparer.Ordinal);
+        ILookup<string, AdsBMessageRow>? recentMessages = null;
         foreach (AircraftState state in states.OrderByDescending(item => item.LastSeen))
         {
             if (!rows.TryGetValue(state.Icao, out AircraftRow? row))
             {
                 row = new AircraftRow(state.Icao);
                 Aircraft.Add(row);
+                recentMessages ??= Messages.ToLookup(message => message.Icao, StringComparer.OrdinalIgnoreCase);
+                row.ReplaceHistory(recentMessages[state.Icao].Take(20));
             }
             row.Apply(state);
-            row.ReplaceHistory(Messages.Where(message =>
-                string.Equals(message.Icao, row.Icao, StringComparison.OrdinalIgnoreCase)).Take(20));
             rows.Remove(state.Icao);
         }
         foreach (AircraftRow stale in rows.Values)
@@ -278,24 +290,44 @@ public sealed partial class AdsBViewModel : ObservableObject
         StableRecencyOrder.Reorder(Aircraft, item => item.LastSeen);
         RefreshFilteredAircraft();
         OnPropertyChanged(nameof(RecentAircraft));
-        MapMarkers.Clear();
-        foreach (AircraftRow row in Aircraft.Where(item => item.Latitude is not null && item.Longitude is not null))
-        {
-            string color = row.HasEmergency ? "#FFFF5050" : GetAltitudeBandColor(row.AltitudeFeet);
-            List<GeoMapPoint> trail = GetUpdatedTrail(row.Icao, row.Latitude!.Value, row.Longitude!.Value, color);
-            MapMarkers.Add(new(row.Icao, row.Latitude!.Value, row.Longitude!.Value,
-                string.IsNullOrWhiteSpace(row.Callsign) ? row.Icao : row.Callsign,
-                $"ICAO {row.Icao} / {row.AltitudeFeet:N0} ft / {row.SpeedKnots:F0} kt / " +
-                $"針路 {row.TrackDegrees:F0}° / 昇降 {row.VerticalRate:+#;-#;0} ft/min",
-                color, row.TrackDegrees, trail.ToArray(), "aircraft", true));
-        }
-        OnPropertyChanged(nameof(PositionedAircraftCount));
+        RefreshMapMarkers();
         ValidFrames = valid;
         RejectedFrames = rejected;
         SicRecoveredFrames = sicRecovered;
         TimingAdjustedFrames = timingAdjusted;
         if (diagnostics is not null) UpdateDiagnostics(diagnostics, noiseFloorDbm);
     }
+
+    public void RefreshMapMarkers()
+    {
+        DateTimeOffset cutoff = DateTimeOffset.Now.AddMinutes(-retentionMinutes);
+        var previous = MapMarkers.ToDictionary(marker => marker.Id, StringComparer.Ordinal);
+        var active = new HashSet<string>(StringComparer.Ordinal);
+        foreach (AircraftRow row in Aircraft.Where(item => item.Latitude is not null && item.Longitude is not null && item.LastSeen >= cutoff))
+        {
+            string color = row.HasEmergency ? "#FFFF5050" : GetAltitudeBandColor(row.AltitudeFeet);
+            List<GeoMapPoint> trail = GetUpdatedTrail(row.Icao, row.Latitude!.Value, row.Longitude!.Value, color);
+            previous.TryGetValue(row.Icao, out GeoMapMarker? old);
+            IReadOnlyList<GeoMapPoint> trailSnapshot = old?.Trail is { Count: > 0 } oldTrail &&
+                oldTrail.Count == trail.Count &&
+                ReferenceEquals(oldTrail[0], trail[0]) && ReferenceEquals(oldTrail[^1], trail[^1])
+                ? oldTrail : trail.ToArray();
+            var marker = new GeoMapMarker(row.Icao, row.Latitude!.Value, row.Longitude!.Value,
+                string.IsNullOrWhiteSpace(row.Callsign) ? row.Icao : row.Callsign,
+                $"ICAO {row.Icao} / {row.AltitudeFeet:N0} ft / {row.SpeedKnots:F0} kt / " +
+                $"針路 {row.TrackDegrees:F0}° / 昇降 {row.VerticalRate:+#;-#;0} ft/min",
+                color, row.TrackDegrees, trailSnapshot, "aircraft", true);
+            active.Add(row.Icao);
+            if (old is null) MapMarkers.Add(marker);
+            else if (old != marker) MapMarkers[MapMarkers.IndexOf(old)] = marker;
+        }
+        for (int index = MapMarkers.Count - 1; index >= 0; index--)
+            if (!active.Contains(MapMarkers[index].Id)) MapMarkers.RemoveAt(index);
+        foreach (string stale in trails.Keys.Where(key => !active.Contains(key)).ToArray())
+            trails.Remove(stale);
+        OnPropertyChanged(nameof(PositionedAircraftCount));
+    }
+
     private List<GeoMapPoint> GetUpdatedTrail(string icao, double latitude, double longitude, string color)
     {
         if (!trails.TryGetValue(icao, out List<GeoMapPoint>? trail))
@@ -320,13 +352,22 @@ public sealed partial class AdsBViewModel : ObservableObject
 
     private void RefreshFilteredAircraft()
     {
-        FilteredAircraft.Clear();
         string filter = SearchText?.Trim() ?? string.Empty;
+        int targetIndex = 0;
         foreach (AircraftRow row in Aircraft)
         {
-            if (filter.Length == 0 || $"{row.Icao} {row.Callsign}".Contains(filter, StringComparison.OrdinalIgnoreCase))
-                FilteredAircraft.Add(row);
+            if (filter.Length != 0 && !$"{row.Icao} {row.Callsign}".Contains(filter, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (targetIndex >= FilteredAircraft.Count) FilteredAircraft.Add(row);
+            else if (!ReferenceEquals(FilteredAircraft[targetIndex], row))
+            {
+                int currentIndex = FilteredAircraft.IndexOf(row);
+                if (currentIndex < 0) FilteredAircraft.Insert(targetIndex, row);
+                else FilteredAircraft.Move(currentIndex, targetIndex);
+            }
+            targetIndex++;
         }
+        while (FilteredAircraft.Count > targetIndex) FilteredAircraft.RemoveAt(FilteredAircraft.Count - 1);
         if (SelectedAircraft is null || !FilteredAircraft.Contains(SelectedAircraft))
             SelectedAircraft = FilteredAircraft.FirstOrDefault();
     }
@@ -528,6 +569,7 @@ public sealed partial class AircraftRow : ObservableObject
     [ObservableProperty] private int? _verticalRate;
     [ObservableProperty] private double? _latitude;
     [ObservableProperty] private double? _longitude;
+    [ObservableProperty] private DateTimeOffset _firstSeen = DateTimeOffset.Now;
     [ObservableProperty] private DateTimeOffset _lastSeen;
     [ObservableProperty] private long _messages;
     [ObservableProperty] private int? _selectedAltitudeFeet;
@@ -540,26 +582,163 @@ public sealed partial class AircraftRow : ObservableObject
     [ObservableProperty] private int? _nacP;
     [ObservableProperty] private int? _sil;
     [ObservableProperty] private string _altitudeSource = string.Empty;
+    [ObservableProperty] private bool _isOnGround;
 
     public AircraftRow(string icao) => Icao = icao;
     public string Icao { get; }
     public ObservableCollection<AdsBMessageRow> History { get; } = [];
     public bool HasEmergency => !string.IsNullOrWhiteSpace(EmergencyState) && EmergencyState != "reserved";
 
+    public string AircraftDisplay => string.IsNullOrWhiteSpace(Callsign) ? Icao : Callsign;
+    public string AircraftDetail => string.IsNullOrWhiteSpace(Callsign) ? "機名未取得" : Icao;
+    public bool HasCallsign => !string.IsNullOrWhiteSpace(Callsign);
+    public string SquawkDisplay => string.IsNullOrWhiteSpace(Squawk) ? string.Empty : $"SQ {Squawk}";
+    public bool HasPosition => Latitude.HasValue && Longitude.HasValue;
+
+    public string FirstSeenText => FirstSeen.ToString("HH:mm:ss");
+
+    public string DurationText
+    {
+        get
+        {
+            TimeSpan duration = LastSeen - FirstSeen;
+            if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
+            if (duration < TimeSpan.FromMinutes(1)) return "1分未満";
+            if (duration < TimeSpan.FromHours(1)) return $"{(int)duration.TotalMinutes}分";
+            return $"{(int)duration.TotalHours}時間{duration.Minutes}分";
+        }
+    }
+
+    public string ActivityStatusText
+    {
+        get
+        {
+            TimeSpan sinceLast = DateTimeOffset.Now - LastSeen;
+            if (sinceLast <= TimeSpan.FromMinutes(1)) return "補足中";
+            if (sinceLast < TimeSpan.FromHours(1)) return $"{(int)sinceLast.TotalMinutes}分前";
+            if (sinceLast < TimeSpan.FromDays(1)) return $"{(int)sinceLast.TotalHours}時間前";
+            return $"{(int)sinceLast.TotalDays}日前";
+        }
+    }
+
+    public string ReceptionStatsText => $"受信 {Messages:N0} 件 (滞在 {DurationText})";
+
+    public string PositionDisplay
+    {
+        get
+        {
+            if (Latitude is null || Longitude is null) return "位置未取得";
+            string latDir = Latitude.Value >= 0 ? "N" : "S";
+            string lonDir = Longitude.Value >= 0 ? "E" : "W";
+            return $"{Math.Abs(Latitude.Value):F4}°{latDir}, {Math.Abs(Longitude.Value):F4}°{lonDir}";
+        }
+    }
+
+    public string KinematicsDisplay
+    {
+        get
+        {
+            List<string> parts = [];
+            if (AltitudeFeet is not null)
+            {
+                string alt = $"{AltitudeFeet:N0} ft";
+                if (VerticalRate is not null && Math.Abs(VerticalRate.Value) >= 64)
+                {
+                    string arrow = VerticalRate > 0 ? "↑" : "↓";
+                    alt += $" {arrow}{Math.Abs(VerticalRate.Value):N0} fpm";
+                }
+                parts.Add(alt);
+            }
+            if (SpeedKnots is not null)
+            {
+                string spd = $"{SpeedKnots:F0} kt";
+                if (TrackDegrees is not null) spd += $" {TrackDegrees:F0}°";
+                parts.Add(spd);
+            }
+            else if (TrackDegrees is not null)
+            {
+                parts.Add($"{TrackDegrees:F0}°");
+            }
+            return parts.Count > 0 ? string.Join("  ", parts) : "航法データ未取得";
+        }
+    }
+
+    public string LatitudeDisplay => Latitude.HasValue
+        ? $"緯度 {Math.Abs(Latitude.Value):F4}° {(Latitude.Value >= 0 ? "N" : "S")}"
+        : (Longitude.HasValue ? string.Empty : "位置未取得");
+
+    public string LongitudeDisplay => Longitude.HasValue
+        ? $"経度 {Math.Abs(Longitude.Value):F4}° {(Longitude.Value >= 0 ? "E" : "W")}"
+        : string.Empty;
+
+    public string AltitudeDisplay => AltitudeFeet.HasValue ? $"高度 {AltitudeFeet.Value:N0} ft" : string.Empty;
+    public string VerticalRateDisplay => VerticalRate.HasValue && Math.Abs(VerticalRate.Value) >= 64
+        ? $"昇降 {(VerticalRate.Value > 0 ? "↑" : "↓")}{Math.Abs(VerticalRate.Value):N0} fpm"
+        : string.Empty;
+    public string SpeedDisplay => SpeedKnots.HasValue ? $"速度 {SpeedKnots.Value:F0} kt" : string.Empty;
+    public string TrackDisplay => TrackDegrees.HasValue ? $"針路 {TrackDegrees.Value:F0}°" : string.Empty;
+
+    public string LatestSummary => History.FirstOrDefault()?.Summary ?? KinematicsDisplay;
+
+    public IReadOnlyList<AdsBCategoryBadge> CategoryBadges
+    {
+        get
+        {
+            bool hasIdent = !string.IsNullOrWhiteSpace(Callsign);
+            bool hasAirPos = !IsOnGround && Latitude.HasValue;
+            bool hasSurfacePos = IsOnGround && Latitude.HasValue;
+            bool hasVel = SpeedKnots.HasValue || TrackDegrees.HasValue;
+            bool hasStatus = AdsBVersion.HasValue || NacP.HasValue || Sil.HasValue;
+            bool hasEmg = HasEmergency;
+
+            foreach (AdsBMessageRow msg in History)
+            {
+                switch (msg.Kind)
+                {
+                    case "identification": hasIdent = true; break;
+                    case "airborne-position": hasAirPos = true; break;
+                    case "surface-position": hasSurfacePos = true; break;
+                    case "airborne-velocity": hasVel = true; break;
+                    case "operational-status": hasStatus = true; break;
+                    case "emergency": hasEmg = true; break;
+                }
+            }
+
+            return
+            [
+                new("識別", hasIdent),
+                new("空中位置", hasAirPos),
+                new("地上位置", hasSurfacePos),
+                new("速度航法", hasVel),
+                new("運用状態", hasStatus),
+                new("緊急", hasEmg),
+            ];
+        }
+    }
+
     public void AddHistory(AdsBMessageRow message)
     {
         History.Insert(0, message);
         while (History.Count > HistoryLimit) History.RemoveAt(History.Count - 1);
+        OnPropertyChanged(nameof(CategoryBadges));
+        OnPropertyChanged(nameof(LatestSummary));
     }
 
     public void ReplaceHistory(IEnumerable<AdsBMessageRow> messages)
     {
         History.Clear();
         foreach (AdsBMessageRow message in messages.Reverse()) AddHistory(message);
+        OnPropertyChanged(nameof(CategoryBadges));
+        OnPropertyChanged(nameof(LatestSummary));
     }
 
     public void Apply(AircraftState value)
     {
+        DateTimeOffset seen = value.LastSeen.ToLocalTime();
+        if (FirstSeen == default || FirstSeen > seen)
+        {
+            FirstSeen = seen;
+        }
         Callsign = value.Callsign;
         AltitudeFeet = value.AltitudeFeet;
         AltitudeSource = value.BarometricAltitudeFeet is not null ? "BARO" :
@@ -569,7 +748,7 @@ public sealed partial class AircraftRow : ObservableObject
         VerticalRate = value.VerticalRateFeetPerMinute;
         Latitude = value.Latitude;
         Longitude = value.Longitude;
-        LastSeen = value.LastSeen.ToLocalTime();
+        LastSeen = seen;
         Messages = value.MessageCount;
         SelectedAltitudeFeet = value.SelectedAltitudeFeet;
         SelectedHeadingDegrees = value.SelectedHeadingDegrees;
@@ -578,5 +757,20 @@ public sealed partial class AircraftRow : ObservableObject
         AdsBVersion = value.AdsBVersion;
         NacP = value.NacP;
         Sil = value.Sil;
+        IsOnGround = value.IsOnGround;
+        OnPropertyChanged(nameof(AircraftDisplay));
+        OnPropertyChanged(nameof(AircraftDetail));
+        OnPropertyChanged(nameof(PositionDisplay));
+        OnPropertyChanged(nameof(LatitudeDisplay));
+        OnPropertyChanged(nameof(LongitudeDisplay));
+        OnPropertyChanged(nameof(KinematicsDisplay));
+        OnPropertyChanged(nameof(AltitudeDisplay));
+        OnPropertyChanged(nameof(VerticalRateDisplay));
+        OnPropertyChanged(nameof(SpeedDisplay));
+        OnPropertyChanged(nameof(TrackDisplay));
+        OnPropertyChanged(nameof(SquawkDisplay));
+        OnPropertyChanged(nameof(CategoryBadges));
     }
 }
+
+public sealed record AdsBCategoryBadge(string Name, bool IsReceived);

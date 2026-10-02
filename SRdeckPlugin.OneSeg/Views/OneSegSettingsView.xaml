@@ -39,10 +39,11 @@
         </Grid>
 
            <Grid Margin="0,7,0,4">
-         <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="120"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+         <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="120"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <TextBlock Text="音声モード" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
           <ComboBox Grid.Column="1" ItemsSource="{Binding AudioTracks}" SelectedItem="{Binding SelectedAudioTrack}" DisplayMemberPath="DisplayName" Style="{DynamicResource PluginComboBoxStyle}"/>
          <ToggleButton Grid.Column="2" Content="字幕" IsChecked="{Binding CaptionsEnabled, Mode=TwoWay}" Padding="8,2" Margin="12,0,0,0" Width="60" HorizontalAlignment="Left"/>
+         <ToggleButton Grid.Column="3" Content="GPU超解像" IsChecked="{Binding VideoSuperResolutionEnabled, Mode=TwoWay}" Padding="8,2" Margin="12,0,0,0" Width="90" HorizontalAlignment="Left" ToolTip="対応するGPU・ドライバーで有効。切り替え時は映像が一時停止します。"/>
         </Grid>
         </StackPanel>
        </ScrollViewer>
@@ -102,15 +103,19 @@
           <CheckBox Grid.Row="9" Content="TSごとにサイドカーJSONを作成" IsChecked="{Binding RecordingSidecarEnabled, Mode=TwoWay}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4,0,4" />
             <controls:PluginResetView Grid.Row="10" />
             <TextBlock Grid.Row="11" Text="過去録音" Style="{DynamicResource PluginSettingsSectionHeaderStyle}"/>
-            <Grid Grid.Row="12" Style="{DynamicResource PluginSettingsActionRowStyle}">
+             <Grid Grid.Row="12" Style="{DynamicResource PluginSettingsActionRowStyle}">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <TextBlock Text="受信中に直前5秒のIQデータを保存します。"
                        Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,0,16,0"/>
             <Button Grid.Column="1" Content="IQ 録音 (直前5秒)" Command="{Binding CaptureCommand}" ToolTip="{Binding CaptureStatus}"
                     Style="{DynamicResource PluginButtonStyle}" Width="130" HorizontalAlignment="Left"/>
-            <TextBlock Grid.Column="2" Text="{Binding CaptureStatus}" Style="{DynamicResource PluginSettingsActionStatusStyle}"
-                       VerticalAlignment="Center" Margin="10,0,0,0"/>
-           </Grid>
+             <TextBlock Grid.Column="2" Text="{Binding CaptureStatus}" Style="{DynamicResource PluginSettingsActionStatusStyle}"
+                        VerticalAlignment="Center" Margin="10,0,0,0"/>
+            <TextBlock Grid.Row="1" Text="保存したIQ WAVを受信時と同じプラグインで再生します。" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,6,16,0"/>
+            <Button Grid.Row="1" Grid.Column="1" Style="{DynamicResource PluginIqPlaybackButtonStyle}" Margin="0,6,0,0"/>
+            <TextBlock Grid.Row="1" Grid.Column="2" Style="{DynamicResource PluginIqPlaybackStatusStyle}" Margin="10,6,0,0"/>
+            </Grid>
         </Grid>
        </ScrollViewer>
       </TabItem>

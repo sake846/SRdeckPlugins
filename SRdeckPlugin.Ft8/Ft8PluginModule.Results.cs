@@ -22,6 +22,7 @@ public sealed partial class Ft8PluginModule
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
         IReadOnlyList<Ft8Reception> persisted = host is null
             ? []
             : PluginJsonLinesHistory.LoadAll<Ft8Reception>(GetHistoryPath(host));

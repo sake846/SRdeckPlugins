@@ -50,6 +50,7 @@ public sealed class Ft8Receiver
     private float monitorPower;
     private float monitorGain = 1f;
     private double channelPower;
+    private double clipRatePercent;
     // The monitor is deliberately normalized independently of the decoder. FT8
     // channel levels can be tens of dB below a full-scale SDR stream, while the
     // audio router still expects useful 16-bit PCM levels.
@@ -174,6 +175,7 @@ public sealed class Ft8Receiver
             usesHostChannelRateConversion = false;
             ResetMonitorAudio();
             channelPower = 0;
+            clipRatePercent = 0;
             UpdateDiagnosticsSnapshot();
         }
     }
@@ -248,17 +250,22 @@ public sealed class Ft8Receiver
         if (samples.IsEmpty) return;
         double blockPower = 0;
         int finiteSamples = 0;
+        int clippedSamples = 0;
         foreach (Complex32 sample in samples)
         {
             double power = sample.I * sample.I + sample.Q * sample.Q;
             if (!double.IsFinite(power)) continue;
             blockPower += power;
             finiteSamples++;
+            if (Math.Abs(sample.I) >= 0.999f || Math.Abs(sample.Q) >= 0.999f)
+                clippedSamples++;
         }
         if (finiteSamples > 0)
         {
             blockPower /= finiteSamples;
             channelPower = channelPower <= 0 ? blockPower : channelPower + 0.1 * (blockPower - channelPower);
+            double blockClipRatePercent = clippedSamples * 100.0 / finiteSamples;
+            clipRatePercent += 0.1 * (blockClipRatePercent - clipRatePercent);
         }
         if (activeMode != settings.Mode)
         {
@@ -423,7 +430,8 @@ public sealed class Ft8Receiver
             validMessages, ldpcRejected, crcRejected, lastDecodeDuration, slotStart,
             lastSlotValidMessages, lastDecodedSlotStart,
             rateConversionIntermediateSampleRate, usesHostChannelRateConversion,
-            channelPower > 0 ? 10 * Math.Log10(channelPower) : double.NegativeInfinity);
+            channelPower > 0 ? 10 * Math.Log10(channelPower) : double.NegativeInfinity,
+            clipRatePercent);
         lock (diagnosticsGate) diagnosticsSnapshot = snapshot;
     }
 

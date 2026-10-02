@@ -77,9 +77,8 @@ internal static class HfFaxImagePhaseAligner
 
         double bestMean = bestBrightnessSum / (double)(sampledLines * window);
         double bestDarkFraction = bestDarkCount / (double)(sampledLines * window);
-        double[] sortedMeans = windowMeans.ToArray();
-        Array.Sort(sortedMeans);
-        double medianMean = sortedMeans[sortedMeans.Length / 2];
+        Array.Sort(windowMeans);
+        double medianMean = windowMeans[windowMeans.Length / 2];
         if (bestMean > MaximumMarkerMean ||
             bestDarkFraction < MinimumDarkFraction ||
             medianMean - bestMean < MinimumMarkerContrast)
@@ -116,14 +115,8 @@ internal static class HfFaxImagePhaseAligner
         if (width <= 0 || height <= 0 || pixels.Length < checked(width * height)) return;
         int normalized = NormalizeShift(shift, width);
         if (normalized == 0) return;
-        var source = new byte[width];
         for (int row = 0; row < height; row++)
-        {
-            Span<byte> destination = pixels.Slice(row * width, width);
-            destination.CopyTo(source);
-            for (int column = 0; column < width; column++)
-                destination[(column + normalized) % width] = source[column];
-        }
+            HfFaxReceiver.RotateLine(pixels.Slice(row * width, width), normalized);
     }
 
     public static int SignedShift(int normalizedShift, int width)

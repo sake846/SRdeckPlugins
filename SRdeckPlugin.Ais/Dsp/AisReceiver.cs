@@ -1,4 +1,5 @@
-﻿using SRdeckPlugin.Ais.Models;
+﻿using System.Runtime.CompilerServices;
+using SRdeckPlugin.Ais.Models;
 using SRdeckPlugin.Ais.Protocols;
 using SRdeckPlugin.Contracts;
 
@@ -37,7 +38,7 @@ public sealed class AisReceiver(string channel, long frequencyHz)
          from frequencyHypothesisIndex in Enumerable.Range(0, FrequencyHypothesesHz.Length)
          select new CoherentGmskSequenceDecoder(offset,
              FrequencyHypothesesHz[frequencyHypothesisIndex], frequencyHypothesisIndex)).ToArray();
-    private readonly CoherentGmskFrequencyMixer[] coherentMixers = FrequencyHypothesesHz
+    private static readonly CoherentGmskFrequencyMixer[] coherentMixers = FrequencyHypothesesHz
         .Select(frequencyOffset => new CoherentGmskFrequencyMixer(frequencyOffset)).ToArray();
     private readonly ComplexIqLowPassFilter iqChannelLowPass = new();
     private readonly RecentAisFrameCache recentFrames = new(
@@ -229,7 +230,7 @@ public sealed class AisReceiver(string channel, long frequencyHz)
         if (metadata.Source.Discontinuity != IqDiscontinuity.None) ResetSignalState();
         MeasureChannelLevel(samples);
         UpdateSquelch(samples.Length);
-        var results = new List<AisFrame>();
+        List<AisFrame>? results = null;
         monitorAudioSampleCount = 0;
         bool writeMonitorAudio = !monitorAudio.IsEmpty && IsSquelchOpen;
         Span<CoherentGmskMixedSample> mixed = stackalloc CoherentGmskMixedSample[3];
@@ -248,19 +249,22 @@ public sealed class AisReceiver(string channel, long frequencyHz)
 
             long outputPosition = metadata.OutputSampleStart + index;
             if (!isDemodulationGateEnabled)
-                FeedDemodulators(current, outputPosition, metadata, results, mixed,
+                FeedDemodulators(current, outputPosition, metadata, ref results, mixed,
                     hasMonitorDiscriminator, monitorDiscriminator);
             else
-                ProcessGatedSample(current, outputPosition, metadata, results, mixed,
+                ProcessGatedSample(current, outputPosition, metadata, ref results, mixed,
                     hasMonitorDiscriminator, monitorDiscriminator);
         }
         // RejectedFrames is a hypothesis-level FCS rejection count. Keep the
         // fallback and coherent contributions separate so diagnostics can
         // explain the total without mixing decoder populations.
-        fallbackRejectedFrames = phases.Sum(item => item.RejectedFrames);
-        coherentRejectedFrames = coherentDecoders.Sum(item => item.RejectedFrames);
+        fallbackRejectedFrames = 0;
+        foreach (PhaseDecoder phase in phases) fallbackRejectedFrames += phase.RejectedFrames;
+        coherentRejectedFrames = 0;
+        foreach (CoherentGmskSequenceDecoder decoder in coherentDecoders)
+            coherentRejectedFrames += decoder.RejectedFrames;
         rejectedFrames = fallbackRejectedFrames + coherentRejectedFrames;
-        return results;
+        return results is null ? Array.Empty<AisFrame>() : results;
     }
 
     private bool ProcessMonitorSample(
@@ -305,7 +309,7 @@ public sealed class AisReceiver(string channel, long frequencyHz)
         Complex32 current,
         long outputPosition,
         ChannelIqBlockMetadata metadata,
-        List<AisFrame> results,
+        ref List<AisFrame>? results,
         Span<CoherentGmskMixedSample> mixed,
         bool hasPrecomputedDiscriminator,
         float precomputedDiscriminator)
@@ -320,7 +324,7 @@ public sealed class AisReceiver(string channel, long frequencyHz)
                     mixed[decoder.FrequencyHypothesisIndex], discriminatorIndex, out double quality);
                 if (payload is not null)
                     TryAddFrame(payload, quality, decoder.FrequencyOffsetHz, coherent: true,
-                        outputPosition, metadata, results);
+                        outputPosition, metadata, ref results);
             }
         }
 
@@ -361,7 +365,7 @@ public sealed class AisReceiver(string channel, long frequencyHz)
             if (contribution.AddedUniquePhase >= 0)
                 uniqueNoncoherentFramesByPhase[contribution.AddedUniquePhase]++;
             TryAddFrame(payload, quality, 0, coherent: false,
-                outputPosition, metadata, results);
+                outputPosition, metadata, ref results);
         }
         discriminatorIndex++;
     }
@@ -370,7 +374,7 @@ public sealed class AisReceiver(string channel, long frequencyHz)
         Complex32 current,
         long outputPosition,
         ChannelIqBlockMetadata metadata,
-        List<AisFrame> results,
+        ref List<AisFrame>? results,
         Span<CoherentGmskMixedSample> mixed,
         bool hasPrecomputedDiscriminator,
         float precomputedDiscriminator)
@@ -382,7 +386,7 @@ public sealed class AisReceiver(string channel, long frequencyHz)
         bool detected = detectorReady && meanPower >= demodulationGateThresholdPower;
         if (isDemodulationGateOpen)
         {
-            FeedDemodulators(current, outputPosition, metadata, results, mixed,
+            FeedDemodulators(current, outputPosition, metadata, ref results, mixed,
                 hasPrecomputedDiscriminator, precomputedDiscriminator);
             if (detectorReady && meanPower >= demodulationGateCloseThresholdPower)
             {
@@ -414,7 +418,7 @@ public sealed class AisReceiver(string channel, long frequencyHz)
             if (ringIndex >= demodulationGateRing.Length)
                 ringIndex -= demodulationGateRing.Length;
             FeedDemodulators(demodulationGateRing[ringIndex],
-                demodulationGatePositions[ringIndex], metadata, results, mixed,
+                demodulationGatePositions[ringIndex], metadata, ref results, mixed,
                 hasPrecomputedDiscriminator: false, precomputedDiscriminator: 0);
         }
     }
@@ -488,7 +492,7 @@ public sealed class AisReceiver(string channel, long frequencyHz)
         bool coherent,
         long outputPosition,
         ChannelIqBlockMetadata metadata,
-        List<AisFrame> results)
+        ref List<AisFrame>? results)
     {
         RecentAisFrameResult recent = recentFrames.TryAdd(
             payload, outputPosition, coherent);
@@ -518,7 +522,7 @@ public sealed class AisReceiver(string channel, long frequencyHz)
         }
         else fallbackFrames++;
         lastFrameAt = receivedAt;
-        results.Add(new(payload, receivedAt, metadata.Source.StreamId, sourcePosition,
+        (results ??= []).Add(new(payload, receivedAt, metadata.Source.StreamId, sourcePosition,
             Channel, FrequencyHz, quality));
     }
 
@@ -718,13 +722,18 @@ public sealed class AisReceiver(string channel, long frequencyHz)
             high = 0;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public byte[]? Feed(float discriminator, long index, out double quality)
         {
             quality = 0;
             if (index < offset) return null;
             sum += discriminator;
             if (++count < SamplesPerSymbol) return null;
+            return DecodeSymbol(out quality);
+        }
 
+        private byte[]? DecodeSymbol(out double quality)
+        {
             double symbol = sum / count;
             sum = 0;
             count = 0;

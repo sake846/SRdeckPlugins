@@ -21,6 +21,7 @@ public sealed partial class AnalogPluginModule :
     IPluginViewProvider,
     IPluginProcessingDiagnosticsProvider,
     IPluginProcessingWarmup,
+    IPluginFrequencySelection,
     IWaterfallDisplayProvider,
     IWaterfallDisplayRequestChangedProvider
 {

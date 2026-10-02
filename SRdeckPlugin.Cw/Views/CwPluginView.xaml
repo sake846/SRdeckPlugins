@@ -18,7 +18,6 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="36" />
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
@@ -44,25 +43,30 @@
                     </Grid>
                 </Border>
 
-                <UniformGrid Grid.Row="1" Columns="4" Margin="10,4,10,14">
-                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="追尾信号" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding ActiveSignals, StringFormat=N0}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
-                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="復号文字（累計）" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding DecodedCharacters, StringFormat=N0}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
-                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="代表 S/N" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding RepresentativeSnrText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
-                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="代表速度" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding RepresentativeSpeedText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
-                </UniformGrid>
 
-                <TabControl Grid.Row="2" Style="{DynamicResource PluginTabControlStyle}">
+                <TabControl Grid.Row="1" Style="{DynamicResource PluginTabControlStyle}">
                     <TabItem x:Name="CwOverviewTab" Header="概要" IsSelected="True">
                         <Grid Margin="10,8">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-                            <TextBlock Text="最近受信したCW信号"
+                            <TextBlock Grid.Row="0" Text="受信の概況"
+                                       Style="{DynamicResource PluginPrimarySectionHeaderStyle}"
+                                       Margin="2,0,0,5" />
+                            <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,8">
+                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="追尾信号" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding ActiveSignals, StringFormat=N0}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
+                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="復号文字（累計）" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding DecodedCharacters, StringFormat=N0}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
+                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="代表 S/N" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding RepresentativeSnrText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
+                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="代表速度" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding RepresentativeSpeedText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
+                            </UniformGrid>
+                            <TextBlock Grid.Row="2" Text="最近受信したCW信号"
                                        Style="{DynamicResource PluginPrimarySectionHeaderStyle}"
                                        Margin="2,2,0,5" />
                             <ListBox x:Name="CwRecentSignalList"
-                                     Grid.Row="1"
+                                     Grid.Row="3"
                                      ItemsSource="{Binding RecentSignals}"
                                      Style="{DynamicResource PluginCompactListStyle}"
                                      VerticalAlignment="Stretch">

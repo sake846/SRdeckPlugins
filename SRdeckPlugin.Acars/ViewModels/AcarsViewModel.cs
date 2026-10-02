@@ -74,7 +74,7 @@ public sealed partial class AcarsViewModel : ObservableObject
 
     [ObservableProperty] private AcarsCategorySummary? _selectedAircraftGroup;
     private readonly HashSet<string> monitoredChannelIds = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, GeoMapMarker> mapMarkersByAircraft = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (GeoMapMarker Marker, DateTimeOffset LastReceivedAt)> mapMarkersByAircraft = new(StringComparer.OrdinalIgnoreCase);
 
     public AcarsViewModel()
     {
@@ -170,7 +170,7 @@ public sealed partial class AcarsViewModel : ObservableObject
         if (!synchronizingSettings)
         {
             RetentionMinutesChanged?.Invoke(normalized);
-            RebuildCategories();
+            RebuildMapMarkers();
         }
     }
     partial void OnSaveRawFramesChanged(bool value)
@@ -338,10 +338,8 @@ public sealed partial class AcarsViewModel : ObservableObject
     private void RebuildCategories()
     {
         string? selectedKey = SelectedAircraftGroup?.Key;
-        DateTimeOffset cutoff = DateTimeOffset.Now.AddMinutes(-RetentionMinutes);
         var activeGroups = Messages
             .GroupBy(item => DisplayKey(item.Aircraft, "機体不明"))
-            .Where(group => group.Any(item => item.ReceivedAt >= cutoff))
             .OrderByDescending(group => group.Max(item => item.ReceivedAt))
             .Take(MaximumAircraft);
         ReplaceCategories(AircraftGroups, activeGroups);
@@ -361,6 +359,7 @@ public sealed partial class AcarsViewModel : ObservableObject
         {
             if (string.IsNullOrEmpty(filter) ||
                 (msg.Aircraft?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true) ||
+                (msg.AircraftDisplay.Contains(filter, StringComparison.OrdinalIgnoreCase)) ||
                 (msg.Label?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true) ||
                 (msg.Text?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true) ||
                 (msg.SummaryText?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true))
@@ -394,11 +393,13 @@ public sealed partial class AcarsViewModel : ObservableObject
     {
         AcarsCategorySummary[] summaries = groups.Select(group =>
         {
-            AcarsReception latest = group.OrderByDescending(item => item.ReceivedAt).First();
+            AcarsReception latest = group.MaxBy(item => item.ReceivedAt)!;
+            AcarsReception oldest = group.MinBy(item => item.ReceivedAt)!;
             AcarsInterpretation interpretation = AcarsMessageInterpreter.InterpretDetailed(
                 latest.Label, latest.Text);
             return new AcarsCategorySummary(group.Key, group.Count(), latest.ReceivedAt.ToLocalTime(),
-                latest.Aircraft, latest.Label, interpretation.DecodedText,
+                oldest.ReceivedAt.ToLocalTime(),
+                latest.AircraftDisplay, latest.Label, interpretation.DecodedText,
                 interpretation.ProprietaryText, interpretation.UninterpretedText,
                 group.OrderByDescending(item => item.ReceivedAt).Take(20).ToArray(), latest);
         }).ToArray();
@@ -406,7 +407,7 @@ public sealed partial class AcarsViewModel : ObservableObject
     }
 
     private static string DisplayKey(string? value, string fallback) =>
-        string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+        AcarsReception.NormalizeRegistration(value);
 
 
     private static string GetAltitudeBandColor(int? altitudeFeet) => altitudeFeet switch
@@ -465,10 +466,13 @@ public sealed partial class AcarsViewModel : ObservableObject
     }
 }
 
+public sealed record AcarsCategoryBadge(string Name, bool IsReceived);
+
 public sealed record AcarsCategorySummary(
     string Key,
     int Count,
     DateTimeOffset LastReceivedAt,
+    DateTimeOffset FirstReceivedAt,
     string Aircraft,
     string Label,
     string DecodedText,
@@ -477,6 +481,36 @@ public sealed record AcarsCategorySummary(
     IReadOnlyList<AcarsReception> History,
     AcarsReception LatestReception)
 {
+    public string AircraftDisplay => AcarsReception.NormalizeRegistration(Aircraft);
+
+    public string FirstSeenText => FirstReceivedAt.ToLocalTime().ToString("HH:mm:ss");
+
+    public string DurationText
+    {
+        get
+        {
+            TimeSpan duration = LastReceivedAt - FirstReceivedAt;
+            if (duration < TimeSpan.FromMinutes(1)) return "1分未満";
+            if (duration < TimeSpan.FromHours(1)) return $"{(int)duration.TotalMinutes}分";
+            return $"{(int)duration.TotalHours}時間{duration.Minutes}分";
+        }
+    }
+
+    public string ActivityStatusText
+    {
+        get
+        {
+            TimeSpan sinceLast = DateTimeOffset.Now - LastReceivedAt;
+            if (sinceLast <= TimeSpan.FromMinutes(5)) return "活動中";
+            if (sinceLast < TimeSpan.FromHours(1)) return $"{(int)sinceLast.TotalMinutes}分前";
+            if (sinceLast < TimeSpan.FromDays(1)) return $"{(int)sinceLast.TotalHours}時間前";
+            return $"{(int)sinceLast.TotalDays}日前";
+        }
+    }
+
+    public string LatestSingleLineSummary => LatestReception.SingleLineSummary;
+    public string LatestSummaryText => LatestReception.SummaryText;
+
     public string LatestText => string.Join('\n',
         new[] { DecodedText, ProprietaryText, UninterpretedText }
             .Where(value => !string.IsNullOrWhiteSpace(value)));
@@ -486,6 +520,55 @@ public sealed record AcarsCategorySummary(
     public string ValidationDisplay =>
         $"BCS {(LatestReception.IsBlockCheckValid ? "OK" : "NG")} / " +
         $"Parity {(LatestReception.HasValidOddParity ? "OK" : "NG")}";
+
+    public string LatestLabelDetail
+    {
+        get
+        {
+            string desc = Protocols.AcarsMessageInterpreter.GetLabelDescription(LatestReception.Label, out string d)
+                ? d
+                : "一般通信";
+            return $"{LatestReception.Label} [{LatestReception.BlockId}] {desc}";
+        }
+    }
+
+    public string ModeAndAckText =>
+        string.IsNullOrWhiteSpace(LatestReception.Acknowledgement)
+            ? $"Mode {LatestReception.Mode}"
+            : $"Mode {LatestReception.Mode} / ACK {LatestReception.Acknowledgement}";
+
+    public string ReceptionStatsText =>
+        $"受信 {Count:N0} 件 (滞在 {DurationText})";
+
+    public string RawHex => LatestReception.RawHex;
+
+    public IReadOnlyList<AcarsCategoryBadge> CategoryBadges
+    {
+        get
+        {
+            bool hasPos = false, hasOooi = false, hasWx = false, hasOps = false, hasAtc = false, hasTelem = false;
+            foreach (AcarsReception item in History)
+            {
+                string lbl = item.Label.ToUpperInvariant();
+                string txt = item.Text.ToUpperInvariant();
+                if (!hasPos && (lbl is "5V" or "20" or "21" or "22" or "23" || txt.Contains("POS") || txt.Contains("LAT") || txt.Contains("LON"))) hasPos = true;
+                if (!hasOooi && (lbl is "00" or "QA" or "Q0" or "10" or "11" or "12" or "13" or "15" || txt.Contains("OUT") || txt.Contains("OFF") || txt.Contains("ON") || txt.Contains("IN") || txt.Contains("GATE"))) hasOooi = true;
+                if (!hasWx && (lbl is "51" or "52" or "80" or "D1" or "S6" or "S7" or "5U" or "RA" or "RB" or "RC" || txt.Contains("METAR") || txt.Contains("TAF") || txt.Contains("PIREP") || txt.Contains("WXRQ"))) hasWx = true;
+                if (!hasOps && (lbl is "14" or "16" or "17" or "18" or "30" or "31" or "36" or "39" or "H1" or "H2" or "H3" || txt.Contains("ETA") || txt.Contains("FPL") || txt.Contains("FUEL"))) hasOps = true;
+                if (!hasAtc && (lbl is "B5" or "B6" or "B9" or "5D" || txt.Contains("CPDLC") || txt.Contains("ATIS") || txt.Contains("ATC"))) hasAtc = true;
+                if (!hasTelem && (lbl is "Q1" or "Q2" or "Q3" or "Q4" or "40" or "41" or "42" or "43" or "44" or "45" or "4A" || txt.Contains("#DFB") || txt.Contains("#DFD") || txt.Contains("#DFR") || txt.Contains("ACMS") || txt.Contains("ENG"))) hasTelem = true;
+            }
+            return
+            [
+                new("位置", hasPos),
+                new("発着", hasOooi),
+                new("気象", hasWx),
+                new("運航", hasOps),
+                new("管制", hasAtc),
+                new("機体", hasTelem),
+            ];
+        }
+    }
 }
 
 public sealed class AcarsChannelSelection : ObservableObject

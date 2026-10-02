@@ -21,9 +21,7 @@ public sealed partial class AdsBPluginModule
 {
     private void Prune(DateTimeOffset now)
     {
-        DateTimeOffset cutoff = now.AddMinutes(-settings.RetentionMinutes);
-        foreach (string key in aircraft.Where(item => item.Value.LastSeen < cutoff).Select(item => item.Key).ToArray())
-            aircraft.Remove(key);
+        // 保持時間は地図表示のみに適用し、一覧（aircraft）は上限機数まで保持する
         int excess = aircraft.Count - settings.MaximumAircraft;
         if (excess > 0)
         {
@@ -39,8 +37,7 @@ public sealed partial class AdsBPluginModule
     {
         lock (gate)
         {
-            if (history.Count > settings.MaximumHistory)
-                history.RemoveRange(0, history.Count - settings.MaximumHistory);
+            while (history.Count > settings.MaximumHistory) history.Dequeue();
         }
     }
 
@@ -55,7 +52,7 @@ public sealed partial class AdsBPluginModule
             if (File.Exists(path)) PluginJsonLinesHistory.Rewrite(path, loaded);
             lock (gate)
             {
-                history.AddRange(loaded);
+                foreach (ExportRecord item in loaded) history.Enqueue(item);
                 foreach (IGrouping<string, ExportRecord> group in loaded.GroupBy(item => item.Icao))
                 {
                     ExportRecord item = group.Last();
@@ -95,7 +92,12 @@ public sealed partial class AdsBPluginModule
                     Summary = string.IsNullOrWhiteSpace(item.Callsign)
                         ? item.Kind : $"{item.Kind} / {item.Callsign}",
                     AltitudeFeet = item.GeometricAltitudeFeet ?? item.BarometricAltitudeFeet,
-                    SpeedKnots = item.SpeedKnots
+                    SpeedKnots = item.SpeedKnots,
+                    Latitude = item.Latitude,
+                    Longitude = item.Longitude,
+                    TrackDegrees = item.TrackDegrees,
+                    VerticalRateFeetPerMinute = item.VerticalRate,
+                    Squawk = item.Squawk
                 });
             PublishViewSnapshot();
         }

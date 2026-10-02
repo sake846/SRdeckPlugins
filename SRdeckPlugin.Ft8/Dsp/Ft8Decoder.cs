@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics;
 using SRdeckPlugin.Contracts;
 using SRdeckPlugin.Ft8.Models;
@@ -174,11 +175,22 @@ public sealed partial class Ft8Decoder
 
         if (allowCancellation && enableCancellationPass && decoded.Count > 0)
         {
-            Complex32[] residual = samples[..Math.Min(samples.Length, SlotSamples)].ToArray();
-            foreach (Ft8Reception reception in decoded)
-                CancelDecodedSignal(residual, reception, channelCenterFrequencyHz);
-            DecodeBatch secondPass = DecodeSlotCore(residual, slotStart, streamId,
-                channelCenterFrequencyHz, settings, false, cancellationToken);
+            int residualLength = Math.Min(samples.Length, SlotSamples);
+            Complex32[] residual = ArrayPool<Complex32>.Shared.Rent(residualLength);
+            DecodeBatch secondPass;
+            try
+            {
+                Span<Complex32> residualSamples = residual.AsSpan(0, residualLength);
+                samples[..residualLength].CopyTo(residualSamples);
+                foreach (Ft8Reception reception in decoded)
+                    CancelDecodedSignal(residualSamples, reception, channelCenterFrequencyHz);
+                secondPass = DecodeSlotCore(residualSamples, slotStart, streamId,
+                    channelCenterFrequencyHz, settings, false, cancellationToken);
+            }
+            finally
+            {
+                ArrayPool<Complex32>.Shared.Return(residual);
+            }
             candidateCount += secondPass.Candidates;
             ldpcRejected += secondPass.LdpcRejected;
             crcRejected += secondPass.CrcRejected;
@@ -238,7 +250,22 @@ public sealed partial class Ft8Decoder
 
     private static List<Candidate> FindCandidates(Waterfall waterfall, Ft8Settings settings)
     {
-        var candidates = new List<Candidate>(settings.MaximumCandidates * 2);
+        int maximumCount = TimeOversampling * FrequencyOversampling * 30 * (waterfall.BinCount - 7);
+        Candidate[] candidates = ArrayPool<Candidate>.Shared.Rent(maximumCount);
+        try
+        {
+            return SelectCandidates(waterfall, settings, candidates);
+        }
+        finally
+        {
+            ArrayPool<Candidate>.Shared.Return(candidates);
+        }
+    }
+
+    private static List<Candidate> SelectCandidates(Waterfall waterfall, Ft8Settings settings,
+        Span<Candidate> candidates)
+    {
+        int candidateCount = 0;
         for (int timeSub = 0; timeSub < TimeOversampling; timeSub++)
         for (int frequencySub = 0; frequencySub < FrequencyOversampling; frequencySub++)
         for (int timeOffset = -10; timeOffset < 20; timeOffset++)
@@ -247,13 +274,26 @@ public sealed partial class Ft8Decoder
             var candidate = new Candidate(0, timeOffset, frequencyOffset, timeSub, frequencySub);
             int score = SyncScore(waterfall, candidate);
             if (score >= settings.MinimumSyncScore)
-                candidates.Add(candidate with { Score = score });
+                candidates[candidateCount++] = candidate with { Score = score };
         }
+
+        candidates = candidates[..candidateCount];
+        candidates.Sort(static (left, right) =>
+        {
+            int result = right.Score.CompareTo(left.Score);
+            // Preserve the stable OrderBy order for equal scores: it determines
+            // which nearby hypotheses survive suppression and the candidate cap.
+            if (result == 0) result = left.TimeSub.CompareTo(right.TimeSub);
+            if (result == 0) result = left.FrequencySub.CompareTo(right.FrequencySub);
+            if (result == 0) result = left.TimeOffset.CompareTo(right.TimeOffset);
+            if (result == 0) result = left.FrequencyOffset.CompareTo(right.FrequencyOffset);
+            return result;
+        });
 
         // Suppress the dense cluster of adjacent time/frequency hypotheses around
         // each physical signal while keeping differently timed overlapping signals.
         var selected = new List<Candidate>(settings.MaximumCandidates);
-        foreach (Candidate candidate in candidates.OrderByDescending(item => item.Score))
+        foreach (Candidate candidate in candidates)
         {
             int timeCoordinate = candidate.TimeOffset * TimeOversampling + candidate.TimeSub;
             int frequencyCoordinate = candidate.FrequencyOffset * FrequencyOversampling +

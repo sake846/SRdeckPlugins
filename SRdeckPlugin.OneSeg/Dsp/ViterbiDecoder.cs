@@ -96,37 +96,46 @@ internal sealed class ViterbiDecoder
 
     private bool DecodeStep(int x, int y, out byte output)
     {
-        int bestState = 0;
-        int bestMetric = Infinity;
+        ReadOnlySpan<int> branchMetrics =
+        [
+            2 * MaximumReliability + x + y, 2 * MaximumReliability + x - y,
+            2 * MaximumReliability - x + y, 2 * MaximumReliability - x - y
+        ];
         ulong decisionMask = 0;
-        for (int next = 0; next < StateCount; next++)
+        // Both generators contain the newest and oldest bits. Flipping either
+        // complements both encoded bits, so a butterfly shares two branch costs.
+        for (int predecessor = 0; predecessor < StateCount / 2; predecessor++)
         {
-            int bit = next & 1;
-            int predecessor0 = next >> 1;
-            int predecessor1 = predecessor0 | 0x20;
-            int candidate0 = metrics[predecessor0] +
-                BranchMetric(x, y, TransitionOutputs[(predecessor0 << 1) | bit]);
-            int candidate1 = metrics[predecessor1] +
-                BranchMetric(x, y, TransitionOutputs[(predecessor1 << 1) | bit]);
-            if (candidate0 <= candidate1)
-            {
-                nextMetrics[next] = candidate0;
-            }
-            else
-            {
-                nextMetrics[next] = candidate1;
-                decisionMask |= 1UL << next;
-            }
-            if (nextMetrics[next] >= bestMetric) continue;
-            bestMetric = nextMetrics[next];
-            bestState = next;
+            int next = predecessor * 2;
+            int branch0 = branchMetrics[TransitionOutputs[predecessor]];
+            int branch1 = 4 * MaximumReliability - branch0;
+            int metric0 = metrics[predecessor], metric1 = metrics[predecessor + StateCount / 2];
+            int even0 = metric0 + branch0, even1 = metric1 + branch1;
+            int odd0 = metric0 + branch1, odd1 = metric1 + branch0;
+            nextMetrics[next] = Math.Min(even0, even1);
+            nextMetrics[next + 1] = Math.Min(odd0, odd1);
+            decisionMask |= (even1 < even0 ? 1UL : 0UL) << next;
+            decisionMask |= (odd1 < odd0 ? 1UL : 0UL) << (next + 1);
         }
         (metrics, nextMetrics) = (nextMetrics, metrics);
         decisions[steps % DecisionDepth] = decisionMask;
         steps++;
         bool hasOutput = steps >= DecisionDepth && (steps - DecisionDepth) % OutputBits == 0;
+        bool normalize = (steps & 0xff) == 0;
+        int bestState = 0;
+        int bestMetric = Infinity;
+        // The winning state is only needed for byte traceback or normalization.
+        if (hasOutput || normalize)
+        {
+            for (int state = 0; state < StateCount; state++)
+            {
+                if (metrics[state] >= bestMetric) continue;
+                bestMetric = metrics[state];
+                bestState = state;
+            }
+        }
         output = hasOutput ? TracebackByte(bestState) : default;
-        if ((steps & 0xff) == 0)
+        if (normalize)
         {
             for (int state = 0; state < StateCount; state++) metrics[state] -= bestMetric;
         }
@@ -147,12 +156,6 @@ internal sealed class ViterbiDecoder
         return decoded;
     }
 
-    private static int BranchMetric(int x, int y, int encoded) =>
-        BitMetric(x, encoded >> 1) + BitMetric(y, encoded & 1);
-
-    private static int BitMetric(int reliability, int expected) =>
-        MaximumReliability + (expected == 0 ? reliability : -reliability);
-
     private static int HardReliability(byte bit) => bit switch
     {
         0 => -MaximumReliability,
@@ -162,13 +165,12 @@ internal sealed class ViterbiDecoder
 
     private static byte[] CreateTransitionOutputs()
     {
-        var result = new byte[StateCount * 2];
-        for (int state = 0; state < StateCount; state++)
-        for (int bit = 0; bit <= 1; bit++)
+        var result = new byte[StateCount / 2];
+        for (int state = 0; state < result.Length; state++)
         {
-            int shift = (state << 1) | bit;
+            int shift = state << 1;
             // ISDB-T K=7 generators in the decoder's LSB-newest shift order.
-            result[(state << 1) | bit] = (byte)((Parity(shift & 0x4f) << 1) |
+            result[state] = (byte)((Parity(shift & 0x4f) << 1) |
                 Parity(shift & 0x6d));
         }
         return result;

@@ -1,4 +1,4 @@
-﻿namespace SRdeckPlugin.Acars.Models;
+namespace SRdeckPlugin.Acars.Models;
 
 public sealed record AcarsFrame(
     byte[] Bytes,
@@ -41,7 +41,26 @@ public sealed record AcarsReception(
     Guid StreamId = default,
     long SamplePosition = 0)
 {
+    public string AircraftDisplay => NormalizeRegistration(Aircraft);
+
+    public static string NormalizeRegistration(string? value)
+    {
+        string trimmed = value?.Trim().TrimStart('.') ?? string.Empty;
+        return string.IsNullOrWhiteSpace(trimmed) ? "機体不明" : trimmed;
+    }
+    public string FrequencyDisplay => $"{FrequencyHz / 1_000_000.0:F3} MHz";
+    public string SignalQualityDisplay => $"Q: {SignalQuality * 100:F0}%";
     public string SummaryText => Protocols.AcarsMessageInterpreter.Interpret(Label, Text);
+    public string SingleLineSummary
+    {
+        get
+        {
+            string summary = SummaryText;
+            return summary.IndexOfAny(['\r', '\n']) >= 0
+                ? summary.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Trim()
+                : summary;
+        }
+    }
     public string DecodedText => Protocols.AcarsMessageInterpreter
         .InterpretDetailed(Label, Text).DecodedText;
     public string ProprietaryText => Protocols.AcarsMessageInterpreter

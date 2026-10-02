@@ -4,6 +4,6 @@
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <UseLocalSRdeckSources>false</UseLocalSRdeckSources>
-    <SRdeckPlatformVersion Condition="'$(SRdeckPlatformVersion)' == ''">1.0.5</SRdeckPlatformVersion>
+    <SRdeckPlatformVersion Condition="'$(SRdeckPlatformVersion)' == ''">1.0.6</SRdeckPlatformVersion>
   </PropertyGroup>
 </Project>

@@ -283,7 +283,8 @@ public sealed record OneSegSettings(
     bool CaptionBackgroundEnabled = true,
     string CaptionPosition = "Bottom",
     bool EmergencyNotificationsEnabled = true,
-    string? RegionId = null)
+    string? RegionId = null,
+    bool VideoSuperResolutionEnabled = false)
 {
     public OneSegSettings Normalize()
     {

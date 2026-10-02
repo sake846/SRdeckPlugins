@@ -23,7 +23,7 @@ public sealed partial class OneSegPluginModule
         try
         {
             created = await Task.Run(
-                () => new OneSegMediaPlayer(),
+                () => new OneSegMediaPlayer(settings.VideoSuperResolutionEnabled),
                 mediaPlayerInitializationCancellation.Token).ConfigureAwait(false);
 
             lock (processingGate)
@@ -37,7 +37,13 @@ public sealed partial class OneSegPluginModule
                 mediaPlayer = created;
                 if (State == PluginLifecycleState.Streaming) created.Start(settings.Volume);
             }
-            Dispatch(() => viewModel.MediaPlayer = created.Player);
+            Dispatch(() =>
+            {
+                if (!IsDisposed && ReferenceEquals(mediaPlayer, created))
+                    viewModel.MediaPlayer = created.Player;
+            });
+            if (created.VideoSuperResolutionEnabled != settings.VideoSuperResolutionEnabled)
+                QueueVideoSuperResolutionUpdate();
         }
         catch (OperationCanceledException) when (mediaPlayerInitializationCancellation.IsCancellationRequested)
         {

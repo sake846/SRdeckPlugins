@@ -309,16 +309,8 @@ internal sealed partial class LoRaPreambleDetector
         double totalPower = 0.0;
         if (_carrierFrequencyCorrectionHz == 0)
         {
-            for (int n = 0; n < _symbolSamples; n++)
-            {
-                Complex sample = _ring[_writeIndex + n];
-                Complex reference = _downChirp[n];
-                if (!dechirpUpChirp) reference.Y = -reference.Y;
-                float x = sample.X * reference.X - sample.Y * reference.Y;
-                float y = sample.X * reference.Y + sample.Y * reference.X;
-                fftInput[n] = new Complex { X = x, Y = y };
-                totalPower += (x * x) + (y * y);
-            }
+            totalPower = Dechirp(_ring.AsSpan(_writeIndex, _symbolSamples),
+                _downChirp, fftInput, dechirpUpChirp);
         }
         else
         {

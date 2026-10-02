@@ -60,6 +60,12 @@ only floating-point summation order differs. SFD analysis executes just the
 down-chirp FFT used by the decision. Regression checks cover a double-precision
 FIR reference, weak-frame parity against the previous FIR, and adjacent-channel rejection.
 
+FFT preparation dechirps four samples at a time using AVX when carrier correction
+is inactive. Scalar rounding and power summation order are preserved, keeping FFT
+input and silence decisions identical. No buffers or hot-loop allocations are
+added; CPUs without AVX use the scalar path. See the [performance checks](../docs/meshtastic-performance.md)
+for measurement conditions and reproduction commands.
+
 Compare processing time with input duration, queue depth and dropped-block counts.
 Check host/SDR input losses separately from the plugin's internal drops. Changing
 slots can also change the required input bandwidth and tuning center; compare the

@@ -169,7 +169,7 @@ public sealed partial class HfdlReceiver
             working.Add(new(outputI, outputQ));
             double outputPower = outputI * outputI + outputQ * outputQ;
             outputEnergy += outputPower;
-            outputPeak = Math.Max(outputPeak, Math.Sqrt(outputPower));
+            outputPeak = Math.Max(outputPeak, outputPower);
             outputCount++;
             if (captureAudio)
             {
@@ -182,12 +182,12 @@ public sealed partial class HfdlReceiver
         if (outputCount > 0)
         {
             channelRms = (float)Math.Sqrt(outputEnergy / outputCount);
-            channelPeak = (float)outputPeak;
+            channelPeak = (float)Math.Sqrt(outputPeak);
         }
         processedInputSamples += samples.Length;
         processedWorkingSamples += outputCount;
 
-        List<HfdlFrame> result = DecodeAvailable(metadata);
+        IReadOnlyList<HfdlFrame> result = DecodeAvailable(metadata);
         int maximum = WorkingSampleRate * 6;
         if (working.Count > maximum)
             RemoveWorking(working.Count - maximum);
@@ -220,7 +220,7 @@ public sealed partial class HfdlReceiver
             working.Add(filtered);
             double power = filteredI * filteredI + filteredQ * filteredQ;
             energy += power;
-            peak = Math.Max(peak, Math.Sqrt(power));
+            peak = Math.Max(peak, power);
             if (!captureAudio) continue;
             if (monitorAudioSampleCount >= monitorAudio.Length)
                 throw new ArgumentException("The HFDL monitor audio buffer is too small.", nameof(monitorAudio));
@@ -230,7 +230,7 @@ public sealed partial class HfdlReceiver
         if (!samples.IsEmpty)
         {
             channelRms = inputRms;
-            channelPeak = (float)peak;
+            channelPeak = (float)Math.Sqrt(peak);
         }
         processedInputSamples += source.SampleCount;
         processedWorkingSamples += samples.Length;
@@ -239,7 +239,7 @@ public sealed partial class HfdlReceiver
             CenterFrequencyHz = applied.ChannelCenterFrequencyHz,
             SampleCount = samples.Length
         };
-        List<HfdlFrame> result = DecodeAvailable(decodeMetadata);
+        IReadOnlyList<HfdlFrame> result = DecodeAvailable(decodeMetadata);
         int maximum = WorkingSampleRate * 6;
         if (working.Count > maximum) RemoveWorking(working.Count - maximum);
         return result;

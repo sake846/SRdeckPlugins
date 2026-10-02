@@ -1,3 +1,5 @@
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using SRdeckPlugin.Contracts;
 
 namespace SRdeckPlugin.Analog;
@@ -142,7 +144,7 @@ internal sealed partial class AnalogDemodulator
         float magnitude = MathF.Sqrt(sample.I * sample.I + sample.Q * sample.Q);
         if (_amCarrierLevel == 0) _amCarrierLevel = magnitude;
         _amCarrierLevel += _amCarrierAlpha * (magnitude - _amCarrierLevel);
-        float normalizationGain = MathF.Min(32f, 1f / MathF.Max(_amCarrierLevel, 1e-6f));
+        float normalizationGain = WeakSignalGain(_amCarrierLevel);
         return (magnitude - _amCarrierLevel) * normalizationGain * 1.5f;
     }
 
@@ -180,10 +182,9 @@ internal sealed partial class AnalogDemodulator
 
         float downI = sample.I * cosine + sample.Q * sine;
         float downQ = sample.Q * cosine - sample.I * sine;
-        downI = ProcessCascade(_ssbILowPass, downI);
-        downQ = ProcessCascade(_ssbQLowPass, downQ);
+        Vector2 filtered = ProcessCascade(_ssbLowPass, new Vector2(downI, downQ));
 
-        float audio = downI * cosine - downQ * sine;
+        float audio = filtered.X * cosine - filtered.Y * sine;
         _ssbCosine = cosine * _ssbStepCosine - sine * _ssbStepSine;
         _ssbSine = sine * _ssbStepCosine + cosine * _ssbStepSine;
         if ((++_ssbOscillatorSamples & 4095) == 0)
@@ -193,29 +194,34 @@ internal sealed partial class AnalogDemodulator
             _ssbCosine *= inverseMagnitude;
             _ssbSine *= inverseMagnitude;
         }
-        float normalizationGain = MathF.Min(32f, 1f / MathF.Max(_ssbSignalLevel, 1e-6f));
+        float normalizationGain = WeakSignalGain(_ssbSignalLevel);
         return audio * normalizationGain * 1.5f;
     }
 
-    private Complex32 FilterReceiverChannel(Complex32 sample) => new(
-        ProcessCascade(_channelILowPass, sample.I),
-        ProcessCascade(_channelQLowPass, sample.Q));
+    // ponytail: A fixed 60 dB ceiling keeps empty-channel noise bounded; use a noise-aware AGC if hardware measurements require more range.
+    private static float WeakSignalGain(float level) =>
+        MathF.Min(1_024f, 1f / MathF.Max(level, 1e-6f));
 
-    private Complex32 CompensateCic(Complex32 sample) => new(
-        _cicCompensationI.Process(sample.I),
-        _cicCompensationQ.Process(sample.Q));
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Complex32 FilterReceiverChannel(Complex32 sample)
+    {
+        Vector2 filtered = ProcessCascade(_channelLowPass, new Vector2(sample.I, sample.Q));
+        return new Complex32(filtered.X, filtered.Y);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Complex32 CompensateCic(Complex32 sample)
+    {
+        Vector2 filtered = _cicCompensation.Process(new Vector2(sample.I, sample.Q));
+        return new Complex32(filtered.X, filtered.Y);
+    }
 
     private void ConfigureCicCompensation(
         int inputSampleRateHz,
         int decimationFactor,
         float passbandEdgeHz)
     {
-        if (decimationFactor <= 1)
-        {
-            _cicCompensationI.ConfigureIdentity();
-            _cicCompensationQ.ConfigureIdentity();
-            return;
-        }
+        if (decimationFactor <= 1) return;
 
         const int cicStages = 5;
         double numerator = Math.Sin(Math.PI * passbandEdgeHz / _processingSampleRateHz);
@@ -227,11 +233,18 @@ internal sealed partial class AnalogDemodulator
         // corner frequency. Squaring here restores the CIC loss at the channel
         // edge while the following 8th-order low-pass rejects the boosted stopband.
         float shelfGainDb = 40f * MathF.Log10(edgeGain);
-        _cicCompensationI.ConfigureHighShelf(_processingSampleRateHz, passbandEdgeHz, shelfGainDb);
-        _cicCompensationQ.ConfigureHighShelf(_processingSampleRateHz, passbandEdgeHz, shelfGainDb);
+        _cicCompensation.ConfigureHighShelf(_processingSampleRateHz, passbandEdgeHz, shelfGainDb);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static float ProcessCascade(Biquad[] sections, float input)
+    {
+        foreach (Biquad section in sections) input = section.Process(input);
+        return input;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector2 ProcessCascade(Biquad[] sections, Vector2 input)
     {
         foreach (Biquad section in sections) input = section.Process(input);
         return input;
@@ -243,6 +256,7 @@ internal sealed partial class AnalogDemodulator
         return _fmDeemphasis;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private Complex32 MixToReceiverBaseband(Complex32 sample)
     {
         if (_frequencyOffsetHz == 0) return sample;
@@ -297,17 +311,14 @@ internal sealed partial class AnalogDemodulator
 
     private void ResetFilters()
     {
-        foreach (Biquad filter in _channelILowPass) filter.Reset();
-        foreach (Biquad filter in _channelQLowPass) filter.Reset();
+        foreach (Biquad filter in _channelLowPass) filter.Reset();
         foreach (Biquad filter in _audioLowPass) filter.Reset();
-        foreach (Biquad filter in _ssbILowPass) filter.Reset();
-        foreach (Biquad filter in _ssbQLowPass) filter.Reset();
+        foreach (Biquad filter in _ssbLowPass) filter.Reset();
         foreach (Biquad filter in _audioDiffLowPass) filter.Reset();
-        _cicCompensationI.Reset();
-        _cicCompensationQ.Reset();
+        _cicCompensation.Reset();
     }
 
-    private sealed class Biquad
+    internal sealed class Biquad
     {
         private float _b0;
         private float _b1;
@@ -316,6 +327,8 @@ internal sealed partial class AnalogDemodulator
         private float _a2;
         private float _z1;
         private float _z2;
+        private Vector2 _iqZ1;
+        private Vector2 _iqZ2;
 
         public void ConfigureLowPass(float sampleRateHz, float cutoffHz, float q)
         {
@@ -351,13 +364,7 @@ internal sealed partial class AnalogDemodulator
             Reset();
         }
 
-        public void ConfigureIdentity()
-        {
-            _b0 = 1f;
-            _b1 = _b2 = _a1 = _a2 = 0f;
-            Reset();
-        }
-
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float Process(float input)
         {
             float output = _b0 * input + _z1;
@@ -366,7 +373,22 @@ internal sealed partial class AnalogDemodulator
             return output;
         }
 
-        public void Reset() => _z1 = _z2 = 0;
+        // I and Q have identical coefficients and independent state. Vector2
+        // evaluates both lanes together without changing the scalar operation order.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Vector2 Process(Vector2 input)
+        {
+            Vector2 output = _b0 * input + _iqZ1;
+            _iqZ1 = _b1 * input - _a1 * output + _iqZ2;
+            _iqZ2 = _b2 * input - _a2 * output;
+            return output;
+        }
+
+        public void Reset()
+        {
+            _z1 = _z2 = 0;
+            _iqZ1 = _iqZ2 = Vector2.Zero;
+        }
     }
 
 }

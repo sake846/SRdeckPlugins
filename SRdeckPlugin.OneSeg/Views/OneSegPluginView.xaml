@@ -33,7 +33,7 @@
       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
       <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6" VerticalAlignment="Center">
        <TextBlock Text="OFDM同期: " Foreground="{DynamicResource TextDimBrush}"/>
-       <TextBlock Text="{Binding OfdmLockStatus}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontWeight="SemiBold" Margin="0,0,14,0"/>
+       <TextBlock Text="{Binding OfdmLockStatus}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontWeight="SemiBold" Margin="0,0,14,0"/>
        <TextBlock Text="TMCC同期: " Foreground="{DynamicResource TextDimBrush}"/>
        <TextBlock Text="{Binding TmccLockStatus}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontWeight="SemiBold" Margin="0,0,14,0"/>
        <TextBlock Text="MER: " Foreground="{DynamicResource TextDimBrush}"/>
@@ -47,7 +47,12 @@
       </Border>
        <Grid Grid.Row="2">
         <Grid.RowDefinitions><RowDefinition Height="320"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <vlc:VideoView x:Name="VideoSurface" Grid.Row="0" MediaPlayer="{Binding MediaPlayer}" VerticalAlignment="Stretch"/>
+        <vlc:VideoView x:Name="VideoSurface" Grid.Row="0" MediaPlayer="{Binding MediaPlayer}" VerticalAlignment="Stretch">
+         <Grid Background="#02000000" MouseLeftButtonUp="VideoSurface_MouseLeftButtonUp"
+               ContextMenuOpening="StationContextMenuOpening">
+          <Grid.ContextMenu><ContextMenu/></Grid.ContextMenu>
+         </Grid>
+        </vlc:VideoView>
         <Border x:Name="CaptionOverlay" Grid.Row="1" Height="{Binding CaptionAreaHeight}" VerticalAlignment="Bottom"
                 Background="{DynamicResource InstrumentBaseBrush}"
                 BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="0,1,0,0"

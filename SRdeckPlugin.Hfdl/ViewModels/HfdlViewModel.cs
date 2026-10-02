@@ -227,7 +227,7 @@ public sealed partial class HfdlViewModel : ObservableObject
             if (SetProperty(ref retentionMinutes, n) && !synchronizing)
             {
                 RetentionMinutesChanged?.Invoke(n);
-                RebuildCategories();
+                UpdateMapMarker();
             }
         }
     }

@@ -91,6 +91,8 @@ public sealed partial class Ft8Decoder
         int bestStart = coarseStart;
         double bestFrequency = coarseFrequency;
         double bestScore = double.NegativeInfinity;
+        Span<double> scores = stackalloc double[5];
+        Span<double> powers = stackalloc double[5];
 
         // Fine reporting synchronization is deliberately cheap and uses only
         // Costas symbols.  Cancellation needs a phase-accurate waveform, so
@@ -99,21 +101,25 @@ public sealed partial class Ft8Decoder
         {
             int start = coarseStart + timeAdjustment;
             if (start < 0 || start + tones.Length * SymbolSamples > samples.Length) continue;
-            for (int frequencyStep = -2; frequencyStep <= 2; frequencyStep++)
+            scores.Clear();
+            // Evaluate the five frequency hypotheses together using the same
+            // tone bank as fine decoding, retaining the per-hypothesis sum order.
+            for (int symbol = 0; symbol < tones.Length; symbol++)
             {
-                double frequency = coarseFrequency + frequencyStep * 0.78125;
-                double score = 0;
-                for (int symbol = 0; symbol < tones.Length; symbol++)
-                {
-                    int symbolStart = start + symbol * SymbolSamples;
-                    double expected = TonePower(samples, symbolStart,
-                        frequency + tones[symbol] * 6.25, 2);
-                    score += Math.Log(Math.Max(expected, 1e-20));
-                }
+                int symbolStart = start + symbol * SymbolSamples;
+                TonePowerBank.Measure(samples, fineWindow, symbolStart, SymbolSamples, 2,
+                    SampleRateHz, coarseFrequency - 2 * 0.78125 + tones[symbol] * 6.25,
+                    0.78125, powers);
+                for (int hypothesis = 0; hypothesis < scores.Length; hypothesis++)
+                    scores[hypothesis] += Math.Log(Math.Max(powers[hypothesis], 1e-20));
+            }
+            for (int hypothesis = 0; hypothesis < scores.Length; hypothesis++)
+            {
+                double score = scores[hypothesis];
                 if (score <= bestScore) continue;
                 bestScore = score;
                 bestStart = start;
-                bestFrequency = frequency;
+                bestFrequency = coarseFrequency + (hypothesis - 2) * 0.78125;
             }
         }
         return (bestStart, bestFrequency);

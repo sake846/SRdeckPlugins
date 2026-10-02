@@ -53,9 +53,10 @@ public sealed partial class WiSunPluginModule :
     private WiSunSettings _settings = new();
     private readonly Dictionary<string, WiSunDemodulator> _demodulators =
         new(StringComparer.Ordinal);
+    private IReadOnlyList<PluginChannelRequest> _channelRequests = [];
     private readonly List<WiSunPacketFrame> _packetHistory = [];
-    private WiSunDemodulator _demodulator = new();
-    private WiSunDemodulator _lastDemodulator = new();
+    private WiSunDemodulator _demodulator = null!;
+    private WiSunDemodulator _lastDemodulator = null!;
     private WiSunViewModel? _viewModel;
     private string? _selectedProfileId = "fan-21-09";
     private readonly object _consumptionGate = new();
@@ -81,8 +82,7 @@ public sealed partial class WiSunPluginModule :
         PluginComputeDevice.Cpu,
         ".NET CPU",
         "各監視チャンネルの2-FSK復調、プリアンブル/SFD同期、FCS検証、MAC解析");
-    public IReadOnlyList<PluginChannelRequest> ChannelRequests =>
-        CreateChannelRequests(_settings);
+    public IReadOnlyList<PluginChannelRequest> ChannelRequests => _channelRequests;
 
     public string? SelectedProfileId => _selectedProfileId;
     public IReadOnlyList<PluginProfileDescriptor> Profiles => SupportedProfiles;
@@ -347,37 +347,48 @@ public sealed partial class WiSunPluginModule :
             if (State != PluginLifecycleState.Streaming || !_settings.IsReceiverEnabled)
                 return ValueTask.CompletedTask;
 
-            List<(IChannelIqBlockLease Block, WiSunDemodulator Demodulator)> workItems;
+            IChannelIqBlockLease? firstBlock = null;
+            WiSunDemodulator? firstDemodulator = null;
+            List<(IChannelIqBlockLease Block, WiSunDemodulator Demodulator)>? workItems = null;
             float squelchThresholdDbfs;
             lock (_processingGate)
             {
                 squelchThresholdDbfs = _hostContext?.ReceiverTelemetry?.DbmToDbfs(_settings.SquelchThresholdDbm)
                     ?? (_settings.SquelchThresholdDbm - (-80f));
-                workItems = new List<(IChannelIqBlockLease, WiSunDemodulator)>(blocks.Count);
-                foreach (IChannelIqBlockLease block in blocks)
+                for (int index = 0; index < blocks.Count; index++)
                 {
+                    IChannelIqBlockLease block = blocks[index];
                     if (block.Samples.IsEmpty) continue;
                     string requestId = block.Metadata.Configuration.RequestId;
                     if (_demodulators.TryGetValue(requestId, out WiSunDemodulator? demodulator))
                     {
-                        workItems.Add((block, demodulator));
+                        if (firstDemodulator is null)
+                        {
+                            firstBlock = block;
+                            firstDemodulator = demodulator;
+                        }
+                        else
+                        {
+                            workItems ??= new(blocks.Count) { (firstBlock!, firstDemodulator) };
+                            workItems.Add((block, demodulator));
+                        }
                     }
                 }
-                if (workItems.Count > 0)
+                if (firstDemodulator is not null)
                     Volatile.Write(ref _hasReceivedStreamData, 1);
             }
 
-            if (workItems.Count == 0)
+            if (firstDemodulator is null)
                 return ValueTask.CompletedTask;
 
-            if (workItems.Count == 1)
+            if (workItems is null)
             {
-                var (block, demodulator) = workItems[0];
-                demodulator.ProcessChannel(
-                    block.Samples.Span, block.Metadata, squelchThresholdDbfs);
+                firstDemodulator.ProcessChannel(
+                    firstBlock!.Samples.Span, firstBlock.Metadata, squelchThresholdDbfs);
             }
             else
             {
+                float parallelSquelchThresholdDbfs = squelchThresholdDbfs;
                 Parallel.ForEach(workItems, new ParallelOptions
                 {
                     CancellationToken = token,
@@ -389,7 +400,7 @@ public sealed partial class WiSunPluginModule :
                 }, item =>
                 {
                     item.Demodulator.ProcessChannel(
-                        item.Block.Samples.Span, item.Block.Metadata, squelchThresholdDbfs);
+                        item.Block.Samples.Span, item.Block.Metadata, parallelSquelchThresholdDbfs);
                 });
             }
         }

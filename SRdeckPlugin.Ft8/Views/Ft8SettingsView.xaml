@@ -25,6 +25,7 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="30" />
                                 <RowDefinition Height="30" />
+                                <RowDefinition Height="30" />
                                 <RowDefinition Height="Auto" MinHeight="30" />
                                 <RowDefinition Height="30" />
                                 <RowDefinition Height="30" />
@@ -95,7 +96,21 @@
                                               Width="65" VerticalAlignment="Center" />
                             </StackPanel>
 
-                            <StackPanel Grid.Row="4" Grid.ColumnSpan="3"
+                            <StackPanel Grid.Row="4" Grid.ColumnSpan="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="復号プリセット" Style="{DynamicResource PluginSettingsFieldLabelStyle}"
+                                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <Button Content="標準" Command="{Binding ApplyStandardPresetCommand}"
+                                        Style="{DynamicResource PluginButtonStyle}" Width="52" Margin="0,0,5,0"/>
+                                <Button Content="弱信号優先" Command="{Binding ApplyWeakSignalPresetCommand}"
+                                        Style="{DynamicResource PluginButtonStyle}" Width="72" Margin="0,0,5,0"/>
+                                <Button Content="低負荷" Command="{Binding ApplyLowLoadPresetCommand}"
+                                        Style="{DynamicResource PluginButtonStyle}" Width="52" Margin="0,0,8,0"/>
+                                <TextBlock Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center">
+                                    <Run Text="現在: "/><Run Text="{Binding DecoderPresetName, Mode=OneWay}" FontWeight="SemiBold"/>
+                                </TextBlock>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="5" Grid.ColumnSpan="3"
                                         Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="最小同調スコア" Style="{DynamicResource PluginSettingsFieldLabelStyle}"
                                            VerticalAlignment="Center" Margin="0,0,6,0" />
@@ -151,10 +166,10 @@
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="最大表示局数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                                 <TextBox Grid.Column="1" Text="{Binding MaximumStations, UpdateSourceTrigger=LostFocus}" Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
-                                <TextBlock Grid.Column="2" Text="局一覧・地図に同時に保持する最大局数" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Row="1" Text="局非表示時間（分）" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBlock Grid.Column="2" Text="局一覧に同時に保持する最大局数" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Row="1" Text="地図保持時間（分）" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                                 <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding RetentionMinutes, UpdateSourceTrigger=LostFocus}" Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
-                                <TextBlock Grid.Row="1" Grid.Column="2" Text="電波途絶から局一覧から消去するまでの時間" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="地図上に局を表示・保持する時間（一覧は上限局数まで保持）" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
                                 <TextBlock Grid.Row="2" Text="地図マーカー数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                                 <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding MapMarkerLimit, UpdateSourceTrigger=LostFocus}" Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
                                 <TextBlock Grid.Row="2" Grid.Column="2" Text="地図上に描画する最大マーカー数" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
@@ -167,6 +182,7 @@
                              <controls:PluginResetView Grid.Row="3" />
                              <TextBlock Grid.Row="4" Text="過去録音" Style="{DynamicResource PluginSettingsSectionHeaderStyle}" />
                              <Grid Grid.Row="5" Style="{DynamicResource PluginSettingsActionRowStyle}">
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -176,9 +192,12 @@
                                            Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,0,16,0" />
                                 <Button Grid.Column="1" Content="IQ 録音 (直前20秒)" Command="{Binding StartCaptureCommand}"
                                         Style="{DynamicResource PluginButtonStyle}" Width="130" HorizontalAlignment="Left"/>
-                                <TextBlock Grid.Column="2" Text="{Binding CaptureStatus}"
-                                           Style="{DynamicResource PluginSettingsActionStatusStyle}" VerticalAlignment="Center" Margin="10,0,0,0"/>
-                            </Grid>
+                                 <TextBlock Grid.Column="2" Text="{Binding CaptureStatus}"
+                                            Style="{DynamicResource PluginSettingsActionStatusStyle}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                <TextBlock Grid.Row="1" Text="保存したIQ WAVを受信時と同じプラグインで再生します。" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,6,16,0" />
+                                <Button Grid.Row="1" Grid.Column="1" Style="{DynamicResource PluginIqPlaybackButtonStyle}" Margin="0,6,0,0" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Style="{DynamicResource PluginIqPlaybackStatusStyle}" Margin="10,6,0,0" />
+                             </Grid>
                         </Grid>
                     </ScrollViewer>
                 </TabItem>

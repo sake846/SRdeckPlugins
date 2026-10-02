@@ -28,67 +28,54 @@ internal static class TonePowerBank
         }
 
         int width = Vector<double>.Count;
-        int groupCount = (powers.Length + width - 1) / width;
-        Span<Vector<double>> rotationReal = stackalloc Vector<double>[groupCount];
-        Span<Vector<double>> rotationImaginary = stackalloc Vector<double>[groupCount];
-        Span<Vector<double>> oscillatorReal = stackalloc Vector<double>[groupCount];
-        Span<Vector<double>> oscillatorImaginary = stackalloc Vector<double>[groupCount];
-        Span<Vector<double>> sumReal = stackalloc Vector<double>[groupCount];
-        Span<Vector<double>> sumImaginary = stackalloc Vector<double>[groupCount];
         Span<double> lanes = stackalloc double[width];
 
-        for (int group = 0; group < groupCount; group++)
+        // Keep one tone group's oscillator and sums in registers throughout the
+        // sample loop instead of reading/writing six scratch arrays per sample.
+        for (int firstTone = 0; firstTone < powers.Length; firstTone += width)
         {
             for (int lane = 0; lane < width; lane++)
             {
-                int tone = group * width + lane;
+                int tone = firstTone + lane;
                 double frequency = firstFrequencyHz + tone * toneSpacingHz;
                 double angle = -2 * Math.PI * frequency * stride / sampleRateHz;
                 lanes[lane] = Math.Cos(angle);
             }
-            rotationReal[group] = new Vector<double>(lanes);
+            var rotationReal = new Vector<double>(lanes);
             for (int lane = 0; lane < width; lane++)
             {
-                int tone = group * width + lane;
+                int tone = firstTone + lane;
                 double frequency = firstFrequencyHz + tone * toneSpacingHz;
                 double angle = -2 * Math.PI * frequency * stride / sampleRateHz;
                 lanes[lane] = Math.Sin(angle);
             }
-            rotationImaginary[group] = new Vector<double>(lanes);
-            oscillatorReal[group] = Vector<double>.One;
-            oscillatorImaginary[group] = Vector<double>.Zero;
-            sumReal[group] = Vector<double>.Zero;
-            sumImaginary[group] = Vector<double>.Zero;
-        }
-
-        for (int index = 0; index < sampleCount; index += stride)
-        {
-            Complex32 sample = samples[start + index];
-            var sampleI = new Vector<double>(sample.I);
-            var sampleQ = new Vector<double>(sample.Q);
-            var weight = new Vector<double>(window[index]);
-            for (int group = 0; group < groupCount; group++)
+            var rotationImaginary = new Vector<double>(lanes);
+            var oscillatorReal = Vector<double>.One;
+            var oscillatorImaginary = Vector<double>.Zero;
+            var sumReal = Vector<double>.Zero;
+            var sumImaginary = Vector<double>.Zero;
+            for (int index = 0; index < sampleCount; index += stride)
             {
-                Vector<double> currentReal = oscillatorReal[group];
-                Vector<double> currentImaginary = oscillatorImaginary[group];
-                sumReal[group] += weight *
+                Complex32 sample = samples[start + index];
+                var sampleI = new Vector<double>(sample.I);
+                var sampleQ = new Vector<double>(sample.Q);
+                var weight = new Vector<double>(window[index]);
+                Vector<double> currentReal = oscillatorReal;
+                Vector<double> currentImaginary = oscillatorImaginary;
+                sumReal += weight *
                     (sampleI * currentReal - sampleQ * currentImaginary);
-                sumImaginary[group] += weight *
+                sumImaginary += weight *
                     (sampleI * currentImaginary + sampleQ * currentReal);
-                oscillatorReal[group] = currentReal * rotationReal[group] -
-                                        currentImaginary * rotationImaginary[group];
-                oscillatorImaginary[group] = currentImaginary * rotationReal[group] +
-                                             currentReal * rotationImaginary[group];
+                oscillatorReal = currentReal * rotationReal - currentImaginary * rotationImaginary;
+                oscillatorImaginary = currentImaginary * rotationReal + currentReal * rotationImaginary;
             }
-        }
 
-        for (int tone = 0; tone < powers.Length; tone++)
-        {
-            int group = tone / width;
-            int lane = tone % width;
-            double real = sumReal[group][lane];
-            double imaginary = sumImaginary[group][lane];
-            powers[tone] = real * real + imaginary * imaginary;
+            for (int lane = 0; lane < Math.Min(width, powers.Length - firstTone); lane++)
+            {
+                double real = sumReal[lane];
+                double imaginary = sumImaginary[lane];
+                powers[firstTone + lane] = real * real + imaginary * imaginary;
+            }
         }
     }
 
@@ -97,45 +84,30 @@ internal static class TonePowerBank
         int sampleRateHz, double firstFrequencyHz, double toneSpacingHz,
         Span<double> powers)
     {
-        Span<double> rotationReal = stackalloc double[powers.Length];
-        Span<double> rotationImaginary = stackalloc double[powers.Length];
-        Span<double> oscillatorReal = stackalloc double[powers.Length];
-        Span<double> oscillatorImaginary = stackalloc double[powers.Length];
-        Span<double> sumReal = stackalloc double[powers.Length];
-        Span<double> sumImaginary = stackalloc double[powers.Length];
-        oscillatorReal.Fill(1);
-        oscillatorImaginary.Clear();
-        sumReal.Clear();
-        sumImaginary.Clear();
         for (int tone = 0; tone < powers.Length; tone++)
         {
             double frequency = firstFrequencyHz + tone * toneSpacingHz;
             double angle = -2 * Math.PI * frequency * stride / sampleRateHz;
-            rotationReal[tone] = Math.Cos(angle);
-            rotationImaginary[tone] = Math.Sin(angle);
-        }
-
-        for (int index = 0; index < sampleCount; index += stride)
-        {
-            Complex32 sample = samples[start + index];
-            double weight = window[index];
-            for (int tone = 0; tone < powers.Length; tone++)
+            double rotationReal = Math.Cos(angle);
+            double rotationImaginary = Math.Sin(angle);
+            double oscillatorReal = 1;
+            double oscillatorImaginary = 0;
+            double sumReal = 0;
+            double sumImaginary = 0;
+            for (int index = 0; index < sampleCount; index += stride)
             {
-                double currentReal = oscillatorReal[tone];
-                double currentImaginary = oscillatorImaginary[tone];
-                sumReal[tone] += weight *
+                Complex32 sample = samples[start + index];
+                double weight = window[index];
+                double currentReal = oscillatorReal;
+                double currentImaginary = oscillatorImaginary;
+                sumReal += weight *
                     (sample.I * currentReal - sample.Q * currentImaginary);
-                sumImaginary[tone] += weight *
+                sumImaginary += weight *
                     (sample.I * currentImaginary + sample.Q * currentReal);
-                oscillatorReal[tone] = currentReal * rotationReal[tone] -
-                                       currentImaginary * rotationImaginary[tone];
-                oscillatorImaginary[tone] = currentImaginary * rotationReal[tone] +
-                                            currentReal * rotationImaginary[tone];
+                oscillatorReal = currentReal * rotationReal - currentImaginary * rotationImaginary;
+                oscillatorImaginary = currentImaginary * rotationReal + currentReal * rotationImaginary;
             }
+            powers[tone] = sumReal * sumReal + sumImaginary * sumImaginary;
         }
-
-        for (int tone = 0; tone < powers.Length; tone++)
-            powers[tone] = sumReal[tone] * sumReal[tone] +
-                           sumImaginary[tone] * sumImaginary[tone];
     }
 }

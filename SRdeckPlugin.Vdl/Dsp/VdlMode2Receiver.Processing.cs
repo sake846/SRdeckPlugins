@@ -49,7 +49,7 @@ public sealed partial class VdlMode2Receiver
         downconverter.Configure(offsetHz, metadata.SampleRateHz);
         double inputPower = 0;
         double workingPower = 0;
-        double workingPeak = 0;
+        double workingPeakPower = 0;
         long workingCount = 0;
         int monitorCount = 0;
         int channelCount = 0;
@@ -70,7 +70,7 @@ public sealed partial class VdlMode2Receiver
             Complex32 filtered = matchedFilter.Process(new Complex32(i, q));
             double power = filtered.I * filtered.I + filtered.Q * filtered.Q;
             workingPower += power;
-            workingPeak = Math.Max(workingPeak, Math.Sqrt(power));
+            workingPeakPower = Math.Max(workingPeakPower, power);
             workingCount++;
             if (monitorAudio is not null)
             {
@@ -85,16 +85,28 @@ public sealed partial class VdlMode2Receiver
             }
             ProcessWorkingSample(filtered, metadata, frames);
         }
+        bool singleOutputPerInput = resampler.InterpolationFactor <= resampler.DecimationFactor;
+        Action<float, float> emit = Emit;
         foreach (Complex32 sample in input)
         {
             inputPower += sample.I * sample.I + sample.Q * sample.Q;
             downconverter.Mix(sample.I, sample.Q, out float mixedI, out float mixedQ);
             if (coarseDecimator.TryProcess(mixedI, mixedQ, out float coarseI, out float coarseQ))
-                resampler.Process(coarseI, coarseQ, Emit);
+            {
+                if (singleOutputPerInput)
+                {
+                    if (resampler.TryProcess(coarseI, coarseQ, out float outputI, out float outputQ))
+                        Emit(outputI, outputQ);
+                }
+                else
+                {
+                    resampler.Process(coarseI, coarseQ, emit);
+                }
+            }
         }
         inputRms = input.Length == 0 ? 0 : Math.Sqrt(inputPower / input.Length);
         channelRms = workingCount == 0 ? 0 : Math.Sqrt(workingPower / workingCount);
-        channelPeak = workingPeak;
+        channelPeak = Math.Sqrt(workingPeakPower);
         processedInputSamples += input.Length;
         processedWorkingSamples += workingCount;
         monitorAudioSampleCount = monitorCount;
@@ -128,7 +140,7 @@ public sealed partial class VdlMode2Receiver
         targetFrequencyHz = applied.ChannelCenterFrequencyHz;
         double inputPower = 0;
         double workingPower = 0;
-        double workingPeak = 0;
+        double workingPeakPower = 0;
         int monitorCount = 0;
         currentBlockMinSyncError = double.PositiveInfinity;
         currentBlockMaxCoherence = 0;
@@ -139,7 +151,7 @@ public sealed partial class VdlMode2Receiver
             Complex32 filtered = matchedFilter.Process(sample);
             double power = filtered.I * filtered.I + filtered.Q * filtered.Q;
             workingPower += power;
-            workingPeak = Math.Max(workingPeak, Math.Sqrt(power));
+            workingPeakPower = Math.Max(workingPeakPower, power);
             if (monitorAudio is not null)
             {
                 monitorProcessCount++;
@@ -156,7 +168,7 @@ public sealed partial class VdlMode2Receiver
 
         inputRms = input.Length == 0 ? 0 : Math.Sqrt(inputPower / input.Length);
         channelRms = input.Length == 0 ? 0 : Math.Sqrt(workingPower / input.Length);
-        channelPeak = workingPeak;
+        channelPeak = Math.Sqrt(workingPeakPower);
         processedInputSamples += input.Length;
         processedWorkingSamples += input.Length;
         monitorAudioSampleCount = monitorCount;
@@ -236,6 +248,9 @@ public sealed partial class VdlMode2Receiver
         {
             UpdateNoiseEstimate(sample.I * sample.I + sample.Q * sample.Q);
             syncBuffer[syncWriteIndex] = sample;
+            // Each phase is reused by up to 16 overlapping preamble windows.
+            // A full window is written before it is read, including after reset.
+            syncPhases[syncWriteIndex] = Math.Atan2(sample.Q, sample.I);
             syncWriteIndex = (syncWriteIndex + 1) % syncBuffer.Length;
             if (syncSampleCount < syncBuffer.Length) syncSampleCount++;
             if (syncSampleCount == syncBuffer.Length)

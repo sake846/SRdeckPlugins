@@ -79,8 +79,8 @@ public sealed partial class WiSunDemodulator
             metrics[bit] = SymbolMetric(start + bit * SamplesPerBit);
         }
 
-        ushort[] sfdsToTest = CustomSfd.HasValue
-            ? [CustomSfd.Value, 0x904E, 0x7A0E]
+        ReadOnlySpan<ushort> sfdsToTest = CustomSfd.HasValue
+            ? stackalloc ushort[] { CustomSfd.Value, 0x904E, 0x7A0E }
             : UncodedSfds;
 
         foreach (ushort expectedSfd in sfdsToTest)
@@ -96,6 +96,7 @@ public sealed partial class WiSunDemodulator
                 sfdErrors = errors;
                 matchedSfd = expectedSfd;
             }
+            if (sfdErrors == 0) break;
         }
 
         ushort observedSfd = ReadWordMsbFirst(metrics, polarity, discriminatorBias);
@@ -116,23 +117,24 @@ public sealed partial class WiSunDemodulator
         string preambleHex = preambleBytes == 0
             ? string.Empty
             : observedPreamble.ToString($"X{preambleBytes * 2}");
-        string preambleRawBits = ReadBitsStringMsbFirst(
-            preambleStart, preambleBits, polarity, discriminatorBias);
-        string sfdRawBits = ReadBitsStringMsbFirst(
-            start, SfdBitCount, polarity, discriminatorBias);
-
         LastPreambleWord = (uint)observedPreamble;
         LastPreambleRawHex = preambleHex;
         LastPreambleByteCount = preambleBytes;
         LastSfdWord = observedSfd;
         TotalPreambleMatches++;
 
-        OnDiagnosticLog?.Invoke(
-            $"[{timestamp:HH:mm:ss.fff}] [SFD RAW] PRE[{preambleBytes}B]:" +
-            $"{(preambleBytes == 0 ? "--" : preambleHex)} | " +
-            $"SFD:0x{observedSfd:X4} | RAW:{preambleHex}{observedSfd:X4} | " +
-            $"bits:{preambleRawBits}{sfdRawBits} | " +
-            $"Polarity:{(polarity > 0 ? "+" : "-")}");
+        if (OnDiagnosticLog is { } log)
+        {
+            string preambleRawBits = ReadBitsStringMsbFirst(
+                preambleStart, preambleBits, polarity, discriminatorBias);
+            string sfdRawBits = ReadBitsStringMsbFirst(
+                start, SfdBitCount, polarity, discriminatorBias);
+            log($"[{timestamp:HH:mm:ss.fff}] [SFD RAW] PRE[{preambleBytes}B]:" +
+                $"{(preambleBytes == 0 ? "--" : preambleHex)} | " +
+                $"SFD:0x{observedSfd:X4} | RAW:{preambleHex}{observedSfd:X4} | " +
+                $"bits:{preambleRawBits}{sfdRawBits} | " +
+                $"Polarity:{(polarity > 0 ? "+" : "-")}");
+        }
         return true;
     }
 
@@ -320,11 +322,12 @@ public sealed partial class WiSunDemodulator
 
     private float InterpolatedDiscriminator(double position)
     {
-        int lower = Math.Clamp((int)Math.Floor(position), 0, discriminator.Count - 1);
+        double floor = Math.Floor(position);
+        int lower = Math.Clamp((int)floor, 0, discriminator.Count - 1);
         int upper = Math.Min(lower + 1, discriminator.Count - 1);
-        float fraction = (float)(position - Math.Floor(position));
-        return discriminator[lower] +
-            fraction * (discriminator[upper] - discriminator[lower]);
+        float fraction = (float)(position - floor);
+        float lowerValue = discriminator[lower];
+        return lowerValue + fraction * (discriminator[upper] - lowerValue);
     }
 
     private bool TryFindTransition(
@@ -340,17 +343,25 @@ public sealed partial class WiSunDemodulator
         double to = Math.Min(discriminator.Count - 1.001, predictedBoundary + radius);
         bool found = false;
         double bestDistance = double.MaxValue;
-        float previous = polarity * (InterpolatedDiscriminator(from) - bias);
-        const double step = 0.25;
-        for (double position = from + step; position <= to; position += step)
+        // Linear interpolation has at most one crossing per sample interval;
+        // solve it directly instead of probing the same interval four times.
+        int first = (int)Math.Floor(from);
+        int last = (int)Math.Ceiling(to);
+        float previous = polarity * (discriminator[first] - bias);
+        for (int index = first + 1; index <= last; index++)
         {
-            float current = polarity * (InterpolatedDiscriminator(position) - bias);
+            float current = polarity * (discriminator[index] - bias);
             if ((previous < 0 && current >= 0) || (previous >= 0 && current < 0))
             {
                 double denominator = Math.Abs(previous) + Math.Abs(current);
                 double candidate = denominator > 1e-9
-                    ? position - step * Math.Abs(current) / denominator
-                    : position - step / 2;
+                    ? index - Math.Abs(current) / denominator
+                    : index - 0.5;
+                if (candidate < from || candidate > to)
+                {
+                    previous = current;
+                    continue;
+                }
                 double distance = Math.Abs(candidate - predictedBoundary);
                 if (distance < bestDistance)
                 {

@@ -12,9 +12,9 @@ public sealed partial class HfdlReceiver
     // preserves its decision boundary without a square root per scan point.
     private const double SparsePreambleCorrelationThresholdSquared = 0.16;
 
-    private List<HfdlFrame> DecodeAvailable(IqBlockMetadata metadata)
+    private IReadOnlyList<HfdlFrame> DecodeAvailable(IqBlockMetadata metadata)
     {
-        var output = new List<HfdlFrame>();
+        List<HfdlFrame>? output = null;
         int minimumSamples = (HfdlPhysicalLayer.PreambleSymbols + 72 * HfdlPhysicalLayer.SymbolsPerFrame) * SamplesPerSymbol;
         while (working.Count >= minimumSamples)
         {
@@ -30,7 +30,7 @@ public sealed partial class HfdlReceiver
             double dataQuality = 0;
             byte[] mpdu = [];
             double carrierTrialStep = 2 * Math.PI * 2 / SymbolRate;
-            (double Timing, double Carrier)[] retries =
+            ReadOnlySpan<(double Timing, double Carrier)> retries =
             [
                 (0, 0), (-0.5, 0), (0.5, 0), (0, -carrierTrialStep), (0, carrierTrialStep)
             ];
@@ -63,7 +63,7 @@ public sealed partial class HfdlReceiver
             {
                 HfdlModulation modulation = acceptedCandidate.Mode.DataRate switch
                 { 1800 => HfdlModulation.EightPsk, 1200 => HfdlModulation.Qpsk, _ => HfdlModulation.Bpsk };
-                output.Add(new(mpdu, metadata.UtcTimestamp, metadata.StreamId, sourcePosition,
+                (output ??= []).Add(new(mpdu, metadata.UtcTimestamp, metadata.StreamId, sourcePosition,
                     metadata.CenterFrequencyHz, modulation,
                     Math.Clamp((acceptedCandidate.Correlation + dataQuality) * 0.5, 0, 1)));
                 ValidFrameCount++;
@@ -72,7 +72,7 @@ public sealed partial class HfdlReceiver
             pendingCandidate = null;
             RemoveWorking(requiredSamples);
         }
-        return output;
+        return output is null ? Array.Empty<HfdlFrame>() : output;
     }
 
     private BurstCandidate? FindPreamble()
@@ -82,17 +82,18 @@ public sealed partial class HfdlReceiver
         BurstCandidate? best = null;
         double scanBestCorrelation = 0;
         int sparsePointCount = SparseDifferentialPointCount(HfdlPhysicalLayer.A.Length);
-        PrepareIntegerSymbols();
+        int sampleBase = preambleSearchSampleOffset / SamplesPerSymbol * SamplesPerSymbol;
+        PrepareIntegerSymbols(sampleBase);
         for (int timing = 0; timing < SamplesPerSymbol; timing++)
         {
-            Span<Complex32> symbols = SliceIntegerSymbols(
-                timing, (working.Count - timing) / SamplesPerSymbol);
+            Span<Complex32> symbols = integerSymbolScratch.AsSpan(
+                timing * integerSymbolStride, (working.Count - sampleBase - timing) / SamplesPerSymbol);
             Span<double> magnitudes = PrepareSymbolMetrics(symbols);
             ReadOnlySpan<double> differentialEnergyPrefix =
                 differentialEnergyPrefixScratch.AsSpan(0, symbols.Length);
             preambleMagnitudeCalculationCount += symbols.Length;
             int maximumStart = symbols.Length - HfdlPhysicalLayer.PreambleSymbols;
-            int minimumStart = Math.Max(0, (preambleSearchSampleOffset - timing + SamplesPerSymbol - 1) /
+            int minimumStart = Math.Max(0, (preambleSearchSampleOffset - sampleBase - timing + SamplesPerSymbol - 1) /
                 SamplesPerSymbol);
             if (minimumStart > maximumStart) continue;
 
@@ -167,7 +168,7 @@ public sealed partial class HfdlReceiver
                 if (m2Correlation < MinimumPreambleCorrelation ||
                     tailCorrelation < MinimumPreambleCorrelation) continue;
                 Complex32 burstRelativeChannel = Rotate(channel, carrierStep * candidateStart);
-                best = new(timing + candidateStart * SamplesPerSymbol, carrierStep,
+                best = new(sampleBase + timing + candidateStart * SamplesPerSymbol, carrierStep,
                     burstRelativeChannel, mode.Value,
                     (correlation + modeCorrelation + m2Correlation + tailCorrelation) * 0.25);
             }
@@ -211,13 +212,13 @@ public sealed partial class HfdlReceiver
     {
         preambleRefinementCount++;
         BurstCandidate best = initial;
+        Span<Complex32> symbols = stackalloc Complex32[HfdlPhysicalLayer.PreambleSymbols];
         for (int quarter = -3; quarter <= 3; quarter++)
         {
             double sampleOffset = initial.SampleOffset + quarter * 0.25;
             if (sampleOffset < 0 || sampleOffset + HfdlPhysicalLayer.PreambleSymbols * SamplesPerSymbol + 1 >= working.Count)
                 continue;
-            Complex32[] symbols = SliceFractionalSymbols(
-                sampleOffset, HfdlPhysicalLayer.PreambleSymbols);
+            SliceFractionalSymbols(sampleOffset, symbols);
             Span<double> magnitudes = PrepareSymbolMetrics(symbols);
             ReadOnlySpan<double> differentialEnergyPrefix =
                 differentialEnergyPrefixScratch.AsSpan(0, symbols.Length);
@@ -485,9 +486,9 @@ public sealed partial class HfdlReceiver
                 magnitudes[index - 1] * magnitudes[index];
     }
 
-    private void PrepareIntegerSymbols()
+    private void PrepareIntegerSymbols(int sampleOffset)
     {
-        integerSymbolStride = working.Count / SamplesPerSymbol;
+        integerSymbolStride = (working.Count - sampleOffset) / SamplesPerSymbol;
         int requiredLength = integerSymbolStride * SamplesPerSymbol;
         if (workingSampleScratch.Length < working.Count)
             Array.Resize(ref workingSampleScratch,
@@ -496,21 +497,12 @@ public sealed partial class HfdlReceiver
             Array.Resize(ref integerSymbolScratch,
                 Math.Max(requiredLength, integerSymbolScratch.Length * 2));
         if (integerSymbolStride == 0) return;
-        // Linearize the circular history once, then store every rolling
-        // 8-sample average in phase-major order for contiguous correlation.
+        // Linearize the circular history once, then only prepare the unsearched
+        // suffix. The sample-aligned base preserves all eight timing phases.
         Span<Complex32> source = workingSampleScratch.AsSpan(0, working.Count);
         working.CopyTo(source);
-        FillIntegerSymbolPhases(source,
+        FillIntegerSymbolPhases(source[sampleOffset..],
             integerSymbolScratch.AsSpan(0, requiredLength), integerSymbolStride);
-    }
-
-    private Span<Complex32> SliceIntegerSymbols(int timing, int count)
-    {
-        if ((uint)timing >= SamplesPerSymbol)
-            throw new ArgumentOutOfRangeException(nameof(timing));
-        if (count < 0 || timing + (long)count * SamplesPerSymbol > working.Count)
-            throw new ArgumentOutOfRangeException(nameof(count));
-        return integerSymbolScratch.AsSpan(timing * integerSymbolStride, count);
     }
 
     internal static Complex32[] EvaluateIntegerSymbolSlicing(
@@ -552,10 +544,9 @@ public sealed partial class HfdlReceiver
         }
     }
 
-    private Complex32[] SliceFractionalSymbols(double sampleOffset, int count)
+    private void SliceFractionalSymbols(double sampleOffset, Span<Complex32> output)
     {
-        var output = new Complex32[count];
-        for (int symbol = 0; symbol < count; symbol++)
+        for (int symbol = 0; symbol < output.Length; symbol++)
         {
             float i = 0, q = 0;
             double offset = sampleOffset + symbol * SamplesPerSymbol;
@@ -571,36 +562,32 @@ public sealed partial class HfdlReceiver
             }
             output[symbol] = new(i / SamplesPerSymbol, q / SamplesPerSymbol);
         }
-        return output;
     }
 
     private Complex32[] SliceTrackedSymbols(BurstCandidate candidate, int count)
     {
         var output = new Complex32[count];
-        Complex32[] preamble = SliceFractionalSymbols(
-            candidate.SampleOffset, HfdlPhysicalLayer.PreambleSymbols);
-        preamble.CopyTo(output, 0);
+        SliceFractionalSymbols(candidate.SampleOffset, output.AsSpan(0, HfdlPhysicalLayer.PreambleSymbols));
         ReadOnlySpan<bool> probe = HfdlPhysicalLayer.T[..HfdlPhysicalLayer.ProbeSymbolsPerFrame];
+        Span<Complex32> receivedProbe = stackalloc Complex32[HfdlPhysicalLayer.ProbeSymbolsPerFrame];
         double timingAdjustment = 0;
         for (int frame = 0; frame < candidate.Mode.FrameCount; frame++)
         {
             int symbolOffset = HfdlPhysicalLayer.PreambleSymbols + frame * HfdlPhysicalLayer.SymbolsPerFrame;
             double frameSampleOffset = candidate.SampleOffset + symbolOffset * SamplesPerSymbol;
             double bestAdjustment = timingAdjustment;
-            Complex32[] currentProbe = SliceFractionalSymbols(frameSampleOffset +
+            SliceFractionalSymbols(frameSampleOffset +
                 HfdlPhysicalLayer.DataSymbolsPerFrame * SamplesPerSymbol + timingAdjustment,
-                HfdlPhysicalLayer.ProbeSymbolsPerFrame);
-            double bestScore = DifferentialCorrelation(currentProbe, 0,
-                probe[..HfdlPhysicalLayer.ProbeSymbolsPerFrame]);
+                receivedProbe);
+            double bestScore = DifferentialCorrelation(receivedProbe, 0, probe);
             for (int quarter = -2; quarter <= 2; quarter++)
             {
                 if (quarter == 0) continue;
                 double adjustment = timingAdjustment + quarter * 0.25;
-                Complex32[] receivedProbe = SliceFractionalSymbols(frameSampleOffset +
+                SliceFractionalSymbols(frameSampleOffset +
                     HfdlPhysicalLayer.DataSymbolsPerFrame * SamplesPerSymbol + adjustment,
-                    HfdlPhysicalLayer.ProbeSymbolsPerFrame);
-                double score = DifferentialCorrelation(receivedProbe, 0,
-                    probe[..HfdlPhysicalLayer.ProbeSymbolsPerFrame]);
+                    receivedProbe);
+                double score = DifferentialCorrelation(receivedProbe, 0, probe);
                 // Hysteresis prevents a flat correlation plateau from causing a
                 // random timing walk while still following a real clock drift.
                 if (score <= bestScore + 0.003) continue;
@@ -608,9 +595,8 @@ public sealed partial class HfdlReceiver
                 bestAdjustment = adjustment;
             }
             timingAdjustment = Math.Clamp(bestAdjustment, -4, 4);
-            Complex32[] symbols = SliceFractionalSymbols(frameSampleOffset + timingAdjustment,
-                HfdlPhysicalLayer.SymbolsPerFrame);
-            symbols.CopyTo(output, symbolOffset);
+            SliceFractionalSymbols(frameSampleOffset + timingAdjustment,
+                output.AsSpan(symbolOffset, HfdlPhysicalLayer.SymbolsPerFrame));
         }
         return output;
     }

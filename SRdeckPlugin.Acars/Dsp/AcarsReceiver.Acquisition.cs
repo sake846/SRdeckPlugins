@@ -8,12 +8,12 @@ public sealed partial class AcarsReceiver
 {
     private void EnsureCapacity(int symbolCount)
     {
-        int phaseCorrelationCount = checked(symbolCount * SamplesPerBit);
-        if (phaseCorrelationCount > lowCorrelations.Length)
+        if (symbolCount > lowCorrelations.Length)
         {
-            Array.Resize(ref lowCorrelations, phaseCorrelationCount);
-            Array.Resize(ref highCorrelations, phaseCorrelationCount);
-            Array.Resize(ref confidenceBuffer, phaseCorrelationCount);
+            int capacity = Math.Max(symbolCount, lowCorrelations.Length * 2);
+            Array.Resize(ref lowCorrelations, capacity);
+            Array.Resize(ref highCorrelations, capacity);
+            Array.Resize(ref confidenceBuffer, capacity);
         }
         if (symbolCount * 2 > predecessorsBuffer.Length)
         {
@@ -26,19 +26,30 @@ public sealed partial class AcarsReceiver
             Array.Resize(ref packedBytesBuffer, packedByteCount * 2);
     }
 
-    private bool DecodePhase(PhaseAcquisitionCandidate candidate, int phaseStride,
-        IqBlockMetadata metadata, List<AcarsFrame> result)
+    private void GatherPhaseCorrelations(int phase, int symbolCount)
     {
-        ReadOnlySpan<ToneCorrelation> low = lowCorrelations.AsSpan(
-            candidate.Phase * phaseStride, candidate.SymbolCount);
-        ReadOnlySpan<ToneCorrelation> high = highCorrelations.AsSpan(
-            candidate.Phase * phaseStride, candidate.SymbolCount);
-        ReadOnlySpan<float> confidence = confidenceBuffer.AsSpan(
-            candidate.Phase * phaseStride, candidate.SymbolCount);
+        // Acquisition and full decoding share one phase's scratch space.
+        // The sample-indexed cache retains the correlations for every phase.
+        for (int symbol = 0; symbol < symbolCount; symbol++)
+        {
+            int cacheIndex = phase + symbol * SamplesPerBit;
+            lowCorrelations[symbol] = lowCorrelationCache[cacheIndex];
+            highCorrelations[symbol] = highCorrelationCache[cacheIndex];
+            confidenceBuffer[symbol] = confidenceCache[cacheIndex];
+        }
+    }
+
+    private bool DecodePhase(PhaseAcquisitionCandidate candidate,
+        IqBlockMetadata metadata, ref List<AcarsFrame>? result)
+    {
+        GatherPhaseCorrelations(candidate.Phase, candidate.SymbolCount);
+        ReadOnlySpan<ToneCorrelation> low = lowCorrelations.AsSpan(0, candidate.SymbolCount);
+        ReadOnlySpan<ToneCorrelation> high = highCorrelations.AsSpan(0, candidate.SymbolCount);
+        ReadOnlySpan<float> confidence = confidenceBuffer.AsSpan(0, candidate.SymbolCount);
         ReadOnlySpan<bool> coherentTones = DecodeCoherentToneSequence(
             low, high, predecessorsBuffer, tonesBuffer);
         bool decoded = DecodeToneSequence(
-            coherentTones, confidence, candidate.Phase, metadata, result);
+            coherentTones, confidence, candidate.Phase, metadata, ref result);
         lastFullDecodePhaseCount++;
         totalFullDecodePhaseCount++;
         return decoded;

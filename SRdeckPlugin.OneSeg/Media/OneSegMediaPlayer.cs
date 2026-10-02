@@ -24,14 +24,19 @@ internal sealed class OneSegMediaPlayer : IDisposable
     private int audioChannelSelectionApplyAttempts;
 
     public MediaPlayer Player { get; }
+    public bool VideoSuperResolutionEnabled { get; }
 
-    public OneSegMediaPlayer()
+    public OneSegMediaPlayer(bool videoSuperResolutionEnabled = false)
     {
         Core.Initialize();
+        VideoSuperResolutionEnabled = videoSuperResolutionEnabled;
         // StreamMediaInput is a live, non-seekable source. Give its access
         // module enough headroom for SDR decode bursts and retain LibVLC's
         // normal clock-jitter correction instead of forcing zero tolerance.
-        libVlc = new LibVLC("--live-caching=1000", "--network-caching=1000");
+        libVlc = videoSuperResolutionEnabled
+            ? new LibVLC("--live-caching=1000", "--network-caching=1000",
+                "--vout=direct3d11", "--d3d11-upscale-mode=super")
+            : new LibVLC("--live-caching=1000", "--network-caching=1000");
         Player = new MediaPlayer(libVlc);
     }
 
@@ -141,7 +146,7 @@ internal sealed class OneSegMediaPlayer : IDisposable
         }
     }
 
-    public void RestartForAudioModeChange()
+    public void RestartPlayback()
     {
         lock (lifecycleGate)
         {
@@ -161,9 +166,8 @@ internal sealed class OneSegMediaPlayer : IDisposable
                 media = replacementMedia;
             }
 
-            // AAC decoders generally cannot renegotiate an in-band change from
-            // ARIB dual mono to stereo.  Keep accepting live TS packets into the
-            // replacement buffer while LibVLC tears down the previous decoder.
+            // Keep accepting live TS packets while LibVLC tears down the old
+            // playback pipeline.
             int volume = Player.Volume;
             previousStream.Complete();
             Player.Stop();

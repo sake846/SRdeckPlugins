@@ -19,6 +19,14 @@ public sealed partial class VdlViewModel
         while (frames.Count > MaximumHistory) frames.RemoveAt(frames.Count - 1);
         OnPropertyChanged(nameof(RecentFrames));
         OnPropertyChanged(nameof(LastReceptionText));
+        bool markerUpdated = false;
+        if (VdlPositionParser.TryParse(decoded.Acars?.Text, out double lat, out double lon))
+        {
+            UpdateMapMarker(decoded, lat, lon);
+            markerUpdated = true;
+        }
+        DateTimeOffset cutoff = DateTimeOffset.Now.AddMinutes(-RetentionMinutes);
+        PruneMapMarkers(cutoff, forceRefresh: markerUpdated);
         RebuildCategories();
         RefreshFilteredHistory();
     }
@@ -305,10 +313,8 @@ public sealed partial class VdlViewModel
 
     private void RebuildCategories()
     {
-        DateTimeOffset cutoff = DateTimeOffset.Now.AddMinutes(-RetentionMinutes);
         var activeCallsignGroups = frames
             .GroupBy(item => DisplayKey(item.Callsign, "Callsign不明"))
-            .Where(group => group.Any(item => item.ReceivedAt >= cutoff))
             .OrderByDescending(group => group.Max(item => item.ReceivedAt))
             .Take(MaximumAircraft);
         ReplaceCategories(callsignGroups, activeCallsignGroups);
@@ -380,26 +386,102 @@ public sealed partial class VdlViewModel
         OnPropertyChanged(nameof(FilteredCount));
     }
 
+    private void UpdateMapMarker(VdlDecodedFrame frame, double latitude, double longitude)
+    {
+        string aircraft = DisplayKey(frame.Callsign, "不明機");
+        if (aircraft is "Callsign不明" or "不明機")
+        {
+            if (frame.Avlc is { Source.Address: { } addr } && !string.IsNullOrWhiteSpace(addr))
+                aircraft = addr.Trim();
+        }
+        mapMarkersByAircraft.TryGetValue(aircraft, out var previousEntry);
+        GeoMapMarker? previous = previousEntry.Marker;
+        List<GeoMapPoint> trail = previous?.Trail?.ToList() ?? [];
+        double? heading = previous?.HeadingDegrees;
+        string markerColor = "#50fa7b";
+
+        if (previous is null)
+            trail.Add(new(latitude, longitude, markerColor));
+        else if (HasMoved(previous.Latitude, previous.Longitude, latitude, longitude))
+        {
+            heading = InitialBearing(previous.Latitude, previous.Longitude, latitude, longitude);
+            trail.Add(new(latitude, longitude, markerColor));
+            if (trail.Count > MaximumTrailPoints)
+                trail.RemoveRange(0, trail.Count - MaximumTrailPoints);
+        }
+
+        var marker = new GeoMapMarker(aircraft, latitude, longitude, aircraft,
+            $"{frame.Protocol} / {frame.ReceivedAt:HH:mm:ss} / {frame.Summary}",
+            markerColor, heading, trail.ToArray(), "aircraft", true);
+        mapMarkersByAircraft[aircraft] = (marker, frame.ReceivedAt);
+    }
+
+    private void PruneMapMarkers(DateTimeOffset cutoff, bool forceRefresh = false)
+    {
+        bool changed = forceRefresh;
+        foreach (var (id, entry) in mapMarkersByAircraft.ToArray())
+        {
+            if (entry.LastReceivedAt < cutoff)
+            {
+                mapMarkersByAircraft.Remove(id);
+                changed = true;
+            }
+        }
+        if (changed || mapMarkers.Count != mapMarkersByAircraft.Count)
+        {
+            mapMarkers.Clear();
+            foreach (var entry in mapMarkersByAircraft.Values) mapMarkers.Add(entry.Marker);
+        }
+    }
+
+    internal void RefreshMapMarkers()
+    {
+        DateTimeOffset cutoff = DateTimeOffset.Now.AddMinutes(-RetentionMinutes);
+        mapMarkersByAircraft.Clear();
+        foreach (VdlDecodedFrame frame in frames.Where(f => f.ReceivedAt >= cutoff).Reverse())
+        {
+            if (VdlPositionParser.TryParse(frame.Acars?.Text, out double lat, out double lon))
+            {
+                UpdateMapMarker(frame, lat, lon);
+            }
+        }
+        PruneMapMarkers(cutoff, forceRefresh: true);
+    }
+
     private void TrimTrails()
     {
-        foreach (GeoMapMarker marker in mapMarkersByAircraft.Values.ToArray())
+        foreach (var (id, entry) in mapMarkersByAircraft.ToArray())
         {
-            if (marker.Trail is null || marker.Trail.Count <= maximumTrailPoints) continue;
-            mapMarkersByAircraft[marker.Id] = marker with
+            if (entry.Marker.Trail is null || entry.Marker.Trail.Count <= maximumTrailPoints) continue;
+            mapMarkersByAircraft[id] = (entry.Marker with
             {
-                Trail = marker.Trail.Skip(marker.Trail.Count - maximumTrailPoints).ToArray()
-            };
+                Trail = entry.Marker.Trail.Skip(entry.Marker.Trail.Count - maximumTrailPoints).ToArray()
+            }, entry.LastReceivedAt);
         }
         mapMarkers.Clear();
-        foreach (GeoMapMarker marker in mapMarkersByAircraft.Values) mapMarkers.Add(marker);
+        foreach (var entry in mapMarkersByAircraft.Values) mapMarkers.Add(entry.Marker);
+    }
+
+    private static bool HasMoved(double fromLatitude, double fromLongitude,
+        double toLatitude, double toLongitude) =>
+        Math.Abs(fromLatitude - toLatitude) > 0.00001 ||
+        Math.Abs(fromLongitude - toLongitude) > 0.00001;
+
+    private static double InitialBearing(double fromLatitude, double fromLongitude,
+        double toLatitude, double toLongitude)
+    {
+        double fromLat = fromLatitude * Math.PI / 180;
+        double toLat = toLatitude * Math.PI / 180;
+        double deltaLon = (toLongitude - fromLongitude) * Math.PI / 180;
+        double y = Math.Sin(deltaLon) * Math.Cos(toLat);
+        double x = Math.Cos(fromLat) * Math.Sin(toLat) -
+            Math.Sin(fromLat) * Math.Cos(toLat) * Math.Cos(deltaLon);
+        return (Math.Atan2(y, x) * 180 / Math.PI + 360) % 360;
     }
 
     private static string DisplayKey(string? value, string fallback) =>
         string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 
-
     private static string LevelText(double value) => value > 0 && double.IsFinite(value)
         ? $"{20 * Math.Log10(value):F1} dBFS" : "-∞ dBFS";
-
-
 }

@@ -224,6 +224,8 @@ public sealed partial class CwViewModel : ObservableObject
         OnPropertyChanged(nameof(RecentSignals));
     }
 
+    public double? SelectedMonitorOffsetHz => SelectedSignalRow?.FrequencyOffsetHz;
+
     public void CompletePendingSentences()
     {
         foreach (CwSentenceAccumulator accumulator in sentencesByTrack.Values.ToArray())
@@ -329,27 +331,41 @@ public sealed partial class CwViewModel : ObservableObject
 
     private void RefreshSearchResults()
     {
-        FilteredRows.Clear();
-        foreach (CwSignalRow row in Rows)
-        {
-            if (string.IsNullOrWhiteSpace(ListSearchText) ||
-                $"{row.TrackId} {row.FrequencyDisplay} {row.Text}".Contains(ListSearchText.Trim(), StringComparison.OrdinalIgnoreCase))
-                FilteredRows.Add(row);
-        }
-
-        FilteredTimeline.Clear();
-        foreach (CwTimelineRow row in Timeline)
-        {
-            if (string.IsNullOrWhiteSpace(TimelineSearchText) ||
-                $"{row.TrackId} {row.FrequencyDisplay} {row.Text}".Contains(TimelineSearchText.Trim(), StringComparison.OrdinalIgnoreCase))
-                FilteredTimeline.Add(row);
-        }
+        UpdateSearchResults(Rows, FilteredRows, ListSearchText,
+            static row => $"{row.TrackId} {row.FrequencyDisplay} {row.Text}");
+        UpdateSearchResults(Timeline, FilteredTimeline, TimelineSearchText,
+            static row => $"{row.TrackId} {row.FrequencyDisplay} {row.Text}");
 
         if (SelectedSignalRow is null || !FilteredRows.Contains(SelectedSignalRow))
             SelectedSignalRow = FilteredRows.FirstOrDefault();
 
         if (SelectedTimelineRow is null || !FilteredTimeline.Contains(SelectedTimelineRow))
             SelectedTimelineRow = FilteredTimeline.FirstOrDefault();
+    }
+
+    private static void UpdateSearchResults<T>(
+        ObservableCollection<T> source, ObservableCollection<T> filtered,
+        string? searchText, Func<T, string> searchableText) where T : class
+    {
+        string search = searchText?.Trim() ?? string.Empty;
+        int targetIndex = 0;
+        foreach (T row in source)
+        {
+            if (search.Length > 0 &&
+                !searchableText(row).Contains(search, StringComparison.OrdinalIgnoreCase)) continue;
+            if (targetIndex == filtered.Count)
+                filtered.Add(row);
+            else if (!ReferenceEquals(filtered[targetIndex], row))
+            {
+                int currentIndex = targetIndex + 1;
+                while (currentIndex < filtered.Count &&
+                       !ReferenceEquals(filtered[currentIndex], row)) currentIndex++;
+                if (currentIndex < filtered.Count) filtered.Move(currentIndex, targetIndex);
+                else filtered.Insert(targetIndex, row);
+            }
+            targetIndex++;
+        }
+        while (filtered.Count > targetIndex) filtered.RemoveAt(filtered.Count - 1);
     }
 
     private static bool IsSentenceTerminator(char character) =>
@@ -460,6 +476,9 @@ public sealed partial class CwSignalRow(long trackId) : ObservableObject
     private long frequencyHz;
 
     [ObservableProperty] private double signalToNoiseDb;
+    [ObservableProperty] private double frequencyOffsetHz;
+    [ObservableProperty] private double confidence = 1;
+    [ObservableProperty] private CwLanguage language = CwLanguage.Western;
     [ObservableProperty] private int speedWpm;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LatestText))]
@@ -477,6 +496,9 @@ public sealed partial class CwSignalRow(long trackId) : ObservableObject
     {
         ReceivedAt = result.ReceivedAt;
         FrequencyHz = result.FrequencyHz;
+        FrequencyOffsetHz = result.FrequencyOffsetHz;
+        Confidence = result.Confidence;
+        Language = result.Language;
         SignalToNoiseDb = result.SignalToNoiseDb;
         SpeedWpm = result.SpeedWpm;
         Text = result.Text;

@@ -191,8 +191,8 @@ public sealed partial class AdsBPluginModule
             {
                 RecordType = settings.HistoryRecordMode
             };
-            history.Add(persisted);
-            if (history.Count > settings.MaximumHistory) history.RemoveRange(0, history.Count - settings.MaximumHistory);
+            history.Enqueue(persisted);
+            while (history.Count > settings.MaximumHistory) history.Dequeue();
             AppendHistory(persisted);
 
             AdsBMessageRow msgRow = new()
@@ -203,7 +203,12 @@ public sealed partial class AdsBPluginModule
                 Kind = message.Kind,
                 Summary = message.Summary,
                 AltitudeFeet = state.AltitudeFeet,
-                SpeedKnots = state.GroundSpeedKnots ?? state.AirspeedKnots
+                SpeedKnots = state.GroundSpeedKnots ?? state.AirspeedKnots,
+                Latitude = state.Latitude,
+                Longitude = state.Longitude,
+                TrackDegrees = state.TrackDegrees ?? state.HeadingDegrees,
+                VerticalRateFeetPerMinute = state.VerticalRateFeetPerMinute,
+                Squawk = state.Squawk
             };
             QueueMessageForView(msgRow);
         }

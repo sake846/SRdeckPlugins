@@ -156,32 +156,125 @@
                                         <DataGridTemplateColumn Header="最終受信" Width="82" SortMemberPath="LastReceivedAt" SortDirection="Descending"
                                                                 CellStyle="{DynamicResource PluginTimelineTimestampCellStyle}">
                                             <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                                                <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13" VerticalAlignment="Top" Margin="0">
-                                                    <Run Text="{Binding LastReceivedAt, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd}}"/><LineBreak/>
-                                                    <Run Text="{Binding LastReceivedAt, Mode=OneWay, StringFormat={}{0:HH:mm:ss}}"/>
-                                                </TextBlock>
+                                                <StackPanel Margin="0">
+                                                    <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13">
+                                                        <Run Text="{Binding LastReceivedAt, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd}}"/><LineBreak/>
+                                                        <Run Text="{Binding LastReceivedAt, Mode=OneWay, StringFormat={}{0:HH:mm:ss}}"/>
+                                                    </TextBlock>
+                                                    <TextBlock Text="{Binding ActivityStatusText, Mode=OneWay}"
+                                                               Foreground="{DynamicResource TextDimBrush}"
+                                                               FontSize="10" Margin="0,2,0,0"/>
+                                                </StackPanel>
                                             </DataTemplate></DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
                                         <DataGridTemplateColumn Header="機体" Width="*" MinWidth="200" SortMemberPath="Key">
                                             <DataGridTemplateColumn.CellTemplate><DataTemplate>
                                                 <Grid Margin="0,2,0,2" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
-                                                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                    </Grid.RowDefinitions>
+                                                    <!-- 1行目: 機体識別・最新ラベル ── 累積受信件数 -->
                                                     <Grid>
-                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                                        <TextBlock Text="{Binding Key}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                                                        <TextBlock Grid.Column="1" Text="{Binding Label}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <DockPanel LastChildFill="False">
+                                                            <TextBlock DockPanel.Dock="Left" Text="{Binding AircraftDisplay, Mode=OneWay}"
+                                                                       Style="{DynamicResource PluginTimelineIdentityTextStyle}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       VerticalAlignment="Center"/>
+                                                            <TextBlock DockPanel.Dock="Left" Margin="8,0,0,0"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                       VerticalAlignment="Center">
+                                                                <Run Text="["/><Run Text="{Binding LatestReception.Label, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding LatestReception.BlockId, Mode=OneWay}"/><Run Text="]"/>
+                                                            </TextBlock>
+                                                        </DockPanel>
+                                                        <TextBlock Grid.Column="1" Margin="12,0,0,0"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                   VerticalAlignment="Center">
+                                                            <Run Text="受信 "/><Run Text="{Binding Count, Mode=OneWay, StringFormat=N0}"/><Run Text=" 件"/>
+                                                        </TextBlock>
                                                     </Grid>
-                                                    <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0">
-                                                        <Run Text="受信 "/><Run Text="{Binding Count, Mode=OneWay, StringFormat=N0}"/><Run Text=" 件"/>
-                                                    </TextBlock>
+                                                    <!-- 2行目: 初回受信・滞在時間 ── 最新周波数・品質 -->
+                                                    <Grid Grid.Row="1" Margin="0,3,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Foreground="{DynamicResource TextDimBrush}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   VerticalAlignment="Center">
+                                                            <Run Text="初回 "/><Run Text="{Binding FirstSeenText, Mode=OneWay}"/>
+                                                            <Run Text=" (滞在 "/><Run Text="{Binding DurationText, Mode=OneWay}"/><Run Text=")"/>
+                                                        </TextBlock>
+                                                        <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   VerticalAlignment="Center">
+                                                            <Run Text="{Binding FrequencyDisplay, Mode=OneWay}"/><Run Text="  "/><Run Text="{Binding SignalQualityDisplay, Mode=OneWay}"/>
+                                                        </TextBlock>
+                                                    </Grid>
+                                                    <!-- 3行目: 最新メッセージ要約 ── 受信種別タグ -->
+                                                    <Grid Grid.Row="2" Margin="0,3,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding LatestSingleLineSummary, Mode=OneWay}"
+                                                                   Foreground="{DynamicResource TextDimBrush}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   VerticalAlignment="Center"
+                                                                   ToolTip="{Binding LatestSummaryText, Mode=OneWay}"/>
+                                                        <ItemsControl Grid.Column="1" Margin="8,0,0,0"
+                                                                      ItemsSource="{Binding CategoryBadges}">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate>
+                                                                    <WrapPanel Orientation="Horizontal"/>
+                                                                </ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Background="{DynamicResource InstrumentBaseBrush}"
+                                                                            BorderBrush="{DynamicResource ControlBorderBrush}"
+                                                                            BorderThickness="1"
+                                                                            CornerRadius="3"
+                                                                            Padding="4,1"
+                                                                            Margin="0,0,4,0">
+                                                                        <TextBlock Text="{Binding Name}"
+                                                                                   FontFamily="{DynamicResource DisplayFontFamily}"
+                                                                                   FontSize="9">
+                                                                            <TextBlock.Style>
+                                                                                <Style TargetType="TextBlock">
+                                                                                    <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}"/>
+                                                                                    <Style.Triggers>
+                                                                                        <DataTrigger Binding="{Binding IsReceived}" Value="True">
+                                                                                            <Setter Property="Foreground" Value="{DynamicResource PluginDisplayAccentPrimaryBrush}"/>
+                                                                                        </DataTrigger>
+                                                                                    </Style.Triggers>
+                                                                                </Style>
+                                                                            </TextBlock.Style>
+                                                                        </TextBlock>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </Grid>
                                                 </Grid>
                                             </DataTemplate></DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
-                                <TextBlock Text="機体別の受信履歴はありません">
+                                <TextBlock Text="機体別の受信履歴はありません"
+                                           Foreground="{DynamicResource TextDimBrush}"
+                                           FontSize="12"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Margin="16">
                                     <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource PluginEmptyStateTextStyle}">
+                                        <Style TargetType="TextBlock">
                                             <Setter Property="Visibility" Value="Collapsed"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding HasItems, ElementName=AcarsAircraftDataGrid}" Value="False">
@@ -200,64 +293,54 @@
                                 EmptyText="一覧から機体を選択すると、最新受信の内容と検証結果が表示されます">
                                 <controls:SelectionDetailPane.DetailContentTemplate>
                                     <DataTemplate>
-                                        <Grid Margin="4,2">
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="*"/>
-                                            </Grid.RowDefinitions>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="2*"/>
-                                                <ColumnDefinition Width="3*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Grid Grid.ColumnSpan="2">
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Key}" Style="{DynamicResource PluginIdentityTextStyle}"/>
-                                                <TextBlock Grid.Column="1" Foreground="{DynamicResource TextDimBrush}">
-                                                    <Run Text="{Binding Count, Mode=OneWay, StringFormat={}{0:N0} 件}"/><Run Text="  最終受信 "/>
-                                                    <Run Text="{Binding LastReceivedAt, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd HH:mm:ss}}"/>
+                                        <StackPanel Margin="6,4">
+                                            <!-- 1. タイトル行 -->
+                                            <Grid Margin="0,0,0,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding AircraftDisplay}" Style="{DynamicResource PluginIdentityTextStyle}" Margin="0,0,8,0"/>
+                                                    <TextBlock Text="{Binding LatestReception.FlightNumberNormalized}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                    <Border Background="{DynamicResource OverlayBackgroundBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="4,1" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding ActivityStatusText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="1" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center">
+                                                    <Run Text="初回 "/><Run Text="{Binding FirstSeenText, Mode=OneWay}"/><Run Text="  最終 "/><Run Text="{Binding LastReceivedAt, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd HH:mm:ss}}"/>
                                                 </TextBlock>
                                             </Grid>
-                                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,4,8,0">
-                                                <UniformGrid Columns="2" Margin="0,0,0,5">
-                                                    <StackPanel><TextBlock Text="Label / Block" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding Label, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding LatestReception.BlockId, Mode=OneWay}"/></TextBlock></StackPanel>
-                                                    <StackPanel><TextBlock Text="Mode / ACK" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding LatestReception.Mode, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding LatestReception.Acknowledgement, Mode=OneWay}"/></TextBlock></StackPanel>
-                                                </UniformGrid>
-                                                <UniformGrid Columns="2">
-                                                    <StackPanel><TextBlock Text="周波数 / 品質" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding FrequencyDisplay, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding SignalQualityDisplay, Mode=OneWay}"/></TextBlock></StackPanel>
-                                                    <StackPanel><TextBlock Text="検証" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/><TextBlock Text="{Binding ValidationDisplay}" Style="{DynamicResource PluginTimelineDetailValueStyle}"/></StackPanel>
-                                                </UniformGrid>
-                                                <TextBlock Text="最新の解釈" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,7,0,3"/>
-                                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AcarsInterpretationTemplate}"/>
-                                            </StackPanel>
-                                            <Border Grid.Row="1" Grid.Column="1" BorderBrush="{DynamicResource ControlBorderBrush}"
-                                                    BorderThickness="1,0,0,0" Padding="8,0,0,0" Margin="8,4,0,0">
-                                                <StackPanel>
-                                                    <TextBlock Text="受信履歴" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,4"/>
-                                                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                                        <ItemsControl ItemsSource="{Binding History}">
-                                                            <ItemsControl.ItemTemplate>
-                                                                <DataTemplate>
-                                                                    <Grid Margin="0,1">
-                                                                        <Grid.ColumnDefinitions>
-                                                                            <ColumnDefinition Width="58"/>
-                                                                            <ColumnDefinition Width="76"/>
-                                                                            <ColumnDefinition Width="62"/>
-                                                                            <ColumnDefinition Width="*"/>
-                                                                        </Grid.ColumnDefinitions>
-                                                                        <TextBlock Text="{Binding ReceivedAt, StringFormat=HH:mm:ss}" Foreground="{DynamicResource TextDimBrush}" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis">
-                                                                            <Run Text="{Binding Label, Mode=OneWay}"/><Run Text="/"/><Run Text="{Binding BlockId, Mode=OneWay}"/>
-                                                                        </TextBlock>
-                                                                        <TextBlock Grid.Column="2" Text="{Binding Mode}" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
-                                                                        <TextBlock Grid.Column="3" Text="{Binding SummaryText}" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding SummaryText}"/>
-                                                                    </Grid>
-                                                                </DataTemplate>
-                                                            </ItemsControl.ItemTemplate>
-                                                        </ItemsControl>
-                                                    </ScrollViewer>
-                                                </StackPanel>
-                                            </Border>
-                                        </Grid>
+
+                                            <!-- 2. メタデータ行 -->
+                                            <WrapPanel Margin="0,0,0,6">
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="最新ラベル " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding LatestLabelDetail, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="受信モード " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding ModeAndAckText, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="最新周波数 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding FrequencyDisplay, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="信号品質 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding SignalQualityDisplay, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="整合性検証 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding ValidationDisplay, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="受信統計 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding ReceptionStatsText, Mode=OneWay}"/>
+                                                </TextBlock>
+                                            </WrapPanel>
+
+                                            <!-- 3. 最新メッセージ -->
+                                            <TextBlock Text="最新メッセージ" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="0,4,0,3"/>
+                                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AcarsInterpretationTemplate}"/>
+                                            <Expander Header="生データ (HEX)" Style="{DynamicResource PluginTimelineExpanderStyle}" Margin="0,4,0,0">
+                                                <TextBlock Text="{Binding RawHex}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap" Margin="0,2,0,2"/>
+                                            </Expander>
+                                        </StackPanel>
                                     </DataTemplate>
                                 </controls:SelectionDetailPane.DetailContentTemplate>
                             </controls:SelectionDetailPane>
@@ -314,30 +397,53 @@
                                                 <DataTemplate>
                                                     <Grid Margin="0,2,0,2" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
                                                         <Grid.RowDefinitions>
-                                                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-                                                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
                                                         </Grid.RowDefinitions>
                                                         <Grid>
-                                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding Aircraft}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                                                            <TextBlock Grid.Column="1" Text="{Binding Label}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <DockPanel LastChildFill="False">
+                                                                <TextBlock DockPanel.Dock="Left" Text="{Binding AircraftDisplay, Mode=OneWay}"
+                                                                           Style="{DynamicResource PluginTimelineIdentityTextStyle}"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           VerticalAlignment="Center"/>
+                                                                <TextBlock DockPanel.Dock="Left" Margin="8,0,0,0"
+                                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                           VerticalAlignment="Center">
+                                                                    <Run Text="["/><Run Text="{Binding Label, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding BlockId, Mode=OneWay}"/><Run Text="]"/>
+                                                                </TextBlock>
+                                                            </DockPanel>
+                                                            <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       VerticalAlignment="Center">
+                                                                <Run Text="{Binding FrequencyDisplay, Mode=OneWay}"/><Run Text="  "/><Run Text="{Binding SignalQualityDisplay, Mode=OneWay}"/>
+                                                            </TextBlock>
                                                         </Grid>
-                                                        <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0" TextWrapping="Wrap">
-                                                            <Run Text="Mode "/><Run Text="{Binding Mode, Mode=OneWay}"/><Run Text="  /  Block "/><Run Text="{Binding BlockId, Mode=OneWay}"/>
-                                                        </TextBlock>
-                                                        <ContentControl Grid.Row="2" Margin="0,3,0,0" Content="{Binding}" ContentTemplate="{StaticResource AcarsInterpretationTemplate}"/>
-                                                        <TextBlock Grid.Row="3" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0" TextWrapping="Wrap">
-                                                            <Run Text="{Binding FrequencyHz, Mode=OneWay, StringFormat={}{0:N0} Hz}"/><Run Text="  /  Quality "/><Run Text="{Binding SignalQuality, Mode=OneWay, StringFormat={}{0:F1}}"/>
-                                                        </TextBlock>
+                                                        <Grid Grid.Row="1" Margin="0,3,0,0">
+                                                            <TextBlock Text="{Binding SingleLineSummary, Mode=OneWay}"
+                                                                       Foreground="{DynamicResource TextDimBrush}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       VerticalAlignment="Center"
+                                                                       ToolTip="{Binding SummaryText, Mode=OneWay}"/>
+                                                        </Grid>
                                                     </Grid>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
-                                <TextBlock Text="該当する受信イベントはありません">
+                                <TextBlock Text="該当する受信イベントはありません"
+                                           Foreground="{DynamicResource TextDimBrush}"
+                                           FontSize="12"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Margin="16">
                                     <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource PluginEmptyStateTextStyle}">
+                                        <Style TargetType="TextBlock">
                                             <Setter Property="Visibility" Value="Collapsed"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding HasItems, ElementName=AcarsTimelineDataGrid}" Value="False">
@@ -356,21 +462,62 @@
                                 EmptyText="時系列の受信イベントを選択すると、復号内容と受信条件が表示されます">
                                 <controls:SelectionDetailPane.DetailContentTemplate>
                                     <DataTemplate>
-                                        <StackPanel Margin="4,2">
-                                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Aircraft}" Style="{DynamicResource PluginIdentityTextStyle}"/>
+                                        <StackPanel Margin="6,4">
+                                            <Grid Margin="0,0,0,4">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding AircraftDisplay, Mode=OneWay}" Style="{DynamicResource PluginIdentityTextStyle}"/>
                                                 <TextBlock Grid.Column="1" Text="{Binding ReceivedAt, StringFormat={}{0:yyyy/MM/dd HH:mm:ss.fff zzz}}" Style="{DynamicResource PluginTimelineDetailTimestampStyle}"/>
                                             </Grid>
-                                            <UniformGrid Columns="4" Margin="0,4,0,2">
-                                                <StackPanel><TextBlock Text="ラベル / ブロック" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding Label, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding BlockId, Mode=OneWay}"/></TextBlock></StackPanel>
-                                                <StackPanel><TextBlock Text="モード / ACK" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding Mode, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding Acknowledgement, Mode=OneWay}"/></TextBlock></StackPanel>
-                                                <StackPanel><TextBlock Text="周波数" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Text="{Binding FrequencyHz, StringFormat={}{0:N0} Hz}" Style="{DynamicResource PluginTimelineDetailValueStyle}"/></StackPanel>
-                                                <StackPanel><TextBlock Text="品質 / BCS" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}"><Run Text="{Binding SignalQuality, StringFormat={}{0:F1}}"/><Run Text=" / "/><Run Text="{Binding IsBlockCheckValid, Mode=OneWay}"/></TextBlock></StackPanel>
-                                            </UniformGrid>
-                                            <TextBlock Text="{Binding DecodedText}" Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,4,0,0"/>
-                                            <TextBlock Text="{Binding ProprietaryText}" Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,2,0,0"/>
-                                            <Expander Header="生データ (HEX)" Style="{DynamicResource PluginTimelineExpanderStyle}">
-                                                <TextBlock Text="{Binding RawHex}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap"/>
+                                            <WrapPanel Margin="0,0,0,6">
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="ラベル " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding Label, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding BlockId, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="モード " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding Mode, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding Acknowledgement, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="周波数 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding FrequencyHz, Mode=OneWay, StringFormat={}{0:N0} Hz}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="品質 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding SignalQuality, Mode=OneWay, StringFormat={}{0:F1}}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="BCS " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding IsBlockCheckValid, Mode=OneWay}"/>
+                                                </TextBlock>
+                                            </WrapPanel>
+                                            <TextBlock Text="復号内容" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="0,4,0,3"/>
+                                            <TextBlock Text="{Binding DecodedText}"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                                       FontFamily="{DynamicResource DisplayFontFamily}"
+                                                       FontSize="10"
+                                                       TextWrapping="Wrap" Margin="0,0,0,3">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding DecodedText}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding ProprietaryText}"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                                       FontFamily="{DynamicResource DisplayFontFamily}"
+                                                       FontSize="10"
+                                                       TextWrapping="Wrap" Margin="0,0,0,3">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding ProprietaryText}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <Expander Header="生データ (HEX)" Style="{DynamicResource PluginTimelineExpanderStyle}" Margin="0,2,0,0">
+                                                <TextBlock Text="{Binding RawHex}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap" Margin="0,2,0,2"/>
                                             </Expander>
                                         </StackPanel>
                                     </DataTemplate>
@@ -385,16 +532,21 @@
                             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                             <Border Margin="8,6" Padding="4">
                                 <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextDimBrush}" FontSize="10">
-                                    <Run Text="表示機体数: "/><Run Text="{Binding PositionedAircraftCount, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"/><Run Text=" 機　|　出典: メッセージから抽出した位置情報　|　航跡保持: 直近"/><Run Text="{Binding MaximumTrailPoints, Mode=OneWay, StringFormat={}{0:N0}}"/><Run Text="地点"/>
+                                    <Run Text="表示機体数: "/><Run Text="{Binding PositionedAircraftCount, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"/><Run Text=" 機　|　出典: メッセージから抽出した位置情報　|　保持時間: 直近"/><Run Text="{Binding RetentionMinutes, Mode=OneWay, StringFormat={}{0:N0}}"/><Run Text="分　|　航跡保持: 直近"/><Run Text="{Binding MaximumTrailPoints, Mode=OneWay, StringFormat={}{0:N0}}"/><Run Text="地点"/>
                                 </TextBlock>
                             </Border>
                             <Border Grid.Row="1" Margin="4" Background="{DynamicResource PanelBaseBrush}" BorderBrush="{DynamicResource ControlBorderBrush}"
                                     BorderThickness="1" CornerRadius="2" ClipToBounds="True">
                                 <Grid>
                                     <wpf:GeoMapView MapId="acars" LegendHtml="{x:Static acars:AcarsMapPresentation.LegendHtml}" LabelToggleText="機名" ItemsSource="{Binding MapMarkers}" />
-                                    <TextBlock Text="位置を含むメッセージをまだ受信していません">
+                                    <TextBlock Text="位置を含むメッセージをまだ受信していません"
+                                               Foreground="{DynamicResource TextDimBrush}"
+                                               FontSize="12"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Margin="16">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock" BasedOn="{StaticResource PluginEmptyStateTextStyle}">
+                                            <Style TargetType="TextBlock">
                                                 <Setter Property="Visibility" Value="Collapsed"/>
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding PositionedAircraftCount}" Value="0">

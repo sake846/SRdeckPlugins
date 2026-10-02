@@ -1,4 +1,5 @@
-﻿using SRdeckPlugin.Ais.Protocols;
+﻿using System.Runtime.CompilerServices;
+using SRdeckPlugin.Ais.Protocols;
 using SRdeckPlugin.Contracts;
 
 namespace SRdeckPlugin.Ais.Dsp;
@@ -61,10 +62,10 @@ internal sealed class CoherentGmskSequenceDecoder
     private readonly int frequencyOffsetHz;
     private readonly int frequencyHypothesisIndex;
     private readonly AisHdlcDecoder decoder = new();
-    private readonly byte[,] predecessors = new byte[TracebackDepth, 2];
     private readonly double[] confidenceHistory = new double[TracebackDepth];
-    private readonly double[,] transitionCos = new double[2, 2];
-    private readonly double[,] transitionSin = new double[2, 2];
+    private readonly (double Cos, double Sin) positiveTransition;
+    private readonly (double Cos, double Sin) negativeTransition;
+    private readonly (double Cos, double Sin) switchingTransition;
     private int sampleCount;
     private double positiveI;
     private double positiveQ;
@@ -73,6 +74,8 @@ internal sealed class CoherentGmskSequenceDecoder
     private long symbolIndex;
     private double positiveScore;
     private double negativeScore;
+    private uint positivePath = 1;
+    private uint negativePath;
     private Correlation currentCenter;
     private Correlation previousCenter;
     private bool hasPreviousCorrelations;
@@ -83,16 +86,12 @@ internal sealed class CoherentGmskSequenceDecoder
         this.offset = offset;
         this.frequencyOffsetHz = frequencyOffsetHz;
         this.frequencyHypothesisIndex = frequencyHypothesisIndex;
-        for (int previousState = 0; previousState < 2; previousState++)
-        for (int currentState = 0; currentState < 2; currentState++)
-        {
-            double previousSign = previousState == 1 ? 1 : -1;
-            double currentSign = currentState == 1 ? 1 : -1;
-            double expected = (previousSign + currentSign) * ToneRadiansPerSymbol * 0.5 +
-                2 * Math.PI * frequencyOffsetHz / AisReceiver.SymbolRate;
-            transitionCos[previousState, currentState] = Math.Cos(expected);
-            transitionSin[previousState, currentState] = Math.Sin(expected);
-        }
+        double frequencyPhase = 2 * Math.PI * frequencyOffsetHz / AisReceiver.SymbolRate;
+        double positivePhase = ToneRadiansPerSymbol + frequencyPhase;
+        double negativePhase = -ToneRadiansPerSymbol + frequencyPhase;
+        positiveTransition = (Math.Cos(positivePhase), Math.Sin(positivePhase));
+        negativeTransition = (Math.Cos(negativePhase), Math.Sin(negativePhase));
+        switchingTransition = (Math.Cos(frequencyPhase), Math.Sin(frequencyPhase));
     }
 
     public int FrequencyOffsetHz => frequencyOffsetHz;
@@ -120,16 +119,18 @@ internal sealed class CoherentGmskSequenceDecoder
         positiveI = positiveQ = negativeI = negativeQ = 0;
         symbolIndex = 0;
         positiveScore = negativeScore = 0;
+        positivePath = 1;
+        negativePath = 0;
         currentCenter = previousCenter = default;
         hasPreviousCorrelations = false;
         recentConfidence = 0;
-        Array.Clear(predecessors);
         Array.Clear(confidenceHistory);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public byte[]? Feed(
         Complex32 sample,
-        CoherentGmskMixedSample mixed,
+        in CoherentGmskMixedSample mixed,
         long sampleIndex,
         out double quality)
     {
@@ -139,7 +140,12 @@ internal sealed class CoherentGmskSequenceDecoder
         Accumulate(sample, mixed, sampleCount);
         if (++sampleCount < AisReceiver.SamplesPerSymbol) return null;
         sampleCount = 0;
+        return DecodeSymbol(out quality);
+    }
 
+    private byte[]? DecodeSymbol(out double quality)
+    {
+        quality = 0;
         var positive = new Correlation(positiveI, positiveQ);
         var negative = new Correlation(negativeI, negativeQ);
         Correlation center = currentCenter;
@@ -148,7 +154,7 @@ internal sealed class CoherentGmskSequenceDecoder
 
         double totalPower = positive.Power + negative.Power + 1e-20;
         double confidence = Math.Abs(positive.Power - negative.Power) / totalPower;
-        confidenceHistory[symbolIndex % TracebackDepth] = confidence;
+        confidenceHistory[(int)(symbolIndex & (TracebackDepth - 1))] = confidence;
         double signedEvidence = (positive.Power - negative.Power) / totalPower;
         double positiveEmission = 0.55 * signedEvidence;
         double negativeEmission = -positiveEmission;
@@ -164,13 +170,18 @@ internal sealed class CoherentGmskSequenceDecoder
         }
 
         PhaseDelta(previousCenter, center, out double observedCos, out double observedSin);
-        double positiveFromPositive = positiveScore + PhaseScore(observedCos, observedSin, 1, 1);
-        double positiveFromNegative = negativeScore + PhaseScore(observedCos, observedSin, 0, 1);
-        double negativeFromPositive = positiveScore + PhaseScore(observedCos, observedSin, 1, 0);
-        double negativeFromNegative = negativeScore + PhaseScore(observedCos, observedSin, 0, 0);
-        int slot = (int)(symbolIndex % TracebackDepth);
-        predecessors[slot, 1] = positiveFromNegative > positiveFromPositive ? (byte)0 : (byte)1;
-        predecessors[slot, 0] = negativeFromNegative > negativeFromPositive ? (byte)0 : (byte)1;
+        double switchingScore = PhaseScore(observedCos, observedSin, switchingTransition);
+        double positiveFromPositive = positiveScore + PhaseScore(observedCos, observedSin, positiveTransition);
+        double positiveFromNegative = negativeScore + switchingScore;
+        double negativeFromPositive = positiveScore + switchingScore;
+        double negativeFromNegative = negativeScore + PhaseScore(observedCos, observedSin, negativeTransition);
+        // Carry the survivor bits with each state instead of tracing eight
+        // predecessor rows for every symbol. Ties still select the positive state.
+        uint nextPositivePath = ((positiveFromNegative > positiveFromPositive
+            ? negativePath : positivePath) << 1) | 1;
+        negativePath = (negativeFromNegative > negativeFromPositive
+            ? negativePath : positivePath) << 1;
+        positivePath = nextPositivePath;
         positiveScore = Math.Max(positiveFromPositive, positiveFromNegative) + positiveEmission;
         negativeScore = Math.Max(negativeFromPositive, negativeFromNegative) + negativeEmission;
         double normalization = Math.Max(positiveScore, negativeScore);
@@ -181,24 +192,19 @@ internal sealed class CoherentGmskSequenceDecoder
         byte[]? payload = null;
         if (symbolIndex >= TracebackDepth)
         {
-            int state = positiveScore >= negativeScore ? 1 : 0;
-            for (int depth = 0; depth < TracebackDepth; depth++)
-            {
-                int historySlot = (int)((symbolIndex - depth) % TracebackDepth);
-                state = predecessors[historySlot, state];
-            }
-            int decidedSlot = (int)((symbolIndex - TracebackDepth) % TracebackDepth);
+            uint path = positiveScore >= negativeScore ? positivePath : negativePath;
+            int decidedSlot = (int)((symbolIndex - TracebackDepth) & (TracebackDepth - 1));
             recentConfidence = recentConfidence == 0
                 ? confidenceHistory[decidedSlot]
                 : recentConfidence * 0.94 + confidenceHistory[decidedSlot] * 0.06;
             quality = Math.Clamp(recentConfidence, 0, 1);
-            payload = decoder.FeedLevel(state != 0);
+            payload = decoder.FeedLevel((path & (1U << TracebackDepth)) != 0);
         }
         symbolIndex++;
         return payload;
     }
 
-    private void Accumulate(Complex32 sample, CoherentGmskMixedSample mixed, int index)
+    private void Accumulate(Complex32 sample, in CoherentGmskMixedSample mixed, int index)
     {
         positiveI += mixed.PositiveI;
         positiveQ += mixed.PositiveQ;
@@ -228,10 +234,10 @@ internal sealed class CoherentGmskSequenceDecoder
         sine = cross / magnitude;
     }
 
-    private double PhaseScore(double observedCos, double observedSin, int previous, int current) =>
+    private static double PhaseScore(double observedCos, double observedSin,
+        (double Cos, double Sin) transition) =>
         1.15 * Math.Clamp(
-            observedCos * transitionCos[previous, current] +
-            observedSin * transitionSin[previous, current], -1, 1);
+            observedCos * transition.Cos + observedSin * transition.Sin, -1, 1);
 
     private readonly record struct Correlation(double I, double Q)
     {

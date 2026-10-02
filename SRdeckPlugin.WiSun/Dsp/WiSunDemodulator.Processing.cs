@@ -58,6 +58,8 @@ public sealed partial class WiSunDemodulator
 
         float rfBurstThresholdPower = MathF.Pow(10, squelchThresholdDbfs / 10);
         double inputPower = 0;
+        double discriminatorSum = discriminatorPrefix[^1];
+        double powerSum = powerPrefix[^1];
         foreach (Complex32 sample in inputSamples)
         {
             float magnitudeSquared = sample.I * sample.I + sample.Q * sample.Q;
@@ -79,8 +81,10 @@ public sealed partial class WiSunDemodulator
             hasPreviousSample = true;
             discriminator.Add(phaseDifference);
             power.Add(magnitudeSquared);
-            discriminatorPrefix.Add(discriminatorPrefix[^1] + phaseDifference);
-            powerPrefix.Add(powerPrefix[^1] + magnitudeSquared);
+            discriminatorSum += phaseDifference;
+            powerSum += magnitudeSquared;
+            discriminatorPrefix.Add(discriminatorSum);
+            powerPrefix.Add(powerSum);
         }
         LastInputLevelDbfs = 10 * Math.Log10(Math.Max(inputPower / inputSamples.Length, 1e-12));
         LastNoiseFloorDbfs = noiseFloorSamples > 0
@@ -93,10 +97,11 @@ public sealed partial class WiSunDemodulator
         LastFrequencyHz = frequencyHz;
         LastMeasuredAt = DateTimeOffset.Now;
 
-        var frames = new List<WiSunPacketFrame>();
-        DecodeAvailable(sampleRateHz, frequencyHz, squelchThresholdDbfs, timestamp, frames);
+        List<WiSunPacketFrame>? frames = null;
+        DecodeAvailable(sampleRateHz, frequencyHz, rfBurstThresholdPower, timestamp, ref frames);
         TrimConsumedSamples();
         OnDiagnosticCountersChanged?.Invoke();
+        if (frames is null) return Array.Empty<WiSunPacketFrame>();
         foreach (WiSunPacketFrame frame in frames) OnPacketDecoded?.Invoke(frame);
         return frames;
     }
@@ -171,13 +176,12 @@ public sealed partial class WiSunDemodulator
     private void DecodeAvailable(
         int sampleRateHz,
         long frequencyHz,
-        float squelchThresholdDbfs,
+        float squelchPower,
         DateTimeOffset timestamp,
-        List<WiSunPacketFrame> frames)
+        ref List<WiSunPacketFrame>? frames)
     {
         CheckAndLogRawBurst(timestamp);
         int fixedHeaderSamples = (SfdBitCount + PhrBitCount) * SamplesPerBit;
-        float squelchPower = MathF.Pow(10, squelchThresholdDbfs / 10);
         while (scanSample + fixedHeaderSamples <= discriminator.Count)
         {
             if (!IsLikelySynchronizationCandidate(scanSample, squelchPower))
@@ -267,7 +271,7 @@ public sealed partial class WiSunDemodulator
             WiSunPacketFrame frame = DecodeMacFrame(macFrame, timestamp, frequencyHz,
                 durationMs, peakDbfs, averageDbfs - (float)LastNoiseFloorDbfs,
                 whiteningEnabled, fcsLength, crcValid, phyName);
-            frames.Add(frame);
+            (frames ??= []).Add(frame);
             TotalFramesPublished++;
             scanSample = frameEnd;
 

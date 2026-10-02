@@ -2,6 +2,7 @@
               xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
               xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+              xmlns:pluginWpf="clr-namespace:SRdeckPlugin.Wpf;assembly=SRdeckPlugin.Wpf"
               Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10">
     <Grid>
         <Border Style="{DynamicResource PluginSettingsPanelStyle}">
@@ -28,6 +29,7 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="30" />
                                 <RowDefinition Height="Auto" MinHeight="30" />
+                                <RowDefinition Height="30" />
                                 <RowDefinition Height="30" />
                             </Grid.RowDefinitions>
                             <TextBlock Text="地域" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
@@ -70,6 +72,28 @@
                                               Style="{DynamicResource PluginToggleButtonStyle}"
                                               Width="65" VerticalAlignment="Center" />
                             </StackPanel>
+                            <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="5" Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="FrequencyDisplayModeComboBox" Width="150" Height="22" Margin="0,0,6,0"
+                                          ItemsSource="{Binding Path=(pluginWpf:PluginHost.SdrControl).FrequencyDisplayOptions, RelativeSource={RelativeSource Self}}"
+                                          DisplayMemberPath="Label"
+                                          SelectedItem="{Binding Path=(pluginWpf:PluginHost.SdrControl).SelectedFrequencyDisplayOption, RelativeSource={RelativeSource Self}, Mode=TwoWay}"
+                                          Style="{DynamicResource PluginComboBoxStyle}"
+                                          ToolTip="局名・バンドプランの表示" />
+                                <Button x:Name="StationCatalogButton" Grid.Column="1"
+                                        Content="{DynamicResource Title_Stations}"
+                                        Style="{DynamicResource PluginButtonStyle}"
+                                        Margin="0,0,6,0"
+                                        Command="{Binding Path=(pluginWpf:PluginHost.SdrControl).OpenStationCatalogCommand, RelativeSource={RelativeSource Self}}" />
+                                <Button x:Name="BandPlanCatalogButton" Grid.Column="2"
+                                        Content="{DynamicResource Title_BandPlan}"
+                                        Style="{DynamicResource PluginButtonStyle}"
+                                        Command="{Binding Path=(pluginWpf:PluginHost.SdrControl).OpenBandPlanCatalogCommand, RelativeSource={RelativeSource Self}}" />
+                            </Grid>
                         </Grid>
                     </ScrollViewer>
                 </TabItem>
@@ -104,12 +128,12 @@
                                 <TextBlock Text="最大表示機数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                                 <TextBox Grid.Column="1" Text="{Binding MaximumAircraft, UpdateSourceTrigger=LostFocus}"
                                          Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
-                                <TextBlock Grid.Column="2" Text="機体一覧・地図に同時に保持する最大機数"
+                                <TextBlock Grid.Column="2" Text="機体一覧に同時に保持する最大機数"
                                            Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Row="1" Text="機体非表示時間（分）" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBlock Grid.Row="1" Text="地図保持時間（分）" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                                 <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding RetentionMinutes, UpdateSourceTrigger=LostFocus}"
                                          Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
-                                <TextBlock Grid.Row="1" Grid.Column="2" Text="電波途絶から一覧・地図から消去するまでの時間"
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="最新位置の受信から地図から消去するまでの時間"
                                            Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
                                 <TextBlock Grid.Row="2" Text="航跡保持点数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                                 <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding MaximumTrailPoints, UpdateSourceTrigger=LostFocus}"
@@ -127,6 +151,7 @@
                              <controls:PluginResetView Grid.Row="3" />
                              <TextBlock Grid.Row="4" Text="過去録音" Style="{DynamicResource PluginSettingsSectionHeaderStyle}" />
                              <Grid Grid.Row="5" Style="{DynamicResource PluginSettingsActionRowStyle}">
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -136,9 +161,12 @@
                                            Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,0,16,0" />
                                 <Button Grid.Column="1" Content="IQ 録音 (直前3秒)" Command="{Binding StartCaptureCommand}"
                                         Style="{DynamicResource PluginButtonStyle}" Width="130" HorizontalAlignment="Left" />
-                                <TextBlock Grid.Column="2" Text="{Binding CaptureStatus}"
-                                           Style="{DynamicResource PluginSettingsActionStatusStyle}" VerticalAlignment="Center" Margin="10,0,0,0" />
-                            </Grid>
+                                 <TextBlock Grid.Column="2" Text="{Binding CaptureStatus}"
+                                            Style="{DynamicResource PluginSettingsActionStatusStyle}" VerticalAlignment="Center" Margin="10,0,0,0" />
+                                <TextBlock Grid.Row="1" Text="保存したIQ WAVを受信時と同じプラグインで再生します。" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,6,16,0" />
+                                <Button Grid.Row="1" Grid.Column="1" Style="{DynamicResource PluginIqPlaybackButtonStyle}" Margin="0,6,0,0" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Style="{DynamicResource PluginIqPlaybackStatusStyle}" Margin="10,6,0,0" />
+                             </Grid>
                         </Grid>
                     </ScrollViewer>
                 </TabItem>

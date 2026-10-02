@@ -6,8 +6,21 @@
               xmlns:wpf="clr-namespace:SRdeckPlugin.Wpf;assembly=SRdeckPlugin.Wpf"
               xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf">
     <UserControl.Resources>
-        <Style x:Key="AdsBDataGridRowStyle" TargetType="DataGridRow" BasedOn="{StaticResource PluginDataGridRowStyle}">
+        <Style x:Key="AdsBDataGridRowStyle" TargetType="DataGridRow">
+            <Setter Property="Background" Value="{DynamicResource PanelBaseBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Style.Triggers>
+                <Trigger Property="AlternationIndex" Value="1">
+                    <Setter Property="Background" Value="{DynamicResource PanelSurfaceBrush}" />
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource BgHoverBrush}" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource BgActiveBrush}" />
+                </Trigger>
                 <DataTrigger Binding="{Binding HasEmergency}" Value="True">
                     <Setter Property="Background" Value="{DynamicResource PluginStatusCriticalBackgroundBrush}"/>
                     <Setter Property="Foreground" Value="{DynamicResource PluginStatusCriticalForegroundBrush}"/>
@@ -114,44 +127,109 @@
                                         <DataGridTemplateColumn Header="最終受信" Width="82" SortMemberPath="LastSeen" SortDirection="Descending"
                                                                 CellStyle="{DynamicResource PluginTimelineTimestampCellStyle}">
                                             <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                                                <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13" VerticalAlignment="Top" Margin="0">
-                                                    <Run Text="{Binding LastSeen, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd}}"/><LineBreak/>
-                                                    <Run Text="{Binding LastSeen, Mode=OneWay, StringFormat={}{0:HH:mm:ss}}"/>
-                                                </TextBlock>
+                                                <StackPanel Margin="0">
+                                                    <TextBlock Style="{DynamicResource PluginTimelineTimestampTextStyle}" LineHeight="13">
+                                                        <Run Text="{Binding LastSeen, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd}}"/><LineBreak/>
+                                                        <Run Text="{Binding LastSeen, Mode=OneWay, StringFormat={}{0:HH:mm:ss}}"/>
+                                                    </TextBlock>
+                                                    <TextBlock Text="{Binding ActivityStatusText, Mode=OneWay}"
+                                                               Foreground="{DynamicResource TextDimBrush}"
+                                                               FontSize="10" Margin="0,3,0,0"/>
+                                                </StackPanel>
                                             </DataTemplate></DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
-                                        <DataGridTemplateColumn Header="機体" Width="*" MinWidth="200" SortMemberPath="Callsign">
+                                        <DataGridTemplateColumn Header="機体" Width="*" MinWidth="200" SortMemberPath="AircraftDisplay">
                                             <DataGridTemplateColumn.CellTemplate><DataTemplate>
                                                 <Grid Margin="0,2,0,2" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
                                                     <Grid.RowDefinitions>
-                                                        <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
                                                         <RowDefinition Height="Auto"/>
                                                     </Grid.RowDefinitions>
+                                                    <!-- 1行目: 機体識別 (左) + Squawk / 受信件数 (右) -->
                                                     <Grid>
                                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                                        <TextBlock Text="{Binding Callsign, TargetNullValue=-}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0" VerticalAlignment="Center">
-                                                            <Run Text="ICAO "/><Run Text="{Binding Icao, Mode=OneWay}"/>
+                                                        <DockPanel LastChildFill="False">
+                                                            <TextBlock DockPanel.Dock="Left" Text="{Binding AircraftDisplay}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                            <TextBlock DockPanel.Dock="Left" Margin="8,0,0,0" Text="{Binding AircraftDetail}" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                        </DockPanel>
+                                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+                                                            <TextBlock Text="{Binding SquawkDisplay}" Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                            <TextBlock Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center">
+                                                                <Run Text="{Binding Messages, Mode=OneWay, StringFormat=N0}"/><Run Text=" 件"/>
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                    <!-- 2行目: 緯度・経度 ＋ 航法諸元（各項目固定幅カラムで均等・完璧に整列） -->
+                                                    <Grid Grid.Row="1" Margin="0,3,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="94"/>
+                                                            <ColumnDefinition Width="102"/>
+                                                            <ColumnDefinition Width="86"/>
+                                                            <ColumnDefinition Width="94"/>
+                                                            <ColumnDefinition Width="72"/>
+                                                            <ColumnDefinition Width="62"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Grid.ColumnSpan="2" Text="{Binding LatitudeDisplay, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding LongitudeDisplay, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="2" Text="{Binding AltitudeDisplay, Mode=OneWay}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="3" Text="{Binding VerticalRateDisplay, Mode=OneWay}" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="4" Text="{Binding SpeedDisplay, Mode=OneWay}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="5" Text="{Binding TrackDisplay, Mode=OneWay}" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                    <!-- 3行目: メッセージ種別バッジ群 (左) + 滞在時間 (右) -->
+                                                    <Grid Grid.Row="2" Margin="0,3,0,0">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                        <ItemsControl ItemsSource="{Binding CategoryBadges, Mode=OneWay}" VerticalAlignment="Center">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate>
+                                                                    <WrapPanel Orientation="Horizontal"/>
+                                                                </ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Background="{DynamicResource InstrumentBaseBrush}"
+                                                                            BorderBrush="{DynamicResource ControlBorderBrush}"
+                                                                            BorderThickness="1"
+                                                                            CornerRadius="3"
+                                                                            Padding="4,1"
+                                                                            Margin="0,0,4,0">
+                                                                        <TextBlock Text="{Binding Name}"
+                                                                                   FontFamily="{DynamicResource DisplayFontFamily}"
+                                                                                   FontSize="9">
+                                                                            <TextBlock.Style>
+                                                                                <Style TargetType="TextBlock">
+                                                                                    <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}"/>
+                                                                                    <Style.Triggers>
+                                                                                        <DataTrigger Binding="{Binding IsReceived}" Value="True">
+                                                                                            <Setter Property="Foreground" Value="{DynamicResource PluginDisplayAccentPrimaryBrush}"/>
+                                                                                        </DataTrigger>
+                                                                                    </Style.Triggers>
+                                                                                </Style>
+                                                                            </TextBlock.Style>
+                                                                        </TextBlock>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextDimBrush}" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                            <Run Text="滞在 "/><Run Text="{Binding DurationText, Mode=OneWay}"/>
                                                         </TextBlock>
                                                     </Grid>
-                                                    <TextBlock Grid.Row="1" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap">
-                                                        <Run Text="高度 "/><Run Text="{Binding AltitudeFeet, Mode=OneWay, StringFormat={}{0:N0} ft, TargetNullValue=-}"/>
-                                                        <Run Text="  /  速度 "/><Run Text="{Binding SpeedKnots, Mode=OneWay, StringFormat={}{0:F0} kt, TargetNullValue=-}"/>
-                                                        <Run Text="  /  方位 "/><Run Text="{Binding TrackDegrees, Mode=OneWay, StringFormat={}{0:F0}°, TargetNullValue=-}"/>
-                                                    </TextBlock>
-                                                    <TextBlock Grid.Row="2" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0">
-                                                        <Run Text="緊急状態 "/><Run Text="{Binding EmergencyState, Mode=OneWay}"/>
-                                                        <Run Text="  /  Squawk "/><Run Text="{Binding Squawk, Mode=OneWay}"/>
-                                                        <Run Text="  /  受信 "/><Run Text="{Binding Messages, Mode=OneWay, StringFormat=N0}"/><Run Text=" 件"/>
-                                                    </TextBlock>
                                                 </Grid>
                                             </DataTemplate></DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
-                                <TextBlock Text="まだ追跡中の機体はありません">
+                                <TextBlock Text="まだ追跡中の機体はありません"
+                                           Foreground="{DynamicResource TextDimBrush}"
+                                           FontSize="12"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Margin="16">
                                     <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource PluginEmptyStateTextStyle}">
+                                        <Style TargetType="TextBlock">
                                             <Setter Property="Visibility" Value="Collapsed"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding HasItems, ElementName=AdsbAircraftDataGrid}" Value="False">
@@ -170,108 +248,65 @@
                                 EmptyText="一覧から機体を選択すると、位置・動静・運航状態が表示されます">
                                 <controls:SelectionDetailPane.DetailContentTemplate>
                                     <DataTemplate>
-                                        <Grid Margin="4,2">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="2*"/>
-                                                <ColumnDefinition Width="3*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                                <UniformGrid Columns="2" Margin="0,2">
-                                                    <StackPanel Margin="2">
-                                                        <TextBlock Text="ICAO" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/>
-                                                        <TextBlock Text="{Binding Icao}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                    </StackPanel>
-                                                    <StackPanel Margin="2">
-                                                        <TextBlock Text="コールサイン" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/>
-                                                        <TextBlock Text="{Binding Callsign}" Style="{DynamicResource PluginIdentityTextStyle}"/>
-                                                    </StackPanel>
-                                                </UniformGrid>
-                                                <UniformGrid Columns="2" Margin="0,2">
-                                                    <StackPanel Margin="2">
-                                                        <TextBlock Text="最終受信" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/>
-                                                        <TextBlock Text="{Binding LastSeen, StringFormat=HH:mm:ss}" Foreground="{DynamicResource TextDimBrush}" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                    </StackPanel>
-                                                    <StackPanel Margin="2">
-                                                        <TextBlock Text="緯度" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/>
-                                                        <TextBlock Text="{Binding Latitude, StringFormat=F5}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                    </StackPanel>
-                                                </UniformGrid>
-                                                <UniformGrid Columns="2" Margin="0,2">
-                                                    <StackPanel Margin="2">
-                                                        <TextBlock Text="経度" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/>
-                                                        <TextBlock Text="{Binding Longitude, StringFormat=F5}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                    </StackPanel>
-                                                    <StackPanel Margin="2">
-                                                        <TextBlock Text="高度" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/>
-                                                        <TextBlock Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}">
-                                                            <Run Text="{Binding AltitudeFeet, Mode=OneWay, StringFormat=N0}"/><Run Text=" ft"/>
-                                                        </TextBlock>
-                                                    </StackPanel>
-                                                </UniformGrid>
-                                                <UniformGrid Columns="2" Margin="0,2">
-                                                    <StackPanel Margin="2">
-                                                        <TextBlock Text="速度" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/>
-                                                        <TextBlock Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}">
-                                                            <Run Text="{Binding SpeedKnots, Mode=OneWay, StringFormat=F0}"/><Run Text=" kt"/>
-                                                        </TextBlock>
-                                                    </StackPanel>
-                                                    <StackPanel Margin="2">
-                                                        <TextBlock Text="方位 / 針路" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/>
-                                                        <TextBlock Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}">
-                                                            <Run Text="{Binding TrackDegrees, Mode=OneWay, StringFormat=F0}"/><Run Text="°"/>
-                                                        </TextBlock>
-                                                    </StackPanel>
-                                                </UniformGrid>
-                                                <UniformGrid Columns="2" Margin="0,2">
-                                                    <StackPanel Margin="2">
-                                                        <TextBlock Text="昇降率 / 高度基準" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/>
-                                                        <TextBlock Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}"><Run Text="{Binding VerticalRate, Mode=OneWay, StringFormat={}{0:+#;-#;0} ft/min}"/><Run Text=" / "/><Run Text="{Binding AltitudeSource, Mode=OneWay}"/></TextBlock>
-                                                    </StackPanel>
-                                                    <StackPanel Margin="2">
-                                                        <TextBlock Text="選択高度 / Squawk" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/>
-                                                        <TextBlock Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}"><Run Text="{Binding SelectedAltitudeFeet, Mode=OneWay, StringFormat=N0}"/><Run Text=" / "/><Run Text="{Binding Squawk, Mode=OneWay}"/></TextBlock>
-                                                    </StackPanel>
-                                                </UniformGrid>
-                                                <UniformGrid Columns="2" Margin="0,2">
-                                                    <StackPanel Margin="2">
-                                                        <TextBlock Text="緊急状態 / Ver" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/>
-                                                        <TextBlock Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}"><Run Text="{Binding EmergencyState, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding AdsBVersion, Mode=OneWay}"/></TextBlock>
-                                                    </StackPanel>
-                                                    <StackPanel Margin="2">
-                                                        <TextBlock Text="NACp / SIL / メッセージ数" Style="{DynamicResource PluginSelectionDetailLabelStyle}"/>
-                                                        <TextBlock Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}"><Run Text="{Binding NacP, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding Sil, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding Messages, Mode=OneWay, StringFormat=N0}"/></TextBlock>
-                                                    </StackPanel>
-                                                </UniformGrid>
-                                            </StackPanel>
-                                            <Border Grid.Column="1" BorderBrush="{DynamicResource ControlBorderBrush}"
-                                                    BorderThickness="1,0,0,0" Padding="8,0,0,0" Margin="8,0,0,0">
-                                                <StackPanel>
-                                                    <TextBlock Text="受信履歴" Style="{DynamicResource PluginSecondarySectionHeaderStyle}" Margin="0,0,0,4"/>
-                                                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                                        <ItemsControl ItemsSource="{Binding History}">
-                                                            <ItemsControl.ItemTemplate>
-                                                                <DataTemplate>
-                                                                    <Grid Margin="0,1">
-                                                                        <Grid.ColumnDefinitions>
-                                                                            <ColumnDefinition Width="58"/>
-                                                                            <ColumnDefinition Width="78"/>
-                                                                            <ColumnDefinition Width="*"/>
-                                                                        </Grid.ColumnDefinitions>
-                                                                        <TextBlock Text="{Binding ReceivedAt, StringFormat=HH:mm:ss}" Foreground="{DynamicResource TextDimBrush}" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis">
-                                                                            <Run Text="{Binding Callsign, Mode=OneWay}" Foreground="{DynamicResource PluginDisplayAccentTertiaryBrush}"/><Run Text="  "/><Run Text="{Binding Icao, Mode=OneWay}"/>
-                                                                        </TextBlock>
-                                                                        <TextBlock Grid.Column="2" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Summary}">
-                                                                            <Run Text="{Binding Kind, Mode=OneWay}"/><Run Text="  "/><Run Text="{Binding Summary, Mode=OneWay}"/>
-                                                                        </TextBlock>
-                                                                    </Grid>
-                                                                </DataTemplate>
-                                                            </ItemsControl.ItemTemplate>
-                                                        </ItemsControl>
-                                                    </ScrollViewer>
+                                        <StackPanel Margin="6,4">
+                                            <!-- 1. タイトル行 -->
+                                            <Grid Margin="0,0,0,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding AircraftDisplay}" Style="{DynamicResource PluginIdentityTextStyle}" Margin="0,0,8,0"/>
+                                                    <TextBlock Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" Margin="0,0,8,0" VerticalAlignment="Center">
+                                                        <Run Text="ICAO "/><Run Text="{Binding Icao, Mode=OneWay}"/>
+                                                    </TextBlock>
+                                                    <Border Background="{DynamicResource OverlayBackgroundBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="4,1" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding ActivityStatusText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/>
+                                                    </Border>
                                                 </StackPanel>
-                                            </Border>
-                                        </Grid>
+                                                <TextBlock Grid.Column="1" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center">
+                                                    <Run Text="初回 "/><Run Text="{Binding FirstSeenText, Mode=OneWay}"/><Run Text="  最終 "/><Run Text="{Binding LastSeen, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd HH:mm:ss}}"/>
+                                                </TextBlock>
+                                            </Grid>
+
+                                            <!-- 2. メタデータ行 (全幅 WrapPanel) -->
+                                            <WrapPanel Margin="0,0,0,6">
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="位置 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding PositionDisplay, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="高度 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding AltitudeFeet, Mode=OneWay, StringFormat={}{0:N0} ft, TargetNullValue=—}"/><Run Text=" ("/><Run Text="{Binding AltitudeSource, Mode=OneWay, TargetNullValue=—}"/><Run Text=")"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="速度 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding SpeedKnots, Mode=OneWay, StringFormat={}{0:F0} kt, TargetNullValue=—}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="方位 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding TrackDegrees, Mode=OneWay, StringFormat={}{0:F0}°, TargetNullValue=—}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="昇降率 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding VerticalRate, Mode=OneWay, StringFormat={}{0:+#;-#;0} ft/min, TargetNullValue=—}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="選択高度 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding SelectedAltitudeFeet, Mode=OneWay, StringFormat={}{0:N0} ft, TargetNullValue=—}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="Squawk " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding Squawk, Mode=OneWay, TargetNullValue=—}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="緊急状態 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding EmergencyState, Mode=OneWay, TargetNullValue=なし}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="ADS-B " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="Ver."/><Run Text="{Binding AdsBVersion, Mode=OneWay, TargetNullValue=—}"/><Run Text=" (NACp:"/><Run Text="{Binding NacP, Mode=OneWay, TargetNullValue=—}"/><Run Text="/SIL:"/><Run Text="{Binding Sil, Mode=OneWay, TargetNullValue=—}"/><Run Text=")"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="受信統計 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding ReceptionStatsText, Mode=OneWay}"/>
+                                                </TextBlock>
+                                            </WrapPanel>
+
+                                            <!-- 3. 最新動静・要約 -->
+                                            <TextBlock Text="最新メッセージ / 動静" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="0,4,0,3"/>
+                                            <TextBlock Text="{Binding LatestSummary}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" TextWrapping="Wrap"/>
+                                        </StackPanel>
                                     </DataTemplate>
                                 </controls:SelectionDetailPane.DetailContentTemplate>
                             </controls:SelectionDetailPane>
@@ -306,57 +341,113 @@
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
-                                        <DataGridTemplateColumn Header="受信イベント" Width="*" MinWidth="200" SortMemberPath="Callsign">
+                                        <DataGridTemplateColumn Header="受信イベント" Width="*" MinWidth="200" SortMemberPath="AircraftDisplay">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <Grid Margin="0,2,0,2" TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
                                                         <Grid.RowDefinitions>
-                                                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-                                                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
                                                         </Grid.RowDefinitions>
+                                                        <!-- 1行目: 機体識別 (左) + 種別バッジ / Squawk (右) -->
                                                         <Grid>
-                                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding Callsign, TargetNullValue=-}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                                                            <TextBlock Grid.Column="1" Text="{Binding Kind}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <DockPanel LastChildFill="False">
+                                                                <TextBlock DockPanel.Dock="Left" Text="{Binding AircraftDisplay}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                                <TextBlock DockPanel.Dock="Left" Margin="8,0,0,0" Text="{Binding AircraftDetail}" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                            </DockPanel>
+                                                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+                                                                <TextBlock Text="{Binding SquawkDisplay}" Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                                <Border Background="{DynamicResource OverlayBackgroundBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="5,1">
+                                                                    <TextBlock Text="{Binding KindDisplay}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/>
+                                                                </Border>
+                                                            </StackPanel>
                                                         </Grid>
-                                                        <TextBlock Grid.Row="1" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0">
-                                                            <Run Text="ICAO "/><Run Text="{Binding Icao, Mode=OneWay}"/>
-                                                        </TextBlock>
-                                                        <TextBlock Grid.Row="2" Text="{Binding Summary}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap"/>
-                                                        <TextBlock Grid.Row="3" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0" TextWrapping="Wrap">
-                                                            <Run Text="高度 "/><Run Text="{Binding AltitudeFeet, Mode=OneWay, StringFormat={}{0:N0} ft, TargetNullValue=-}"/>
-                                                            <Run Text="  /  速度 "/><Run Text="{Binding SpeedKnots, Mode=OneWay, StringFormat={}{0:F0} kt, TargetNullValue=-}"/>
-                                                        </TextBlock>
+                                                        <!-- 2行目: 緯度・経度/要約 ＋ 航法諸元（各項目固定幅カラムで均等・完璧に整列） -->
+                                                        <Grid Grid.Row="1" Margin="0,2,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="94"/>
+                                                                <ColumnDefinition Width="102"/>
+                                                                <ColumnDefinition Width="86"/>
+                                                                <ColumnDefinition Width="94"/>
+                                                                <ColumnDefinition Width="72"/>
+                                                                <ColumnDefinition Width="62"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0" Grid.ColumnSpan="2" Text="{Binding LatitudeDisplay, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Summary}" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="1" Text="{Binding LongitudeDisplay, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="2" Text="{Binding AltitudeDisplay, Mode=OneWay}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="3" Text="{Binding VerticalRateDisplay, Mode=OneWay}" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="4" Text="{Binding SpeedDisplay, Mode=OneWay}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="5" Text="{Binding TrackDisplay, Mode=OneWay}" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center"/>
+                                                        </Grid>
                                                     </Grid>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
-                                <TextBlock Text="該当する受信イベントはありません">
-                                    <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource PluginEmptyStateTextStyle}">
-                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                        <Style.Triggers><DataTrigger Binding="{Binding HasItems, ElementName=AdsbTimelineGrid}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers>
-                                    </Style></TextBlock.Style>
+                                <TextBlock Text="該当する受信イベントはありません"
+                                           Foreground="{DynamicResource TextDimBrush}"
+                                           FontSize="12"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Margin="16">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasItems, ElementName=AdsbTimelineGrid}" Value="False">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
                                 </TextBlock>
                              </Grid>
                              </Border>
                             <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows"/>
                             <controls:SelectionDetailPane Grid.Row="3" DetailContent="{Binding SelectedTimelineMessage}"
                                 EmptyText="時系列の受信イベントを選択すると、ADS-B メッセージの詳細が表示されます">
-                                <controls:SelectionDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="4,2">
-                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding Callsign, TargetNullValue=-}" Style="{DynamicResource PluginIdentityTextStyle}"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding ReceivedAt, StringFormat={}{0:yyyy/MM/dd HH:mm:ss.fff zzz}}" Style="{DynamicResource PluginTimelineDetailTimestampStyle}"/>
-                                    </Grid>
-                                    <UniformGrid Columns="4" Margin="0,4,0,2">
-                                        <StackPanel><TextBlock Text="ICAO識別子" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Text="{Binding Icao}" Style="{DynamicResource PluginTimelineDetailValueStyle}"/></StackPanel>
-                                        <StackPanel><TextBlock Text="種別" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Text="{Binding Kind}" Style="{DynamicResource PluginTimelineDetailValueStyle}"/></StackPanel>
-                                        <StackPanel><TextBlock Text="高度" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Text="{Binding AltitudeFeet, StringFormat={}{0:N0} ft, TargetNullValue=—}" Style="{DynamicResource PluginTimelineDetailValueStyle}"/></StackPanel>
-                                        <StackPanel><TextBlock Text="速度" Style="{DynamicResource PluginTimelineDetailLabelStyle}"/><TextBlock Text="{Binding SpeedKnots, StringFormat={}{0:F0} kt, TargetNullValue=—}" Style="{DynamicResource PluginTimelineDetailValueStyle}"/></StackPanel>
-                                    </UniformGrid>
-                                    <TextBlock Text="{Binding Summary}" Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,4,0,0"/>
-                                </StackPanel></DataTemplate></controls:SelectionDetailPane.DetailContentTemplate>
+                                <controls:SelectionDetailPane.DetailContentTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="6,4">
+                                            <Grid Margin="0,0,0,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding AircraftDisplay}" Style="{DynamicResource PluginIdentityTextStyle}" Margin="0,0,8,0"/>
+                                                    <TextBlock Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" VerticalAlignment="Center">
+                                                        <Run Text="ICAO "/><Run Text="{Binding Icao, Mode=OneWay}"/>
+                                                    </TextBlock>
+                                                    <Border Background="{DynamicResource OverlayBackgroundBrush}" BorderBrush="{DynamicResource ControlBorderBrush}"
+                                                            BorderThickness="1" CornerRadius="3" Padding="4,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding KindDisplay}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="1" Text="{Binding ReceivedAt, StringFormat={}{0:yyyy/MM/dd HH:mm:ss.fff zzz}}" Style="{DynamicResource PluginTimelineDetailTimestampStyle}"/>
+                                            </Grid>
+                                            <WrapPanel Margin="0,0,0,6">
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="位置 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding PositionDisplay, Mode=OneWay, TargetNullValue=—}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="航法諸元 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding KinematicsDisplay, Mode=OneWay, TargetNullValue=—}"/>
+                                                </TextBlock>
+                                                <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3" TextWrapping="Wrap">
+                                                    <Run Text="Squawk " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding Squawk, Mode=OneWay, TargetNullValue=—}"/>
+                                                </TextBlock>
+                                            </WrapPanel>
+                                            <TextBlock Text="メッセージ要約" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="0,4,0,3"/>
+                                            <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </controls:SelectionDetailPane.DetailContentTemplate>
                             </controls:SelectionDetailPane>
                         </Grid>
                     </TabItem>
@@ -367,15 +458,20 @@
                             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                             <Border Margin="8,6" Padding="4">
                                 <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextDimBrush}" FontSize="10">
-                                    <Run Text="表示機体数: "/><Run Text="{Binding PositionedAircraftCount, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"/><Run Text=" 機　|　針路/航跡: モードS航法ベクトル　|　航跡保持: 直近"/><Run Text="{Binding MaximumTrailPoints, Mode=OneWay, StringFormat={}{0:N0}}"/><Run Text="地点"/>
+                                    <Run Text="表示機体数: "/><Run Text="{Binding PositionedAircraftCount, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"/><Run Text=" 機　|　針路/航跡: モードS航法ベクトル　|　地図保持: 直近"/><Run Text="{Binding RetentionMinutes, Mode=OneWay}"/><Run Text="分　|　航跡保持: 直近"/><Run Text="{Binding MaximumTrailPoints, Mode=OneWay, StringFormat={}{0:N0}}"/><Run Text="地点"/>
                                 </TextBlock>
                             </Border>
                             <Border Grid.Row="1" Margin="4" Background="{DynamicResource PanelBaseBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="2" ClipToBounds="True">
                                 <Grid>
                                     <wpf:GeoMapView MapId="adsb" LegendHtml="{x:Static adsb:AdsBPluginModule.LegendHtml}" LabelToggleText="機名" ItemsSource="{Binding MapMarkers}"/>
-                                    <TextBlock Text="位置情報を取得した追跡機体がまだありません">
+                                    <TextBlock Text="位置情報を取得した追跡機体がまだありません"
+                                               Foreground="{DynamicResource TextDimBrush}"
+                                               FontSize="12"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Margin="16">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock" BasedOn="{StaticResource PluginEmptyStateTextStyle}">
+                                            <Style TargetType="TextBlock">
                                                 <Setter Property="Visibility" Value="Collapsed"/>
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding PositionedAircraftCount}" Value="0">

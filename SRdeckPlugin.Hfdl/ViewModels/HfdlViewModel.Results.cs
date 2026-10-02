@@ -239,10 +239,8 @@ public sealed partial class HfdlViewModel
 
     private void RebuildCategories()
     {
-        DateTimeOffset cutoff = DateTimeOffset.Now.AddMinutes(-RetentionMinutes);
         var activeFlightGroups = Messages
             .GroupBy(item => DisplayKey(item.FlightId, "Flight ID不明"))
-            .Where(group => group.Any(item => item.ReceivedAt >= cutoff))
             .OrderByDescending(group => group.Max(item => item.ReceivedAt))
             .Take(MaximumAircraft);
         ReplaceCategories(FlightIdGroups, activeFlightGroups);

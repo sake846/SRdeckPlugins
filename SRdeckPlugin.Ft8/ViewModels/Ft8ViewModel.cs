@@ -39,13 +39,14 @@ public sealed partial class Ft8ViewModel : ObservableObject
 
     [ObservableProperty] private int _maximumHistory = 10_000;
     [ObservableProperty] private int _maximumStations = 500;
-    [ObservableProperty] private int _retentionMinutes = 30;
+    [ObservableProperty] private int _retentionMinutes = 60;
     [ObservableProperty] private bool _savePayload = true;
     [ObservableProperty] private bool _splitHistoryByBand;
     [ObservableProperty] private int _mapMarkerLimit = 100;
     [ObservableProperty] private int _minimumSyncScore = 4;
     [ObservableProperty] private int _maximumCandidates = 240;
     [ObservableProperty] private int _ldpcIterations = 35;
+    [ObservableProperty] private string _decoderPresetName = "標準";
     [ObservableProperty] private bool _monitorAudioEnabled = true;
     [ObservableProperty] private int _monitorAudioVolume = 100;
     [ObservableProperty] private bool _buzzerEnabled = true;
@@ -61,14 +62,17 @@ public sealed partial class Ft8ViewModel : ObservableObject
     [ObservableProperty] private string _rateConversionText = "—";
     [ObservableProperty] private string _ratePathText = "—";
     [ObservableProperty] private string _channelLevelText = "—";
+    [ObservableProperty] private string _clipRateText = "—";
     [ObservableProperty] private string _buffered = "0.0 s";
     [ObservableProperty] private string _decodeTime = "—";
+    [ObservableProperty] private string _decodeBudgetText = "—";
     [ObservableProperty] private string _candidates = "0";
     [ObservableProperty] private string _rejected = "0";
     [ObservableProperty] private string _overallStatusText = "待機中";
     [ObservableProperty] private string _slotTimingText = "スロット境界待ち";
     [ObservableProperty] private string _recentDetectionText = "直近2スロット: sync候補 — / 調査候補 —";
     [ObservableProperty] private string _recentValidationText = "直近2スロット: LDPC — / CRC — / 有効 —";
+    [ObservableProperty] private string _diagnosticsReport = "診断情報は受信開始後に表示されます。";
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBandSelectorEnabled))]
     private bool _isBandChangeInProgress;
@@ -150,14 +154,43 @@ public sealed partial class Ft8ViewModel : ObservableObject
     {
         int normalized = Math.Clamp(value, 1, 240);
         RetentionMinutesChanged?.Invoke(normalized);
-        RebuildStationSummaries();
+        RefreshMapMarkers();
     }
     partial void OnSavePayloadChanged(bool value) => SavePayloadChanged?.Invoke(value);
     partial void OnSplitHistoryByBandChanged(bool value) => SplitHistoryByBandChanged?.Invoke(value);
     partial void OnMapMarkerLimitChanged(int value) => MapMarkerLimitChanged?.Invoke(Math.Clamp(value, 50, 10_000));
-    partial void OnMinimumSyncScoreChanged(int value) => SettingsUpdated();
-    partial void OnMaximumCandidatesChanged(int value) => SettingsUpdated();
-    partial void OnLdpcIterationsChanged(int value) => SettingsUpdated();
+    partial void OnMinimumSyncScoreChanged(int value)
+    {
+        int normalized = Math.Clamp(value, 0, 40);
+        if (value != normalized)
+        {
+            MinimumSyncScore = normalized;
+            return;
+        }
+        DecoderSettingChanged();
+    }
+
+    partial void OnMaximumCandidatesChanged(int value)
+    {
+        int normalized = Math.Clamp(value, 50, 1000);
+        if (value != normalized)
+        {
+            MaximumCandidates = normalized;
+            return;
+        }
+        DecoderSettingChanged();
+    }
+
+    partial void OnLdpcIterationsChanged(int value)
+    {
+        int normalized = Math.Clamp(value, 10, 100);
+        if (value != normalized)
+        {
+            LdpcIterations = normalized;
+            return;
+        }
+        DecoderSettingChanged();
+    }
     partial void OnMonitorAudioEnabledChanged(bool value) => SettingsUpdated();
     partial void OnMonitorAudioVolumeChanged(int value) => SettingsUpdated();
     partial void OnBuzzerEnabledChanged(bool value) => BuzzerEnabledChanged?.Invoke(value);
@@ -177,6 +210,15 @@ public sealed partial class Ft8ViewModel : ObservableObject
     public bool HasNearbyBands => NearbyBands.Count > 0;
     public int FilteredStationCount => FilteredStations.Count;
 
+    [RelayCommand]
+    private void ApplyStandardPreset() => ApplyDecoderPreset(4, 240, 35);
+
+    [RelayCommand]
+    private void ApplyWeakSignalPreset() => ApplyDecoderPreset(3, 500, 60);
+
+    [RelayCommand]
+    private void ApplyLowLoadPreset() => ApplyDecoderPreset(6, 120, 20);
+
     public void Configure(Ft8Settings settings, Ft8Band band)
     {
         MaximumHistory = settings.MaximumHistory;
@@ -195,6 +237,7 @@ public sealed partial class Ft8ViewModel : ObservableObject
         SelectedMode = band.Mode;
         SelectedBand = band;
         suppressSelection = false;
+        RefreshDecoderPresetName();
         OnPropertyChanged(string.Empty);
     }
 
@@ -226,7 +269,23 @@ public sealed partial class Ft8ViewModel : ObservableObject
             ? (sortedSnr[sortedSnr.Length / 2 - 1] + sortedSnr[sortedSnr.Length / 2]) / 2.0
             : sortedSnr[sortedSnr.Length / 2];
         LastSlotSnrText = $"{medianSnr:+0.0;-0.0;0.0} dB";
-        LastSlotTimeOffsetText = $"{messages.Max(item => Math.Abs(item.TimeOffsetSeconds)):F2} s";
+        double[] sortedTimeOffsets = messages
+            .Select(item => item.TimeOffsetSeconds)
+            .Where(double.IsFinite)
+            .OrderBy(value => value)
+            .ToArray();
+        if (sortedTimeOffsets.Length == 0)
+        {
+            LastSlotTimeOffsetText = "—";
+        }
+        else
+        {
+            int middle = sortedTimeOffsets.Length / 2;
+            double medianTimeOffset = sortedTimeOffsets.Length % 2 == 0
+                ? (sortedTimeOffsets[middle - 1] + sortedTimeOffsets[middle]) / 2
+                : sortedTimeOffsets[middle];
+            LastSlotTimeOffsetText = $"{medianTimeOffset:+0.00;-0.00;0.00} s";
+        }
         DecodedCount += messages.Count;
         foreach (Ft8Reception message in messages.OrderByDescending(item => item.AudioFrequencyHz))
         {
@@ -273,6 +332,8 @@ public sealed partial class Ft8ViewModel : ObservableObject
         ChannelLevelText = signalLevelDbm is { } dbm && float.IsFinite(dbm)
             ? $"{dbm:F1} dBm"
             : (double.IsFinite(diagnostics.ChannelLevelDbfs) ? $"{diagnostics.ChannelLevelDbfs:F1} dBFS" : "—");
+        ClipRateText = diagnostics.InputSampleRateHz <= 0 ? "—" :
+            $"{Math.Max(0, diagnostics.ClipRatePercent):F2}%";
         Buffered = $"{diagnostics.BufferedSamples / (double)Dsp.Ft8Decoder.SampleRateHz:F1} s";
         DecodeTime = diagnostics.SlotsProcessed == 0 ? "—" :
             $"{diagnostics.LastDecodeDuration.TotalMilliseconds:N0} ms";
@@ -289,6 +350,7 @@ public sealed partial class Ft8ViewModel : ObservableObject
         }
         long ldpcPassed = Math.Max(0, recentCandidates - recentLdpcRejected);
         long crcPassed = diagnostics.LastSlotValidMessages;
+        bool candidateLimitReached = recentCandidates >= MaximumCandidates;
         RecentDetectionText = $"直近スロット: sync/調査候補 {recentCandidates:N0} / 上限 {MaximumCandidates:N0}";
         RecentValidationText = $"直近スロット: LDPC通過 {ldpcPassed:N0} / 棄却 {recentLdpcRejected:N0} / CRC合格 {crcPassed:N0} / 不一致 {recentCrcRejected:N0}";
 
@@ -298,6 +360,11 @@ public sealed partial class Ft8ViewModel : ObservableObject
             WeakSignalMode.JT65 => 60.0,
             _ => 15.0
         };
+        double decodeBudgetPercent = diagnostics.LastDecodeDuration.TotalSeconds / slotSeconds * 100;
+        DecodeBudgetText = diagnostics.SlotsProcessed == 0 ? "—" :
+            $"{decodeBudgetPercent:F1}%（{slotSeconds:g}秒枠）";
+        bool decodeOverBudget = diagnostics.SlotsProcessed > 0 && decodeBudgetPercent >= 100;
+        bool inputClipping = diagnostics.ClipRatePercent >= 1;
         double boundaryErrorSeconds = diagnostics.LastSlotStart is { } slotStart
             ? Math.Min(slotStart.TimeOfDay.TotalSeconds % slotSeconds,
                 slotSeconds - slotStart.TimeOfDay.TotalSeconds % slotSeconds)
@@ -317,6 +384,14 @@ public sealed partial class Ft8ViewModel : ObservableObject
             OverallSummary = "IQ入力を待機しています";
             OverallRecommendation = $"確認: SDRソースと{SelectedMode}バンドの選局を確認してください";
         }
+        else if (inputClipping)
+        {
+            OverallStatusText = "要確認";
+            OverallStatusKind = OverallStatusKind.Warning;
+            OverallPhase = "入力レベル";
+            OverallSummary = $"IQ入力のクリップ率が{diagnostics.ClipRatePercent:F2}%です";
+            OverallRecommendation = "確認: SDRのRFゲインまたはIFゲインを下げてください";
+        }
         else if (!clockAligned)
         {
             OverallStatusText = "要確認";
@@ -325,6 +400,14 @@ public sealed partial class Ft8ViewModel : ObservableObject
             OverallSummary = $"{SelectedMode}スロット境界のずれが許容値{MaximumSlotBoundaryError.TotalSeconds:F0}秒を超えています";
             OverallRecommendation = "確認: OSの時刻同期を有効にし、NTP同期状態を確認してください";
         }
+        else if (decodeOverBudget)
+        {
+            OverallStatusText = "要確認";
+            OverallStatusKind = OverallStatusKind.Warning;
+            OverallPhase = "処理時間";
+            OverallSummary = $"直前の復号が{SelectedMode}の{slotSeconds:g}秒処理枠を超えました";
+            OverallRecommendation = "確認: 候補上限または同時受信バンド数を減らしてください";
+        }
         else if (diagnostics.SlotsProcessed == 0)
         {
             OverallStatusText = "監視中";
@@ -332,6 +415,16 @@ public sealed partial class Ft8ViewModel : ObservableObject
             OverallPhase = "同期";
             OverallSummary = $"{SelectedMode}スロットを蓄積し、復号開始時刻を待っています";
             OverallRecommendation = $"確認: PC時刻同期と選択バンドを確認し、{slotSeconds:g}秒スロットを待ってください";
+        }
+        else if (candidateLimitReached)
+        {
+            OverallStatusText = "要確認";
+            OverallStatusKind = OverallStatusKind.Warning;
+            OverallPhase = "候補上限";
+            OverallSummary = $"直近スロットの調査候補が上限{MaximumCandidates:N0}件に達しました";
+            OverallRecommendation = decodeBudgetPercent < 80
+                ? "確認: 取りこぼしが疑われる場合は最大候補数を段階的に増やしてください"
+                : "確認: 処理枠に余裕が少ないため、同時受信バンド数または同期感度を見直してください";
         }
         else if (decodedWithinTwoSlots && diagnostics.LastSlotValidMessages > 0)
         {
@@ -373,8 +466,35 @@ public sealed partial class Ft8ViewModel : ObservableObject
             OverallSummary = "FT8スロットを継続して同期・復号しています";
             OverallRecommendation = "確認: 候補数、棄却数、直前の復号時間を必要に応じて展開してください";
         }
+        DiagnosticsReport = BuildDiagnosticsReport(diagnostics, recentCandidates,
+            recentLdpcRejected, recentCrcRejected, decodeBudgetPercent);
         previousDiagnostics = diagnostics;
     }
+
+    private string BuildDiagnosticsReport(Ft8DecoderDiagnostics diagnostics,
+        long recentCandidates, long recentLdpcRejected, long recentCrcRejected,
+        double decodeBudgetPercent) => string.Join(Environment.NewLine,
+    [
+        "SRdeck weak-signal diagnostics",
+        $"Mode: {SelectedMode}",
+        $"Status: {OverallStatusText} / {OverallPhase}",
+        $"InputSampleRateHz: {diagnostics.InputSampleRateHz}",
+        FormattableString.Invariant($"ClipRatePercent: {diagnostics.ClipRatePercent:F2}"),
+        $"BufferedSamples: {diagnostics.BufferedSamples}",
+        $"SlotsProcessed: {diagnostics.SlotsProcessed}",
+        FormattableString.Invariant(
+            $"LastDecodeMilliseconds: {diagnostics.LastDecodeDuration.TotalMilliseconds:F1}"),
+        diagnostics.SlotsProcessed == 0
+            ? "SlotBudgetPercent: unavailable"
+            : FormattableString.Invariant($"SlotBudgetPercent: {decodeBudgetPercent:F1}"),
+        $"RecentCandidates: {recentCandidates}",
+        $"RecentFecRejected: {recentLdpcRejected}",
+        $"RecentCrcRejected: {recentCrcRejected}",
+        $"LastSlotValidMessages: {diagnostics.LastSlotValidMessages}",
+        $"MinimumSyncScore: {MinimumSyncScore}",
+        $"MaximumCandidates: {MaximumCandidates}",
+        $"FecIterations: {LdpcIterations}"
+    ]);
 
     [RelayCommand]
     public void Clear()
@@ -451,6 +571,20 @@ public sealed partial class Ft8ViewModel : ObservableObject
         var mapStation = new Ft8MapStation(id, latitude, longitude, station, locator, reception.ReceivedAt);
         mapStationsById[id] = mapStation;
         MapMarkers.Insert(0, CreateMapMarker(mapStation, DateTimeOffset.UtcNow));
+        PruneMapMarkers(DateTimeOffset.Now.AddMinutes(-RetentionMinutes));
+    }
+
+    private void PruneMapMarkers(DateTimeOffset cutoff)
+    {
+        for (int i = MapMarkers.Count - 1; i >= 0; i--)
+        {
+            string id = MapMarkers[i].Id;
+            if (mapStationsById.TryGetValue(id, out var station) && station.LastReceivedAt < cutoff)
+            {
+                MapMarkers.RemoveAt(i);
+                mapStationsById.Remove(id);
+            }
+        }
         while (MapMarkers.Count > MapMarkerLimit)
         {
             string removedId = MapMarkers[^1].Id;
@@ -459,8 +593,21 @@ public sealed partial class Ft8ViewModel : ObservableObject
         }
     }
 
+    internal void RefreshMapMarkers()
+    {
+        MapMarkers.Clear();
+        mapStationsById.Clear();
+        DateTimeOffset cutoff = DateTimeOffset.Now.AddMinutes(-RetentionMinutes);
+        foreach (Ft8Reception message in History.Where(m => m.ReceivedAt >= cutoff).Reverse())
+        {
+            AddMapMarker(message);
+        }
+    }
+
     internal void RefreshMapStationActivity(DateTimeOffset now)
     {
+        DateTimeOffset cutoff = now.AddMinutes(-RetentionMinutes);
+        PruneMapMarkers(cutoff);
         for (int index = 0; index < MapMarkers.Count; index++)
         {
             GeoMapMarker marker = MapMarkers[index];
@@ -497,10 +644,8 @@ public sealed partial class Ft8ViewModel : ObservableObject
     private void RebuildStationSummaries()
     {
         string? selectedCallsign = SelectedStation?.Callsign;
-        DateTimeOffset cutoff = DateTimeOffset.Now.AddMinutes(-RetentionMinutes);
         Ft8StationSummary[] summaries = History
             .GroupBy(item => DisplayStationKey(item.FromCall), StringComparer.OrdinalIgnoreCase)
-            .Where(group => group.Any(item => item.ReceivedAt >= cutoff))
             .OrderByDescending(group => group.Max(item => item.ReceivedAt))
             .Take(MaximumStations)
             .Select(group =>
@@ -576,6 +721,43 @@ public sealed partial class Ft8ViewModel : ObservableObject
     private void SettingsUpdated() =>
         DecoderSettingsChanged?.Invoke(MaximumHistory, MinimumSyncScore, MaximumCandidates,
             LdpcIterations, MonitorAudioEnabled, MonitorAudioVolume);
+
+    private bool suppressDecoderSettingsUpdate;
+
+    private void DecoderSettingChanged()
+    {
+        RefreshDecoderPresetName();
+        if (!suppressDecoderSettingsUpdate) SettingsUpdated();
+    }
+
+    private void ApplyDecoderPreset(int minimumSyncScore, int maximumCandidates,
+        int fecIterations)
+    {
+        suppressDecoderSettingsUpdate = true;
+        try
+        {
+            MinimumSyncScore = minimumSyncScore;
+            MaximumCandidates = maximumCandidates;
+            LdpcIterations = fecIterations;
+        }
+        finally
+        {
+            suppressDecoderSettingsUpdate = false;
+        }
+        RefreshDecoderPresetName();
+        SettingsUpdated();
+    }
+
+    private void RefreshDecoderPresetName()
+    {
+        DecoderPresetName = (MinimumSyncScore, MaximumCandidates, LdpcIterations) switch
+        {
+            (4, 240, 35) => "標準",
+            (3, 500, 60) => "弱信号優先",
+            (6, 120, 20) => "低負荷",
+            _ => "カスタム"
+        };
+    }
 
     private void NearbyBandOptionChanged()
     {

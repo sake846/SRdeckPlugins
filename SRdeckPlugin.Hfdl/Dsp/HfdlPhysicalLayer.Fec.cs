@@ -8,7 +8,6 @@ public static partial class HfdlPhysicalLayer
 {
     private static readonly ConcurrentDictionary<(int Columns, bool LongInterleaver), InterleaverPermutation>
         InterleaverPermutations = CreateInterleaverPermutations();
-    private static readonly byte[] ViterbiNextStates = CreateViterbiNextStates();
     private static readonly sbyte[] ViterbiFirstSigns = CreateViterbiSigns(0x5b);
     private static readonly sbyte[] ViterbiSecondSigns = CreateViterbiSigns(0x79);
 
@@ -88,26 +87,35 @@ public static partial class HfdlPhysicalLayer
         ulong[] survivors = ArrayPool<ulong>.Shared.Rent(outputBits);
         try
         {
-            survivors.AsSpan(0, outputBits).Clear();
             for (int time = 0; time < outputBits; time++)
             {
-                next.Fill(infinity);
-                for (int state = 0; state < states; state++)
+                ulong decisions = 0;
+                float first = chips[time * 2], second = chips[time * 2 + 1];
+                for (int pair = 0; pair < states / 2; pair++)
                 {
-                    if (metrics[state] >= infinity * 0.5) continue;
-                    for (int bit = 0; bit < 2; bit++)
+                    // Both polynomials have their low and high bits set:
+                    // toggling the predecessor's low bit or the input bit
+                    // negates both branch signs. Share that distance across
+                    // the four transitions, retaining the even path on ties.
+                    double distance = ViterbiFirstSigns[pair * 4] * first +
+                                      ViterbiSecondSigns[pair * 4] * second;
+                    double even = metrics[pair * 2], odd = metrics[pair * 2 + 1];
+                    double zeroEven = even + distance, zeroOdd = odd - distance;
+                    double oneEven = even - distance, oneOdd = odd + distance;
+                    if (zeroOdd < zeroEven)
                     {
-                        int transition = state * 2 + bit;
-                        int nextState = ViterbiNextStates[transition];
-                        double distance = ViterbiFirstSigns[transition] * chips[time * 2] +
-                                          ViterbiSecondSigns[transition] * chips[time * 2 + 1];
-                        double candidate = metrics[state] + distance;
-                        if (candidate >= next[nextState]) continue;
-                        next[nextState] = candidate;
-                        if ((state & 1) != 0) survivors[time] |= 1UL << nextState;
-                        else survivors[time] &= ~(1UL << nextState);
+                        next[pair] = zeroOdd;
+                        decisions |= 1UL << pair;
                     }
+                    else next[pair] = zeroEven;
+                    if (oneOdd < oneEven)
+                    {
+                        next[pair + 32] = oneOdd;
+                        decisions |= 1UL << (pair + 32);
+                    }
+                    else next[pair + 32] = oneEven;
                 }
+                survivors[time] = decisions;
                 Span<double> swap = metrics;
                 metrics = next;
                 next = swap;
@@ -139,14 +147,21 @@ public static partial class HfdlPhysicalLayer
     public static bool TryExtractMpdu(ReadOnlySpan<bool> bits, out byte[] mpdu)
     {
         byte[] bytes = BitsToBytesLsbFirst(bits);
-        for (int length = bytes.Length; length >= 5; length--)
+        ushort crc = 0xffff;
+        int validLength = 0;
+        // Check every possible ending in one forward pass. Keep the last
+        // match to preserve the longest-prefix and either-byte-order rules.
+        for (int index = 0; index < bytes.Length - 2; index++)
         {
-            if (!HfdlCrc.IsValid(bytes.AsSpan(0, length))) continue;
-            mpdu = bytes[..length];
-            return true;
+            crc = HfdlCrc.Update(crc, bytes[index]);
+            if (index < 2) continue;
+            ushort expected = (ushort)~crc;
+            if (expected == (bytes[index + 1] | bytes[index + 2] << 8) ||
+                expected == (bytes[index + 1] << 8 | bytes[index + 2]))
+                validLength = index + 3;
         }
-        mpdu = [];
-        return false;
+        mpdu = validLength == 0 ? [] : bytes[..validLength];
+        return validLength != 0;
     }
 
     private static byte[] BitsToBytesLsbFirst(ReadOnlySpan<bool> bits)
@@ -188,15 +203,6 @@ public static partial class HfdlPhysicalLayer
             else { row++; column = Mod(column - step, columns); }
         }
         return new(interleave, deinterleave);
-    }
-
-    private static byte[] CreateViterbiNextStates()
-    {
-        var output = new byte[128];
-        for (int state = 0; state < 64; state++)
-            for (int bit = 0; bit < 2; bit++)
-                output[state * 2 + bit] = (byte)((bit << 5) | (state >> 1));
-        return output;
     }
 
     private static sbyte[] CreateViterbiSigns(int polynomial)

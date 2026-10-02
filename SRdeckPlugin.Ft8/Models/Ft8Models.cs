@@ -57,4 +57,5 @@ public readonly record struct Ft8DecoderDiagnostics(
     DateTimeOffset? LastDecodedSlotStart = null,
     double IntermediateSampleRateHz = 0,
     bool UsesHostChannelRateConversion = false,
-    double ChannelLevelDbfs = double.NegativeInfinity);
+    double ChannelLevelDbfs = double.NegativeInfinity,
+    double ClipRatePercent = 0);

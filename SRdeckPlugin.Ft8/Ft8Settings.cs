@@ -13,7 +13,7 @@ public sealed record Ft8Settings(
     int MonitorAudioVolume = 100,
     GeoMapState? MapState = null,
     int MaximumStations = 500,
-    int RetentionMinutes = 30,
+    int RetentionMinutes = 60,
     bool SavePayload = true,
     bool SplitHistoryByBand = false,
     int MapMarkerLimit = 100,

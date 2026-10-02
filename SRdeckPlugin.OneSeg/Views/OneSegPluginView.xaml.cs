@@ -2,6 +2,10 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
+using LibVLCSharp.WPF;
 using Microsoft.Web.WebView2.Core;
 using SRdeckPlugin.OneSeg.Models;
 using SRdeckPlugin.OneSeg.ViewModels;
@@ -16,6 +20,7 @@ public partial class OneSegPluginView : UserControl
     private bool bmlReady;
     private int renderedRevision = -1;
     private int bmlRenderRequest;
+    private Window? fullScreenWindow;
 
     public OneSegPluginView()
     {
@@ -32,12 +37,128 @@ public partial class OneSegPluginView : UserControl
         await RenderBmlAsync();
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e) => AttachViewModel(null);
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        fullScreenWindow?.Close();
+        AttachViewModel(null);
+    }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         AttachViewModel(e.NewValue as OneSegViewModel);
+        if (fullScreenWindow is not null) fullScreenWindow.DataContext = e.NewValue;
         _ = ScheduleBmlRenderAsync();
+    }
+
+    private void VideoSurface_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (fullScreenWindow is not null) return;
+
+        var hitArea = new Grid { Background = new SolidColorBrush(Color.FromArgb(2, 0, 0, 0)) };
+        hitArea.ContextMenu = new ContextMenu();
+        hitArea.ContextMenuOpening += StationContextMenuOpening;
+        var video = new VideoView { Content = hitArea };
+        var captionText = new TextBlock
+        {
+            Foreground = Brushes.White,
+            FontWeight = FontWeights.SemiBold,
+            TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        captionText.SetBinding(TextBlock.TextProperty, new Binding(nameof(OneSegViewModel.Caption)));
+        var caption = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(176, 0, 0, 0)),
+            CornerRadius = new CornerRadius(4),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Child = captionText
+        };
+        caption.SetBinding(VisibilityProperty, new Binding(nameof(OneSegViewModel.CaptionVisibility)));
+        hitArea.Children.Add(caption);
+        hitArea.SizeChanged += (_, args) =>
+        {
+            double fontSize = Math.Clamp(args.NewSize.Height * 0.045, 20, 96);
+            captionText.FontSize = fontSize;
+            caption.Padding = new Thickness(fontSize * 0.4, fontSize * 0.16,
+                fontSize * 0.4, fontSize * 0.16);
+            caption.MaxWidth = args.NewSize.Width * 0.84;
+            caption.Margin = new Thickness(16, 0, 16, args.NewSize.Height * 0.09);
+        };
+
+        var window = new Window
+        {
+            Owner = Window.GetWindow(this),
+            Content = video,
+            DataContext = DataContext,
+            Background = Brushes.Black,
+            WindowStyle = WindowStyle.None,
+            WindowState = WindowState.Maximized,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ShowInTaskbar = false,
+            Topmost = true
+        };
+        hitArea.MouseLeftButtonUp += (_, _) => window.Close();
+        window.MouseLeftButtonUp += (_, _) => window.Close();
+        PreProcessInputEventHandler exitOnEscape = (_, args) =>
+        {
+            if (args.StagingItem.Input is KeyEventArgs key &&
+                key.RoutedEvent == Keyboard.PreviewKeyDownEvent && key.Key == Key.Escape)
+            {
+                key.Handled = true;
+                window.Close();
+            }
+        };
+        window.Closed += (_, _) =>
+        {
+            InputManager.Current.PreProcessInput -= exitOnEscape;
+            BindingOperations.ClearBinding(video, VideoView.MediaPlayerProperty);
+            BindingOperations.SetBinding(VideoSurface, VideoView.MediaPlayerProperty,
+                new Binding(nameof(OneSegViewModel.MediaPlayer)));
+            fullScreenWindow = null;
+            viewModel?.VideoOutputChanged?.Invoke();
+        };
+
+        fullScreenWindow = window;
+        window.Show();
+        InputManager.Current.PreProcessInput += exitOnEscape;
+        BindingOperations.ClearBinding(VideoSurface, VideoView.MediaPlayerProperty);
+        BindingOperations.SetBinding(video, VideoView.MediaPlayerProperty,
+            new Binding(nameof(OneSegViewModel.MediaPlayer)));
+        viewModel?.VideoOutputChanged?.Invoke();
+    }
+
+    private void StationContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is not FrameworkElement { ContextMenu: { } menu }) return;
+        menu.Items.Clear();
+        if (viewModel is null || viewModel.Stations.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "局がありません", IsEnabled = false });
+            return;
+        }
+
+        foreach (OneSegStation station in viewModel.Stations)
+        {
+            var item = new MenuItem
+            {
+                Header = station.DisplayName,
+                Tag = station,
+                IsCheckable = true,
+                IsChecked = station.ServiceId == viewModel.SelectedStation?.ServiceId &&
+                    station.ChannelNumber == viewModel.SelectedStation?.ChannelNumber
+            };
+            item.Click += StationMenuItem_Click;
+            menu.Items.Add(item);
+        }
+    }
+
+    private void StationMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { Tag: OneSegStation station } && viewModel is not null)
+            viewModel.SelectedStation = station;
     }
 
     private void AttachViewModel(OneSegViewModel? value)

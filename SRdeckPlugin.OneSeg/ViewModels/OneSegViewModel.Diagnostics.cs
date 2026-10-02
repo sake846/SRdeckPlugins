@@ -59,6 +59,7 @@ internal sealed partial class OneSegViewModel
             volume = 100;
             desiredAudioTrackId = settings.AudioTrackId;
             captionsEnabled = settings.CaptionsEnabled;
+            videoSuperResolutionEnabled = settings.VideoSuperResolutionEnabled;
             captionBackgroundEnabled = settings.CaptionBackgroundEnabled;
             selectedCaptionPosition = CaptionPositions.First(item => item.Id == settings.CaptionPosition);
             emergencyNotificationsEnabled = settings.EmergencyNotificationsEnabled;

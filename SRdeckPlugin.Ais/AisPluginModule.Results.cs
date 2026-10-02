@@ -222,11 +222,8 @@ public sealed partial class AisPluginModule
         IPluginHostContext? context = HostContext;
         if (context is null) return;
         AisTargetState[] snapshot;
-        DateTimeOffset cutoff = context.TimeProvider.GetUtcNow().AddMinutes(-settings.RetentionMinutes);
         lock (gate)
         {
-            foreach (uint stale in targets.Where(item => item.Value.LastSeen < cutoff).Select(item => item.Key).ToArray())
-                targets.Remove(stale);
             PruneStoredHistoryUnsafe();
             if (targets.Count > settings.MaximumTargets)
             {

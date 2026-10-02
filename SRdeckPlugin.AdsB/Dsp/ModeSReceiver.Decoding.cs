@@ -4,6 +4,7 @@ using SRdeckPlugin.Contracts;
 using SRdeckCore.SignalProcessing;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace SRdeckPlugin.AdsB.Dsp;
 
@@ -12,52 +13,72 @@ public sealed partial class ModeSReceiver
     private const int SicChannelRadius = 8;
     private const int SicChannelTaps = SicChannelRadius * 2 + 1;
     private readonly SicWorkspace sicWorkspace = new();
+    private readonly List<(int Offset, byte[] Bytes, double Quality)> pendingCancellations = new();
+    private readonly List<(int Offset, ModeSPayloadKey Payload)> knownSicFrames = new();
+    private readonly List<SampleRange> cancellationScanRanges = new();
+
+    private void QueueSicFrame(int offset, byte[] bytes, double quality)
+    {
+        if (!enableSuccessiveInterferenceCancellation) return;
+        pendingCancellations.Add((offset, bytes, quality));
+        knownSicFrames.Add((offset, new(bytes)));
+    }
 
     private void RecoverBySuccessiveInterferenceCancellation(
         IqBlockMetadata metadata,
         double groupDelayInputSamples,
         int scanLimit,
-        List<(int Offset, byte[] Bytes, double Quality)> candidates, HashSet<int> decodedOffsets,
         List<ModeSFrame> result)
     {
-        if (!enableSuccessiveInterferenceCancellation || candidates.Count == 0 || scanLimit <= 0) return;
+        if (!enableSuccessiveInterferenceCancellation || scanLimit <= 0 ||
+            (pendingCancellations.Count == 0 && cancellationScanRanges.Count == 0)) return;
         SicCancellationRunCount++;
         int sampleCount = pending.Count;
-        float[] residualI = ArrayPool<float>.Shared.Rent(sampleCount);
-        float[] residualQ = ArrayPool<float>.Shared.Rent(sampleCount);
+        // Keep the residual IQ across calls; pending power remains untouched for
+        // the normal demodulator. Each accepted frame is subtracted only once.
+        Span<float> residualI = CollectionsMarshal.AsSpan(pendingI);
+        Span<float> residualQ = CollectionsMarshal.AsSpan(pendingQ);
         float[] residualPowerArray = ArrayPool<float>.Shared.Rent(sampleCount);
         try
         {
-            for (int index = 0; index < sampleCount; index++)
-            {
-                residualI[index] = pendingI[index];
-                residualQ[index] = pendingQ[index];
-            }
-            List<(int Offset, byte[] Bytes, double Quality)> toCancel =
-                candidates.OrderByDescending(item => item.Quality).ToList();
-            var knownPayloads = candidates.Select(item => new ModeSPayloadKey(item.Bytes)).ToHashSet();
+            var decodedOffsets = knownSicFrames.Select(item => item.Offset).ToHashSet();
             ReadOnlySpan<float> residualPower = residualPowerArray.AsSpan(0, sampleCount);
             for (int index = 0; index < sampleCount; index++)
                 residualPowerArray[index] = residualI[index] * residualI[index] + residualQ[index] * residualQ[index];
             Span<byte> decodedBytes = stackalloc byte[14];
             Span<float> bitConfidence = stackalloc float[112];
 
-            for (int iteration = 0; iteration < 3 && toCancel.Count > 0; iteration++)
+            for (int iteration = 0; iteration <= 3; iteration++)
             {
+                // Wait for the filter tail too, so a boundary never leaves a
+                // partially subtracted frame in the next block.
+                var toCancel = pendingCancellations
+                    .Where(item => item.Offset + LongFrameSamples + SicChannelRadius <= sampleCount)
+                    .OrderByDescending(item => item.Quality).ToList();
+                if (toCancel.Count == 0 && (iteration > 0 || cancellationScanRanges.Count == 0)) break;
+                pendingCancellations.RemoveAll(item =>
+                    item.Offset + LongFrameSamples + SicChannelRadius <= sampleCount);
                 sicWorkspace.AffectedRanges.Clear();
                 foreach ((int offset, byte[] bytes, _) in toCancel)
-                    sicWorkspace.AffectedRanges.Add(
-                        CancelKnownFrame(residualI, residualQ, sampleCount, offset, bytes, sicWorkspace));
+                {
+                    SampleRange affected = CancelKnownFrame(residualI, residualQ, sampleCount, offset, bytes, sicWorkspace);
+                    sicWorkspace.AffectedRanges.Add(affected);
+                    // Either the preamble OR the payload can overlap the cancelled frame.
+                    cancellationScanRanges.Add(new(Math.Max(0, affected.Start - LongFrameSamples + 1), affected.End));
+                }
+                // Three recovery passes; also subtract the last recovered frames
+                // so their residual tails are ready for the following block.
+                if (iteration == 3) break;
                 MergeRanges(sicWorkspace.AffectedRanges, 0, sampleCount);
                 foreach (SampleRange range in sicWorkspace.AffectedRanges)
                     for (int index = range.Start; index < range.End; index++)
                         residualPowerArray[index] = residualI[index] * residualI[index] + residualQ[index] * residualQ[index];
 
-                var recovered = new List<(int Offset, byte[] Bytes, double Quality)>();
-                BuildCancellationScanRanges(candidates, scanLimit, sampleCount, sicWorkspace.ScanRanges);
-                foreach (SampleRange range in sicWorkspace.ScanRanges)
+                MergeRanges(cancellationScanRanges, 0, sampleCount);
+                foreach (SampleRange range in cancellationScanRanges)
                 {
-                    for (int scan = range.Start; scan < range.End; scan++)
+                    int end = Math.Min(range.End, Math.Min(scanLimit, sampleCount - LongFrameSamples + 1));
+                    for (int scan = range.Start; scan < end; scan++)
                     {
                         if (decodedOffsets.Contains(scan)) continue;
                         bool hasPreamble = IsPreamble(residualPower, scan, noiseFloorPower,
@@ -65,12 +86,12 @@ public sealed partial class ModeSReceiver
                         if (hasPreamble)
                             DecodeLongFrame(residualPower, scan + PreambleSamples + timingOffset,
                                 noiseFloorPower, decodedBytes, bitConfidence, out _);
-                        else
-                            DecodeLongFrameFixed(residualPower, scan + PreambleSamples, decodedBytes);
+                        else if (!DecodeLongFrameFixed(residualPower, scan + PreambleSamples, decodedBytes))
+                            continue;
                         // Cancellation recovery is accepted only with an independent exact CRC.
                         if (!ModeSCrc.IsValidExtendedSquitter(decodedBytes)) continue;
                         var payloadKey = new ModeSPayloadKey(decodedBytes);
-                        if (!knownPayloads.Add(payloadKey)) continue;
+                        if (IsKnownSicFrame(scan, payloadKey)) continue;
 
                         byte[] acceptedBytes = decodedBytes.ToArray();
                         long workingPosition = pendingWorkingSampleStart + scan;
@@ -82,22 +103,28 @@ public sealed partial class ModeSReceiver
                         double recoveredQuality = hasPreamble ? quality * 0.8 : 0.1;
                         result.Add(new(acceptedBytes, receivedAt, metadata.StreamId, sourcePosition, recoveredQuality));
                         RecordSignalQuality(recoveredQuality);
-                        recovered.Add((scan, acceptedBytes, recoveredQuality));
+                        QueueSicFrame(scan, acceptedBytes, recoveredQuality);
                         decodedOffsets.Add(scan);
                         ValidFrameCount++;
                         SicRecoveredFrameCount++;
                     }
                 }
-                candidates.AddRange(recovered);
-                toCancel = recovered;
             }
+            // Only unfinished frame starts need rescanning when more IQ arrives.
+            MergeRanges(cancellationScanRanges, scanLimit, sampleCount);
         }
         finally
         {
-            ArrayPool<float>.Shared.Return(residualI);
-            ArrayPool<float>.Shared.Return(residualQ);
             ArrayPool<float>.Shared.Return(residualPowerArray);
         }
+    }
+
+    private bool IsKnownSicFrame(int offset, ModeSPayloadKey payload)
+    {
+        foreach (var frame in knownSicFrames)
+            if (frame.Payload == payload && Math.Abs(frame.Offset - offset) < LongFrameSamples)
+                return true;
+        return false;
     }
 
     private void RecordSignalQuality(double quality)
@@ -107,33 +134,15 @@ public sealed partial class ModeSReceiver
         maximumSignalQuality = Math.Max(maximumSignalQuality, quality);
     }
 
-    private static void BuildCancellationScanRanges(
-        List<(int Offset, byte[] Bytes, double Quality)> candidates,
-        int scanLimit,
-        int sampleCount,
-        List<SampleRange> ranges)
-    {
-        ranges.Clear();
-        int maximumExclusive = Math.Min(scanLimit, sampleCount - LongFrameSamples + 1);
-        foreach ((int offset, _, _) in candidates)
-        {
-            int start = Math.Max(0, offset - PreambleSamples + 1);
-            int end = Math.Min(maximumExclusive, offset + LongFrameSamples);
-            if (start < end) ranges.Add(new(start, end));
-        }
-        MergeRanges(ranges, 0, maximumExclusive);
-    }
-
-    private static SampleRange CancelKnownFrame(float[] valuesI, float[] valuesQ, int validLength,
+    private static SampleRange CancelKnownFrame(Span<float> valuesI, Span<float> valuesQ, int validLength,
         int offset, ReadOnlySpan<byte> bytes, SicWorkspace workspace)
     {
         workspace.ClearEstimation();
         double correlationI = 0;
         double correlationQ = 0;
-        // A frame that passed preamble detection has a comparatively clean,
-        // known training sequence. Estimate carrier and channel from that
-        // preamble so an overlapping payload is not absorbed into the model.
-        for (int relative = 0; relative + 1 < PreambleSamples; relative++)
+        // Average carrier rotation over all known pulses. Four preamble pairs
+        // alone are easily biased by noise or an earlier overlapping frame.
+        for (int relative = 0; relative + 1 < LongFrameSamples; relative++)
         {
             if (!IsActivePulseSample(bytes, relative) || !IsActivePulseSample(bytes, relative + 1)) continue;
             int index = offset + relative;
@@ -142,8 +151,37 @@ public sealed partial class ModeSReceiver
         }
         double phaseStep = Math.Atan2(correlationQ, correlationI);
 
+        // Adjacent-sample rotation can still be pulled toward the weaker
+        // transmitter's carrier. Fit phase over the full known pulse train;
+        // the initial estimate lets us unwrap even large carrier offsets.
+        PhaseRotator carrier = new(phaseStep, 0);
+        double count = 0, sumTime = 0, sumTimeSquared = 0, sumPhase = 0, sumTimePhase = 0;
+        double previousPhase = 0;
+        for (int relative = 0; relative < LongFrameSamples; relative++)
+        {
+            int index = offset + relative;
+            if (IsActivePulseSample(bytes, relative))
+            {
+                double i = valuesI[index] * carrier.Cosine + valuesQ[index] * carrier.Sine;
+                double q = valuesQ[index] * carrier.Cosine - valuesI[index] * carrier.Sine;
+                double phase = Math.Atan2(q, i);
+                phase = previousPhase + Math.IEEERemainder(phase - previousPhase, 2 * Math.PI);
+                previousPhase = phase;
+                count++;
+                sumTime += relative;
+                sumTimeSquared += relative * relative;
+                sumPhase += phase;
+                sumTimePhase += relative * phase;
+            }
+            carrier.MoveNext();
+        }
+        phaseStep += (count * sumTimePhase - sumTime * sumPhase) /
+            (count * sumTimeSquared - sumTime * sumTime);
+
+        // Use the CRC-validated waveform, including its payload, for channel
+        // training. An earlier weak frame can corrupt the entire preamble.
         PhaseRotator rotation = new(phaseStep, -SicChannelRadius);
-        for (int relative = -SicChannelRadius; relative < PreambleSamples + SicChannelRadius; relative++)
+        for (int relative = -SicChannelRadius; relative < LongFrameSamples + SicChannelRadius; relative++)
         {
             int index = offset + relative;
             if ((uint)index < (uint)validLength)
@@ -272,19 +310,29 @@ public sealed partial class ModeSReceiver
     }
 
     private static void FillIntegerPreambleSlots(
-        ReadOnlySpan<double> powerPrefix,
+        ReadOnlySpan<float> power,
         int offset,
         Span<float> slots)
     {
         for (int slot = 0; slot < slots.Length; slot++)
         {
             int start = offset + slot * SamplesPerHalfBit;
-            slots[slot] = (float)(powerPrefix[start + SamplesPerHalfBit] - powerPrefix[start]);
+            slots[slot] = (float)((double)power[start] + power[start + 1]);
         }
     }
 
-    private static bool HasFastPreambleCandidate(ReadOnlySpan<float> slots, float noiseFloor)
+    internal static bool HasFastPreambleCandidate(
+        ReadOnlySpan<float> power, int offset, float noiseFloor, Span<float> slots)
     {
+        // Necessary conditions from the full gate below: the first pulse must
+        // clear both the noise threshold and the following quiet half-bit.
+        // Reject before computing all 16 slots on the per-sample scan path.
+        float first = (float)((double)power[offset] + power[offset + 1]);
+        float quiet = (float)((double)power[offset + 2] + power[offset + 3]);
+        if (!(first > Math.Max(quiet * 1.15f, noiseFloor * SamplesPerHalfBit * 2)))
+            return false;
+
+        FillIntegerPreambleSlots(power, offset, slots);
         float highMin = float.MaxValue;
         float high = 0;
         float lowMax = 0;
@@ -380,7 +428,7 @@ public sealed partial class ModeSReceiver
         timingAdjustment = timing - offset;
     }
 
-    private static void DecodeLongFrameFixed(ReadOnlySpan<float> values, int offset, Span<byte> bytes)
+    private static bool DecodeLongFrameFixed(ReadOnlySpan<float> values, int offset, Span<byte> bytes)
     {
         bytes.Clear();
         for (int bit = 0; bit < 112; bit++)
@@ -394,7 +442,9 @@ public sealed partial class ModeSReceiver
                 second += values[start + SamplesPerHalfBit + sample];
             }
             if (first > second) bytes[bit / 8] |= (byte)(1 << (7 - bit % 8));
+            if (bit == 4 && bytes[0] >> 3 is not (17 or 18)) return false;
         }
+        return true;
     }
 
     internal static float IntegrateTwoSamples(ReadOnlySpan<float> values, double start)
@@ -517,7 +567,6 @@ public sealed partial class ModeSReceiver
         public double[] ChannelQ { get; } = new double[SicChannelTaps];
         public double[,] Augmented { get; } = new double[SicChannelTaps, SicChannelTaps + 2];
         public List<SampleRange> AffectedRanges { get; } = new(8);
-        public List<SampleRange> ScanRanges { get; } = new(8);
 
         public void ClearEstimation()
         {

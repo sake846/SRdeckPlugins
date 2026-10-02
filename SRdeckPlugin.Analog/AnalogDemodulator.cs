@@ -14,14 +14,11 @@ internal sealed partial class AnalogDemodulator
     private const float TwoPi = 2f * MathF.PI;
     private const float SsbLowFrequencyHz = 250f;
 
-    private readonly Biquad[] _channelILowPass = [new(), new(), new(), new()];
-    private readonly Biquad[] _channelQLowPass = [new(), new(), new(), new()];
+    private readonly Biquad[] _channelLowPass = [new(), new(), new(), new()];
     private readonly Biquad[] _audioLowPass = [new(), new(), new(), new()];
-    private readonly Biquad[] _ssbILowPass = [new(), new(), new(), new()];
-    private readonly Biquad[] _ssbQLowPass = [new(), new(), new(), new()];
+    private readonly Biquad[] _ssbLowPass = [new(), new(), new(), new()];
     private readonly Biquad[] _audioDiffLowPass = [new(), new()];
-    private readonly Biquad _cicCompensationI = new();
-    private readonly Biquad _cicCompensationQ = new();
+    private readonly Biquad _cicCompensation = new();
     // The CIC stage handles large integer decimation at O(1) cost per input.
     // The subsequent 8th-order channel filters remove its pass-band images.
     private readonly BoundedCicDecimator _inputDecimator = new();
@@ -185,7 +182,18 @@ internal sealed partial class AnalogDemodulator
                 frequencyOffsetHz);
         }
 
-        bool isStereoCapable = profileId == "fm" && bandwidthHz > 50_000 && isStereoEnabled;
+        int mode = profileId switch
+        {
+            "am" => 0,
+            "fm" => 1,
+            "ssb" => 2,
+            _ => throw new ArgumentOutOfRangeException(nameof(profileId), profileId, "Unknown analog profile.")
+        };
+        bool isAm = mode == 0;
+        bool isFm = mode == 1;
+        bool isBroadcastFm = isFm && bandwidthHz > 50_000;
+        bool isStereoCapable = isBroadcastFm && isStereoEnabled;
+        bool decimate = _inputDecimator.DecimationFactor > 1;
         if (!isStereoCapable) ResetFmStereoDetection();
         // Keep the frame layout stable for a whole wide-FM block. Before the
         // pilot lock settles this is dual-mono; after lock it becomes stereo.
@@ -199,8 +207,13 @@ internal sealed partial class AnalogDemodulator
         {
             inputPower += inputSample.I * inputSample.I + inputSample.Q * inputSample.Q;
             Complex32 tuned = MixToReceiverBaseband(inputSample);
-            if (!_inputDecimator.TryProcess(tuned.I, tuned.Q, out float reducedI, out float reducedQ)) continue;
-            Complex32 sample = CompensateCic(new Complex32(reducedI, reducedQ));
+            Complex32 sample = tuned;
+            // At factor one, both the CIC and its compensation are identity operations.
+            if (decimate)
+            {
+                if (!_inputDecimator.TryProcess(tuned.I, tuned.Q, out float reducedI, out float reducedQ)) continue;
+                sample = CompensateCic(new Complex32(reducedI, reducedQ));
+            }
             sample = FilterReceiverChannel(sample);
             if (!channelOutput.IsEmpty)
             {
@@ -211,13 +224,8 @@ internal sealed partial class AnalogDemodulator
             }
             channelPower += sample.I * sample.I + sample.Q * sample.Q;
             channelSampleCount++;
-            float demodulated = profileId switch
-            {
-                "am" => DemodulateAm(sample),
-                "fm" => DemodulateFm(sample),
-                "ssb" => DemodulateSsb(sample),
-                _ => throw new ArgumentOutOfRangeException(nameof(profileId), profileId, "Unknown analog profile.")
-            };
+            float demodulated = isAm ? DemodulateAm(sample) :
+                isFm ? DemodulateFm(sample) : DemodulateSsb(sample);
 
             float monoSample = RemoveDc(ProcessCascade(_audioLowPass, demodulated));
             float leftSample = monoSample;
@@ -239,7 +247,7 @@ internal sealed partial class AnalogDemodulator
                 out float resampledLeft,
                 out float resampledRight))
             {
-                if (profileId == "fm" && bandwidthHz > 50_000)
+                if (isBroadcastFm)
                 {
                     // The narrow post-CIC channel has a small, predictable
                     // wide-FM pass-band loss. Restore nominal broadcast level
@@ -259,7 +267,7 @@ internal sealed partial class AnalogDemodulator
                 {
                     if (outputCount >= output.Length)
                         throw new ArgumentException("The output buffer is too small.", nameof(output));
-                    float outputSample = profileId == "fm" && bandwidthHz > 50_000
+                    float outputSample = isBroadcastFm
                         ? ApplyBroadcastFmDeemphasis(resampledLeft)
                         : resampledLeft;
                     output[outputCount++] = Math.Clamp(outputSample, -1f, 1f);
@@ -369,17 +377,12 @@ internal sealed partial class AnalogDemodulator
         };
         channelCutoffHz = Math.Clamp(channelCutoffHz, 500f, _processingSampleRateHz * 0.20f);
         ConfigureCicCompensation(inputSampleRateHz, decimationFactor, channelCutoffHz);
-        ConfigureButterworth(_channelILowPass, _processingSampleRateHz, channelCutoffHz);
-        ConfigureButterworth(_channelQLowPass, _processingSampleRateHz, channelCutoffHz);
+        ConfigureButterworth(_channelLowPass, _processingSampleRateHz, channelCutoffHz);
 
         float ssbHighFrequencyHz = Math.Clamp(bandwidthHz, 1_500f, 4_000f);
         float ssbHalfBandwidth = (ssbHighFrequencyHz - SsbLowFrequencyHz) / 2f;
         ConfigureButterworth(
-            _ssbILowPass,
-            _processingSampleRateHz,
-            Math.Min(ssbHalfBandwidth, _processingSampleRateHz * 0.20f));
-        ConfigureButterworth(
-            _ssbQLowPass,
+            _ssbLowPass,
             _processingSampleRateHz,
             Math.Min(ssbHalfBandwidth, _processingSampleRateHz * 0.20f));
         float sidebandSign = isLowerSideband ? -1f : 1f;

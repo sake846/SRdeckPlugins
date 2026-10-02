@@ -6,12 +6,16 @@ public static class HfdlCrc
     {
         ushort crc = 0xffff;
         foreach (byte value in bytes)
-        {
-            crc ^= value;
-            for (int bit = 0; bit < 8; bit++)
-                crc = (ushort)((crc & 1) != 0 ? (crc >> 1) ^ 0x8408 : crc >> 1);
-        }
+            crc = Update(crc, value);
         return (ushort)~crc;
+    }
+
+    internal static ushort Update(ushort crc, byte value)
+    {
+        crc ^= value;
+        for (int bit = 0; bit < 8; bit++)
+            crc = (ushort)((crc & 1) != 0 ? (crc >> 1) ^ 0x8408 : crc >> 1);
+        return crc;
     }
 
     public static bool IsValid(ReadOnlySpan<byte> frame)

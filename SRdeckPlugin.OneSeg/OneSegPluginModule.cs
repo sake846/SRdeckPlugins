@@ -18,6 +18,7 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
     ILivePluginProfileProvider, IPluginViewProvider, IPluginProcessingWarmup
 {
     private readonly object processingGate = new();
+    private readonly object videoSettingsGate = new();
     private readonly OneSegReceiver receiver = new();
     private readonly MpegTsAnalyzer analyzer = new();
     private readonly OneSegViewModel viewModel = new();
@@ -154,6 +155,21 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
             lock (processingGate) mediaPlayer?.SelectAudioTrack(trackId);
             PersistSettings();
         };
+        viewModel.VideoOutputChanged = () => _ = Task.Run(() =>
+        {
+            try { mediaPlayer?.RestartPlayback(); }
+            catch (Exception exception)
+            {
+                host?.Logger.Log(PluginLogLevel.Warning, "oneseg.libvlc.video-output",
+                    "Video playback could not restart after changing display.", exception);
+            }
+        });
+        viewModel.VideoSuperResolutionChanged = enabled =>
+        {
+            settings = settings with { VideoSuperResolutionEnabled = enabled };
+            PersistSettings();
+            QueueVideoSuperResolutionUpdate();
+        };
         viewModel.CaptionSettingsChanged = () =>
         {
             settings = settings with
@@ -205,7 +221,47 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
         OneSegChannel selected = SelectedChannel();
         Dispatch(() => viewModel.Configure(settings, selected, preserveRegionPresets: true));
         mediaPlayer?.SetVolume(settings.Volume);
+        QueueVideoSuperResolutionUpdate();
     }
+
+    private void QueueVideoSuperResolutionUpdate() => _ = Task.Run(() =>
+    {
+        lock (videoSettingsGate)
+        {
+            OneSegMediaPlayer? previous = mediaPlayer;
+            bool enabled = settings.VideoSuperResolutionEnabled;
+            if (IsDisposed || previous is null || previous.VideoSuperResolutionEnabled == enabled) return;
+            OneSegMediaPlayer? replacement = null;
+            try
+            {
+                replacement = new OneSegMediaPlayer(enabled);
+                lock (processingGate)
+                {
+                    previous = mediaPlayer;
+                    if (IsDisposed || previous is null || previous.VideoSuperResolutionEnabled == enabled)
+                    {
+                        replacement.Dispose();
+                        return;
+                    }
+                    if (State == PluginLifecycleState.Streaming) replacement.Start(settings.Volume);
+                    mediaPlayer = replacement;
+                }
+                OneSegMediaPlayer oldPlayer = previous;
+                Dispatch(() =>
+                {
+                    if (!IsDisposed && ReferenceEquals(mediaPlayer, replacement))
+                        viewModel.MediaPlayer = replacement.Player;
+                    _ = Task.Run(oldPlayer.Dispose);
+                });
+            }
+            catch (Exception exception)
+            {
+                if (!ReferenceEquals(mediaPlayer, replacement)) replacement?.Dispose();
+                host?.Logger.Log(PluginLogLevel.Warning, "oneseg.libvlc.super-resolution",
+                    "Video playback could not switch super resolution.", exception);
+            }
+        }
+    });
 
     public override PluginDescriptor Descriptor { get; } = new(
         "oneseg", "ワンセグ", "ISDB-T 1セグメント テレビ・音声・字幕・番組表受信機",
@@ -288,7 +344,7 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
                     channelConfiguration = lastChannelConfiguration;
                 }
                 bool restartAudioDecoder = player?.SetAudioComponentType(audioComponentType) == true;
-                if (restartAudioDecoder) player?.RestartForAudioModeChange();
+                if (restartAudioDecoder) player?.RestartPlayback();
                 audioTracks = player?.GetAudioTracks() ?? [];
                 if (player is not null)
                 {

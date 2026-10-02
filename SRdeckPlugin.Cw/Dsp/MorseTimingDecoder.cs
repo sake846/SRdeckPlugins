@@ -54,9 +54,13 @@ public sealed class MorseTimingDecoder
             ["..-.-"] = 'ミ', ["---.-"] = 'シ', [".-.-."] = 'ヱ', ["-...-"] = 'ヒ',
             ["--.-."] = 'モ', [".----"] = 'セ', ["---..."] = 'ス', [".-.-.-"] = 'ン',
             [".."] = '゛', ["..--."] = '゜', [".-.-.."] = '¶',
-            ["-----"] = '0', [".----"] = '1', ["..---"] = '2', ["...--"] = '3',
-            ["....-"] = '4', ["....."] = '5', ["-...."] = '6', ["--..."] = '7',
-            ["---.."] = '8', ["----."] = '9'
+            // Several Wabun kana use the same code points as International
+            // Morse digits (for example セ/1 and ケ/4).  A Dictionary cannot
+            // contain both and, more importantly, the receiver has no numeric
+            // shift state with which to disambiguate them.  Prefer kana while
+            // in Wabun mode; operators can switch back to Western mode with
+            // the ラタ prosign before sending International Morse digits.
+            ["-----"] = '0', ["..---"] = '2', ["...--"] = '3', ["....."] = '5'
         };
 
     private static readonly Candidate[][] WesternCandidatesByLength = CreateCandidatesByLength(WesternAlphabet);
@@ -83,6 +87,7 @@ public sealed class MorseTimingDecoder
     public int SpeedWpm => (int)Math.Round(1_200 / unitMilliseconds);
     public bool IsKeyDown => keyDown;
     public double CurrentSilenceMilliseconds => initialized && !keyDown ? runMilliseconds : 0;
+    public double LastCharacterConfidence { get; private set; } = 1;
 
     /// <summary>Processes one state interval and returns newly emitted text.</summary>
     public string Process(bool isKeyDown, double elapsedMilliseconds)
@@ -133,6 +138,7 @@ public sealed class MorseTimingDecoder
         wordEmittedForGap = false;
         hasTimingObservation = false;
         hasDotObservation = false;
+        LastCharacterConfidence = 1;
         return appended;
     }
 
@@ -282,14 +288,20 @@ public sealed class MorseTimingDecoder
         var candidatesByLength = CurrentLanguage == CwLanguage.Wabun ? WabunCandidatesByLength : WesternCandidatesByLength;
 
         if (markDurations.Count != hardCode.Length)
+        {
+            LastCharacterConfidence = alphabet.ContainsKey(hardCode) ? 0.6 : 0;
             return alphabet.TryGetValue(hardCode, out char hardValue) ? hardValue : '?';
+        }
 
         Candidate? bestCandidate = null;
         char bestCharacter = '?';
         double bestScore = double.PositiveInfinity;
         int length = markDurations.Count;
         if ((uint)length >= (uint)candidatesByLength.Length)
+        {
+            LastCharacterConfidence = alphabet.ContainsKey(hardCode) ? 0.6 : 0;
             return alphabet.TryGetValue(hardCode, out char hardValue) ? hardValue : '?';
+        }
         double logUnit = Math.Log(unitMilliseconds);
         double logMarkSum = 0;
         for (int index = 0; index < length; index++)
@@ -317,6 +329,8 @@ public sealed class MorseTimingDecoder
             bestCharacter = candidate.Character;
         }
 
+        LastCharacterConfidence = bestCandidate is null ? 0 :
+            Math.Clamp(1 - bestScore / 0.45, 0, 1);
         if (bestCandidate is null || bestScore > 0.45)
             return alphabet.TryGetValue(hardCode, out char hardValue) ? hardValue : '?';
 

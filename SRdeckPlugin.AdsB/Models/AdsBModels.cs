@@ -1,4 +1,4 @@
-﻿namespace SRdeckPlugin.AdsB.Models;
+namespace SRdeckPlugin.AdsB.Models;
 
 public sealed record ModeSFrame(
     byte[] Bytes,
@@ -52,6 +52,102 @@ public sealed record AdsBMessageRow
     public string Summary { get; init; } = string.Empty;
     public int? AltitudeFeet { get; init; }
     public double? SpeedKnots { get; init; }
+    public double? Latitude { get; init; }
+    public double? Longitude { get; init; }
+    public double? TrackDegrees { get; init; }
+    public int? VerticalRateFeetPerMinute { get; init; }
+    public string Squawk { get; init; } = string.Empty;
+
+    public string AircraftDisplay => string.IsNullOrWhiteSpace(Callsign) ? Icao : Callsign;
+    public string AircraftDetail => string.IsNullOrWhiteSpace(Callsign) ? "機名未取得" : Icao;
+    public bool HasCallsign => !string.IsNullOrWhiteSpace(Callsign);
+
+    public string KindDisplay => Kind switch
+    {
+        "airborne-position" => "空中位置",
+        "surface-position" => "地上位置",
+        "airborne-velocity" => "速度航法",
+        "identification" => "機体識別",
+        "emergency" => "緊急",
+        "operational-status" => "運用状態",
+        _ => string.IsNullOrWhiteSpace(Kind) ? "情報" : Kind
+    };
+
+    public bool HasPosition => Latitude.HasValue && Longitude.HasValue;
+
+    public string PositionDisplay
+    {
+        get
+        {
+            if (Latitude.HasValue && Longitude.HasValue)
+            {
+                char latHemi = Latitude.Value >= 0 ? 'N' : 'S';
+                char lonHemi = Longitude.Value >= 0 ? 'E' : 'W';
+                return $"{Math.Abs(Latitude.Value):F4}°{latHemi}, {Math.Abs(Longitude.Value):F4}°{lonHemi}";
+            }
+            return string.Empty;
+        }
+    }
+
+    public string CleanSummary
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Summary)) return KindDisplay;
+            if (!string.IsNullOrEmpty(Icao) && Summary.StartsWith(Icao, StringComparison.OrdinalIgnoreCase))
+            {
+                string stripped = Summary[Icao.Length..].Trim();
+                if (!string.IsNullOrEmpty(stripped)) return stripped;
+            }
+            return Summary;
+        }
+    }
+
+    public string PrimaryContentDisplay => HasPosition ? PositionDisplay : CleanSummary;
+
+    public string KinematicsDisplay
+    {
+        get
+        {
+            var parts = new List<string>(3);
+            if (AltitudeFeet.HasValue)
+            {
+                string alt = $"{AltitudeFeet.Value:N0} ft";
+                if (VerticalRateFeetPerMinute.HasValue && Math.Abs(VerticalRateFeetPerMinute.Value) >= 64)
+                {
+                    string arrow = VerticalRateFeetPerMinute.Value > 0 ? "↑" : "↓";
+                    alt += $" {arrow}{Math.Abs(VerticalRateFeetPerMinute.Value):N0} fpm";
+                }
+                parts.Add(alt);
+            }
+            if (SpeedKnots.HasValue)
+            {
+                string spd = $"{SpeedKnots.Value:F0} kt";
+                if (TrackDegrees.HasValue) spd += $" {TrackDegrees.Value:F0}°";
+                parts.Add(spd);
+            }
+            else if (TrackDegrees.HasValue)
+            {
+                parts.Add($"{TrackDegrees.Value:F0}°");
+            }
+            return string.Join("  ", parts);
+        }
+    }
+
+    public string LatitudeDisplay => HasPosition
+        ? $"緯度 {Math.Abs(Latitude!.Value):F4}° {(Latitude.Value >= 0 ? 'N' : 'S')}"
+        : CleanSummary;
+    public string LongitudeDisplay => HasPosition
+        ? $"経度 {Math.Abs(Longitude!.Value):F4}° {(Longitude.Value >= 0 ? 'E' : 'W')}"
+        : string.Empty;
+    public string AltitudeDisplay => AltitudeFeet.HasValue ? $"高度 {AltitudeFeet.Value:N0} ft" : string.Empty;
+    public string VerticalRateDisplay => VerticalRateFeetPerMinute.HasValue && Math.Abs(VerticalRateFeetPerMinute.Value) >= 64
+        ? $"昇降 {(VerticalRateFeetPerMinute.Value > 0 ? "↑" : "↓")}{Math.Abs(VerticalRateFeetPerMinute.Value):N0} fpm"
+        : string.Empty;
+    public string SpeedDisplay => SpeedKnots.HasValue ? $"速度 {SpeedKnots.Value:F0} kt" : string.Empty;
+    public string TrackDisplay => TrackDegrees.HasValue ? $"針路 {TrackDegrees.Value:F0}°" : string.Empty;
+
+    public string SquawkDisplay => string.IsNullOrWhiteSpace(Squawk) ? string.Empty : $"SQ {Squawk}";
 }
 
 public sealed class AircraftState

@@ -27,7 +27,7 @@ public sealed partial class AdsBPluginModule : PluginModuleBase, IIqBlockConsume
     private readonly ModeSReceiver receiver = new();
     private readonly CprDecoder cprDecoder = new();
     private readonly Dictionary<string, AircraftState> aircraft = new(StringComparer.Ordinal);
-    private readonly List<ExportRecord> history = [];
+    private readonly Queue<ExportRecord> history = new();
     private PluginJsonLinesHistoryWriter<ExportRecord>? historyWriter;
     private readonly AdsBViewModel viewModel = new();
     private readonly PackedIqHistoryBuffer pretriggerBuffer = new(3);

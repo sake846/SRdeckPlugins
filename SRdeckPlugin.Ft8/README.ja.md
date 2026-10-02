@@ -14,6 +14,9 @@
 バンドプロファイル、受信履歴、音声モニター、ウォーターフォール注釈、結果通知、CSV/JSONエクスポートを提供します。
 プロトコル出典と第三者帰属は`docs/protocol-provenance.md`と`THIRD-PARTY-NOTICES.md`に記載しています。
 
+今後の改善候補、優先順位、完了条件は[`docs/improvement-proposals.ja.md`](docs/improvement-proposals.ja.md)にまとめています。
+復号処理の軽量化と測定・回帰試験結果は[`docs/performance.ja.md`](docs/performance.ja.md)を参照してください。
+
 ## ビルド
 
 互換するSRdeckプラットフォームパッケージを用意し、`SRdeckPlugins.sln`のRelease構成をビルドしてください。

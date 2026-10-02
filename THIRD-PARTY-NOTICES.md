@@ -64,7 +64,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Map data is copyright OpenStreetMap contributors and is available under the Open Database License (ODbL) 1.0. The map displays a persistent link to <https://www.openstreetmap.org/copyright>.
 
-In Online mode, interactive map views request only the raster tiles needed for the current viewport from `https://tile.openstreetmap.org/{z}/{x}/{y}.png`. Requests use an SRdeck-identifying User-Agent. Viewed tiles are cached in a bounded local SQLite database and are revalidated with `ETag` or `Last-Modified` after the server-provided cache lifetime. Auto mode may reuse still-valid viewed tiles without a connection and can fall back to a user-supplied raster MBTiles archive. SRdeck does not bulk-download, prefetch, create, or redistribute OpenStreetMap standard tiles. The settings dialog can download a complete raster MBTiles archive from a user-supplied HTTPS URL; it does not use the OpenStreetMap standard tile service for that operation. The archive provider's terms and data license apply separately. The community tile service is best-effort and is governed separately from the data license; see the current [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/) and OSMF terms before changing this integration.
+Connected map views request only the raster tiles needed for the current viewport from `https://tile.openstreetmap.org/{z}/{x}/{y}.png`. Requests use an SRdeck-identifying User-Agent. Viewed tiles are cached in a bounded local SQLite database and are revalidated with `ETag` or `Last-Modified` after the server-provided freshness lifetime. When offline, cached tiles remain available after that lifetime. SRdeck does not bulk-download, prefetch, create, or redistribute OpenStreetMap standard tiles. The community tile service is best-effort and is governed separately from the data license; see the current [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/) and OSMF terms before changing this integration.
 
 ## rtl-sdr API declarations
 
@@ -75,9 +75,17 @@ The managed declarations in `SRdeck/SDR/RtlSdrApi.cs` correspond to the public r
 
 SRdeck does not distribute `rtlsdr.dll`. Users obtain a compatible native library separately. The SRdeck source and combined work are distributed under GPL-3.0-only; the complete GPL-3.0 license appears in `LICENSE`. Upstream source: <https://gitea.osmocom.org/sdr/rtl-sdr>.
 
+## libhackrf API declarations
+
+The managed declarations in `SRdeck/SDR/HackRfApi.cs` correspond to the public
+libhackrf API from Great Scott Gadgets. SRdeck does not distribute `hackrf.dll`,
+`libusb-1.0.dll`, or the HackRF Tools package. Users obtain compatible 64-bit
+native libraries separately and must comply with their accompanying licenses.
+Upstream source: <https://github.com/greatscottgadgets/hackrf>.
+
 ## Microsoft.Data.Sqlite 10.0.12
 
-Microsoft.Data.Sqlite and its SQLitePCLRaw dependencies are used to read user-supplied raster MBTiles archives in read-only mode and to maintain the bounded online map-tile cache. Microsoft.Data.Sqlite and SQLitePCLRaw are distributed under the MIT License. The bundled SQLite library is in the public domain.
+Microsoft.Data.Sqlite and its SQLitePCLRaw dependencies maintain the bounded map-tile cache. Microsoft.Data.Sqlite and SQLitePCLRaw are distributed under the MIT License. The bundled SQLite library is in the public domain.
 
 ## SDRplay API declarations
 

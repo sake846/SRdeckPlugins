@@ -144,7 +144,8 @@ public sealed partial class WiSunPluginModule
             ? sfdVal
             : null;
 
-        foreach (PluginChannelRequest request in CreateChannelRequests(_settings))
+        _channelRequests = CreateChannelRequests(_settings);
+        foreach (PluginChannelRequest request in _channelRequests)
         {
             var demodulator = new WiSunDemodulator
             {

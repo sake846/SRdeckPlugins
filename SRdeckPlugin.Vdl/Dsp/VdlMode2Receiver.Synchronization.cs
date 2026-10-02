@@ -162,8 +162,7 @@ public sealed partial class VdlMode2Receiver
             int symbol = startIndex + i;
             int chronologicalIndex = symbol * SamplesPerSymbol;
             int ringIndex = (syncWriteIndex + chronologicalIndex) % syncBuffer.Length;
-            Complex32 value = syncBuffer[ringIndex];
-            double phase = Math.Atan2(value.Q, value.I);
+            double phase = syncPhases[ringIndex];
             double error = phase - PreamblePhases[symbol] * Math.PI / 4;
             if (i > 0)
             {
@@ -193,6 +192,8 @@ public sealed partial class VdlMode2Receiver
         double correlationI = 0;
         double correlationQ = 0;
         double power = 0;
+        (double stepSin, double stepCos) = Math.SinCos(drift);
+        double rotationI = 1, rotationQ = 0;
         for (int i = 0; i < PreambleVerificationSymbols; i++)
         {
             int symbol = startIndex + i;
@@ -204,11 +205,16 @@ public sealed partial class VdlMode2Receiver
             double amplitude = Math.Sqrt(value.I * value.I + value.Q * value.Q);
             amplitudeSum += amplitude;
             amplitudeSquaredSum += amplitude * amplitude;
-            double referencePhase = PreamblePhases[symbol] * Math.PI / 4 + drift * (i - center);
-            double cosine = Math.Cos(referencePhase);
-            double sine = Math.Sin(referencePhase);
+            // Coherence uses only correlation magnitude, so the common
+            // -drift * center rotation can be omitted. Advance by drift per symbol.
+            (double preambleSin, double preambleCos) = PreambleRotations[symbol];
+            double cosine = preambleCos * rotationI - preambleSin * rotationQ;
+            double sine = preambleSin * rotationI + preambleCos * rotationQ;
             correlationI += value.I * cosine + value.Q * sine;
             correlationQ += value.Q * cosine - value.I * sine;
+            double nextRotationI = rotationI * stepCos - rotationQ * stepSin;
+            rotationQ = rotationI * stepSin + rotationQ * stepCos;
+            rotationI = nextRotationI;
             power += value.I * value.I + value.Q * value.Q;
         }
         coherence = power <= 1e-20 ? 0 :
@@ -222,8 +228,7 @@ public sealed partial class VdlMode2Receiver
         lastPreambleAmplitudeCoefficientOfVariation = amplitudeMean <= 1e-12 ? 0 :
             Math.Sqrt(amplitudeVariance) / amplitudeMean;
         int lastIndex = (syncWriteIndex + syncBuffer.Length - SamplesPerSymbol) % syncBuffer.Length;
-        Complex32 last = syncBuffer[lastIndex];
-        finalPhase = Math.Atan2(last.Q, last.I);
+        finalPhase = syncPhases[lastIndex];
         return squaredError;
     }
 

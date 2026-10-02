@@ -212,7 +212,8 @@
                             </Grid.RowDefinitions>
                             <controls:PluginResetView Grid.Row="0" />
                             <TextBlock Grid.Row="1" Text="過去録音" Style="{DynamicResource PluginSettingsSectionHeaderStyle}" />
-                            <Grid Grid.Row="2" Style="{DynamicResource PluginSettingsActionRowStyle}">
+                             <Grid Grid.Row="2" Style="{DynamicResource PluginSettingsActionRowStyle}">
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -226,12 +227,15 @@
                                         Height="22"
                                         Width="130"
                                         HorizontalAlignment="Left" />
-                                <TextBlock Grid.Column="2"
+                                 <TextBlock Grid.Column="2"
                                            Text="{Binding CaptureStatus}"
                                            Style="{DynamicResource PluginSettingsActionStatusStyle}"
                                            VerticalAlignment="Center"
-                                           Margin="10,0,0,0" />
-                            </Grid>
+                                            Margin="10,0,0,0" />
+                                <TextBlock Grid.Row="1" Text="保存したIQ WAVを受信時と同じプラグインで再生します。" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,6,16,0" />
+                                <Button Grid.Row="1" Grid.Column="1" Style="{DynamicResource PluginIqPlaybackButtonStyle}" Margin="0,6,0,0" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Style="{DynamicResource PluginIqPlaybackStatusStyle}" Margin="10,6,0,0" />
+                             </Grid>
                         </Grid>
                     </ScrollViewer>
                 </TabItem>

@@ -13,14 +13,13 @@ public sealed partial class AcarsReceiver
     private IReadOnlyList<AcarsFrame> Decode(IqBlockMetadata metadata)
     {
         long startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
-        var result = new List<AcarsFrame>();
+        List<AcarsFrame>? result = null;
         float bestRecentMeanConfidence = 0;
         float bestRecentSquelchMetric = 0;
         ReadOnlySpan<float> audioSpan = audioBuffer.AsSpan(0, audioCount);
         int newCorrelationWindows = PopulateCorrelationCache(audioSpan);
         int correlationWindows = 0;
-        int phaseStride = audioCount / SamplesPerBit;
-        EnsureCapacity(phaseStride);
+        EnsureCapacity(audioCount / SamplesPerBit);
         Span<PhaseAcquisitionCandidate> phaseCandidates =
             stackalloc PhaseAcquisitionCandidate[SamplesPerBit];
         int phaseCandidateCount = 0;
@@ -28,19 +27,10 @@ public sealed partial class AcarsReceiver
         {
             int symbolCount = (audioCount - phase) / SamplesPerBit;
             if (symbolCount < 8 * 18) continue;
-            Span<ToneCorrelation> phaseLow = lowCorrelations.AsSpan(
-                phase * phaseStride, symbolCount);
-            Span<ToneCorrelation> phaseHigh = highCorrelations.AsSpan(
-                phase * phaseStride, symbolCount);
-            Span<float> phaseConfidence = confidenceBuffer.AsSpan(
-                phase * phaseStride, symbolCount);
-            for (int symbol = 0; symbol < symbolCount; symbol++)
-            {
-                int cacheIndex = phase + symbol * SamplesPerBit;
-                phaseLow[symbol] = lowCorrelationCache[cacheIndex];
-                phaseHigh[symbol] = highCorrelationCache[cacheIndex];
-                phaseConfidence[symbol] = confidenceCache[cacheIndex];
-            }
+            GatherPhaseCorrelations(phase, symbolCount);
+            ReadOnlySpan<ToneCorrelation> phaseLow = lowCorrelations.AsSpan(0, symbolCount);
+            ReadOnlySpan<ToneCorrelation> phaseHigh = highCorrelations.AsSpan(0, symbolCount);
+            ReadOnlySpan<float> phaseConfidence = confidenceBuffer.AsSpan(0, symbolCount);
             correlationWindows += symbolCount;
             int recentSymbolCount = Math.Min(symbolCount,
                 DecodeIntervalSamples / SamplesPerBit);
@@ -100,7 +90,7 @@ public sealed partial class AcarsReceiver
         {
             PhaseAcquisitionCandidate candidate = rankedCandidates[index];
             selectedPhases[candidate.Phase] = true;
-            selectedPhaseDecoded |= DecodePhase(candidate, phaseStride, metadata, result);
+            selectedPhaseDecoded |= DecodePhase(candidate, metadata, ref result);
         }
 
         // An exact hard-decision synchronization word is a protocol-defined
@@ -114,7 +104,7 @@ public sealed partial class AcarsReceiver
             {
                 PhaseAcquisitionCandidate candidate = phaseCandidates[index];
                 if (!selectedPhases[candidate.Phase])
-                    DecodePhase(candidate, phaseStride, metadata, result);
+                    DecodePhase(candidate, metadata, ref result);
             }
         }
         lastToneConfidence = bestRecentMeanConfidence;
@@ -131,7 +121,7 @@ public sealed partial class AcarsReceiver
         totalToneCorrelationCount += lastDecodeToneCorrelationCount;
         lastDecodeCpuMilliseconds =
             System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
-        return result;
+        return result is null ? Array.Empty<AcarsFrame>() : result;
     }
 
     private int PopulateCorrelationCache(ReadOnlySpan<float> audioSpan)
@@ -241,7 +231,7 @@ public sealed partial class AcarsReceiver
     }
 
     private bool DecodeToneSequence(ReadOnlySpan<bool> tones, ReadOnlySpan<float> confidence, int phase,
-        IqBlockMetadata metadata, List<AcarsFrame> result)
+        IqBlockMetadata metadata, ref List<AcarsFrame>? result)
     {
         bool anyDecoded = false;
         if (bitsBuffer.Length < tones.Length * 2)
@@ -262,19 +252,20 @@ public sealed partial class AcarsReceiver
             exactSyncCount += hypotheses[index].ExactSyncCount;
         syncCandidateCount += exactSyncCount;
 
-        bool useFullSearchFallback = exactSyncCount == 0;
-        if (useFullSearchFallback) hypothesisFallbackCount++;
         Span<int> decodedSingleSyncPositions = stackalloc int[32];
         int decodedSingleSyncPositionCount = 0;
         for (int index = 0; index < hypothesisCount; index++)
         {
             ToneHypothesis hypothesis = hypotheses[index];
-            if (!useFullSearchFallback && hypothesis.ExactSyncCount == 0)
+            // Scan requires the same three seven-bit sync bytes measured by
+            // BuildToneHypotheses. Packing a hypothesis without them cannot
+            // produce a frame, including one eligible for BCS correction.
+            if (hypothesis.ExactSyncCount == 0)
             {
                 hypothesisPrunedCount++;
                 continue;
             }
-            if (!useFullSearchFallback && hypothesis.ExactSyncCount == 1 &&
+            if (hypothesis.ExactSyncCount == 1 &&
                 decodedSingleSyncPositions[..decodedSingleSyncPositionCount]
                     .Contains(hypothesis.BestSyncBitIndex))
             {
@@ -288,7 +279,7 @@ public sealed partial class AcarsReceiver
                 packedBytesBuffer);
             hypothesisScanCount++;
             bool decoded = Scan(packedBytesBuffer.AsSpan(0, byteCount),
-                bitConfidence, phase, hypothesis.BitOffset, metadata, result);
+                bitConfidence, phase, hypothesis.BitOffset, metadata, ref result);
             if (decoded)
             {
                 anyDecoded = true;
@@ -508,7 +499,7 @@ public sealed partial class AcarsReceiver
 
     private bool Scan(ReadOnlySpan<byte> bytes, ReadOnlySpan<float> confidence,
         int phase, int bitOffset,
-        IqBlockMetadata metadata, List<AcarsFrame> result)
+        IqBlockMetadata metadata, ref List<AcarsFrame>? result)
     {
         bool decoded = false;
         for (int index = 0; index + 18 <= bytes.Length; index++)
@@ -565,7 +556,7 @@ public sealed partial class AcarsReceiver
             }
             // A decoded BCS is required on air. Parity is retained as a
             // diagnostic because some SDR recordings have already stripped it.
-            result.Add(new(raw, metadata.UtcTimestamp, metadata.StreamId, position,
+            (result ??= []).Add(new(raw, metadata.UtcTimestamp, metadata.StreamId, position,
                 targetFrequencyHz, Math.Clamp(quality, 0, 1)));
             decoded = true;
             lastFramePosition = position;

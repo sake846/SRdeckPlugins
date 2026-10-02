@@ -17,7 +17,7 @@ public static partial class CwCallsignExtractor
     private static bool IsPlausible(string value) =>
         value.Length is >= 3 and <= 12 && value.Any(char.IsAsciiLetterUpper) && value.Any(char.IsAsciiDigit);
 
-    [GeneratedRegex(@"(?<![A-Z0-9/])[A-Z0-9]+(?:/[A-Z0-9]+)?(?![A-Z0-9/])",
+    [GeneratedRegex(@"(?<![A-Z0-9/])[A-Z0-9]+(?:/[A-Z0-9]+)*(?![A-Z0-9/])",
         RegexOptions.CultureInvariant)]
     private static partial Regex CandidatePattern();
 }

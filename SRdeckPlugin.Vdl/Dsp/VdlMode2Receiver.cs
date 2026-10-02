@@ -59,6 +59,9 @@ public sealed partial class VdlMode2Receiver
         -3, 4, -2, 3, 1, -2, -3, 0
     ];
 
+    private static readonly (double Sin, double Cos)[] PreambleRotations =
+        PreamblePhases.Select(phase => Math.SinCos(phase * Math.PI / 4)).ToArray();
+
     private static readonly int[] GrayCode = [0, 1, 3, 2, 6, 7, 5, 4];
     private static readonly uint[] HeaderParityChecks =
     [
@@ -90,6 +93,7 @@ public sealed partial class VdlMode2Receiver
     ];
 
     private readonly Complex32[] syncBuffer = new Complex32[PreambleSymbols * SamplesPerSymbol];
+    private readonly double[] syncPhases = new double[PreambleSymbols * SamplesPerSymbol];
     private readonly Complex32[] timingBuffer = new Complex32[TimingBufferLength];
     private readonly List<bool> burstBits = [];
     private readonly List<double> burstReliabilities = [];

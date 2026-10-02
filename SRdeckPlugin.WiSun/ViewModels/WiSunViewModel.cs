@@ -41,6 +41,7 @@ public sealed partial class WiSunViewModel : ObservableObject, IFrequencyOverlay
     private string _diagnosticLastUpdated = "未更新";
     private readonly Queue<DiagnosticWindowSample> _diagnosticWindow = new();
     private DateTimeOffset? _lastCrcOkAt;
+    private long _lastDiagnosticCrcOkCount;
     [ObservableProperty] private WiSunPanReceptionGroup? _selectedPanGroup;
     [ObservableProperty] private WiSunPacketFrame? _selectedTimelinePacket;
     [ObservableProperty] private string _panSearchText = string.Empty;
@@ -438,6 +439,7 @@ public sealed partial class WiSunViewModel : ObservableObject, IFrequencyOverlay
         _module.ResetDiagnosticCounters();
         _diagnosticWindow.Clear();
         _lastCrcOkAt = null;
+        _lastDiagnosticCrcOkCount = 0;
         RefreshDiagnosticProperties();
     }
 

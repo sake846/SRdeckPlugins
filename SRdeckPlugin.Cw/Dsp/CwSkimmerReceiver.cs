@@ -237,7 +237,9 @@ public sealed class CwSkimmerReceiver
                     track.Decoder.SpeedWpm,
                     appended,
                     track.Decoder.Text,
-                    IsSentenceBoundary: sentenceBoundary);
+                    IsSentenceBoundary: sentenceBoundary,
+                    Language: track.Decoder.CurrentLanguage,
+                    Confidence: track.Decoder.LastCharacterConfidence);
                 TextDecoded?.Invoke(this, new CwDecodedEventArgs(result));
             }
 
@@ -252,7 +254,8 @@ public sealed class CwSkimmerReceiver
                     track.Id, metadata.Source.UtcTimestamp, metadata.Source.StreamId,
                     center + (long)Math.Round(track.OffsetHz), track.OffsetHz,
                     track.LastSnrDb, track.Decoder.SpeedWpm, flushed, track.Decoder.Text,
-                    IsFinal: true)));
+                    IsFinal: true, Language: track.Decoder.CurrentLanguage,
+                    Confidence: track.Decoder.LastCharacterConfidence)));
             }
             tracks.RemoveAt(index);
         }

@@ -26,11 +26,11 @@ public sealed partial class WiSunViewModel
         {
             _diagnosticWindow.Clear();
             _lastCrcOkAt = null;
+            _lastDiagnosticCrcOkCount = 0;
         }
-        DiagnosticWindowSample? previous = _diagnosticWindow.Count == 0 ? null : _diagnosticWindow.Last();
-        if ((previous is DiagnosticWindowSample last && TotalCrcOk > last.CrcOk) ||
-            (previous is null && TotalCrcOk > 0))
+        if (TotalCrcOk > _lastDiagnosticCrcOkCount)
             _lastCrcOkAt = now;
+        _lastDiagnosticCrcOkCount = TotalCrcOk;
         _diagnosticWindow.Enqueue(new(now, TotalRfBursts, TotalPreambleMatches,
             TotalSfdMatches, TotalCrcOk, TotalCrcNg));
         while (_diagnosticWindow.TryPeek(out first) && now - first.MeasuredAt > TimeSpan.FromSeconds(60))

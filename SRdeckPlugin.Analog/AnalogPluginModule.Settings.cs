@@ -5,6 +5,45 @@ namespace SRdeckPlugin.Analog;
 
 public sealed partial class AnalogPluginModule
 {
+    public long SelectedFrequencyHz => Volatile.Read(ref _receiverOptions).FrequencyHz;
+    public int ReceiveBandCenterOffsetHz => _selectedProfileId == "ssb" &&
+        Volatile.Read(ref _receiverOptions) is { IsSsbCarrierFrequency: true } options
+            ? (options.IsLowerSideband ? -1 : 1) * (options.BandwidthHz / 2)
+            : 0;
+
+    public async ValueTask<PluginTuningResult> SelectFrequencyAsync(
+        long frequencyHz,
+        CancellationToken cancellationToken = default)
+    {
+        if (frequencyHz is < 1 or > int.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(frequencyHz));
+
+        long before = SelectedFrequencyHz;
+        await UpdateReceiverOptionsAsync(
+            options => options with { FrequencyHz = frequencyHz },
+            requestTuning: true,
+            cancellationToken).ConfigureAwait(false);
+
+        PluginTuningResult current = _hostContext?.Tuning.Current ?? new(
+            PluginTuningOutcome.Deferred,
+            "The analog plugin is not initialized.",
+            0, 0, 0, 0);
+        if (SelectedFrequencyHz == frequencyHz)
+        {
+            return before == frequencyHz && current.Outcome == PluginTuningOutcome.Rejected
+                ? current with { Outcome = PluginTuningOutcome.Accepted, Message = "Already tuned." }
+                : current;
+        }
+
+        return current.Outcome == PluginTuningOutcome.Rejected
+            ? current
+            : current with
+            {
+                Outcome = PluginTuningOutcome.Rejected,
+                Message = "The analog receiver did not accept the selected frequency."
+            };
+    }
+
     internal async ValueTask UpdateReceiverOptionsAsync(
         Func<AnalogReceiverOptions, AnalogReceiverOptions> update,
         bool requestTuning,

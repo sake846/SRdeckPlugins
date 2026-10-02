@@ -16,7 +16,6 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="36" />
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
@@ -46,22 +45,25 @@
                     </Grid>
                 </Border>
 
-                <UniformGrid Grid.Row="1" Columns="4" Margin="10,4,10,14">
-                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="受信ライン" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding CurrentLines, StringFormat=N0}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
-                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="画像サイズ" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding CurrentImageDimensions}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold"/></StackPanel></Border>
-                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="復調トーン" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding ToneFrequencyText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold"/></StackPanel></Border>
-                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="有効偏移率" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding SignalQualityText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold"/></StackPanel></Border>
-                </UniformGrid>
 
-                <TabControl Grid.Row="2" Style="{DynamicResource PluginTabControlStyle}">
+                <TabControl Grid.Row="1" Style="{DynamicResource PluginTabControlStyle}">
                     <TabItem Header="概要" IsSelected="True">
                         <Grid Margin="10,8">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <Grid>
+                            <TextBlock Grid.Row="0" Text="受信の概況" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="2,0,0,5" />
+                            <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,8">
+                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="受信ライン" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding CurrentLines, StringFormat=N0}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
+                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="画像サイズ" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding CurrentImageDimensions}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold"/></StackPanel></Border>
+                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="復調トーン" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding ToneFrequencyText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold"/></StackPanel></Border>
+                    <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="有効偏移率" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding SignalQualityText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="18" FontWeight="SemiBold"/></StackPanel></Border>
+                            </UniformGrid>
+                            <Grid Grid.Row="2">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -81,7 +83,7 @@
                                         Command="{Binding SaveImageCommand}"
                                         Style="{DynamicResource PluginButtonStyle}" Width="145" />
                             </Grid>
-                            <Border Grid.Row="1" Margin="0,6" Padding="4"
+                            <Border Grid.Row="3" Margin="0,6" Padding="4"
                                     Background="{DynamicResource PanelRaisedBrush}"
                                     BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1">
                                 <ScrollViewer HorizontalScrollBarVisibility="Disabled"
@@ -96,7 +98,7 @@
                                             MouseLeftButtonUp="CurrentImage_MouseLeftButtonUp" />
                                 </ScrollViewer>
                             </Border>
-                            <TextBlock Grid.Row="2" Text="{Binding SaveStatus}"
+                            <TextBlock Grid.Row="4" Text="{Binding SaveStatus}"
                                        Foreground="{DynamicResource TextDimBrush}"
                                        TextTrimming="CharacterEllipsis" ToolTip="{Binding SaveStatus}" />
                         </Grid>

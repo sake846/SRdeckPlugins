@@ -17,7 +17,6 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="36"/>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <Border Style="{DynamicResource PluginStatusHeaderStyle}">
@@ -36,7 +35,19 @@
                     </Grid>
                 </Border>
 
-                <UniformGrid Grid.Row="1" Columns="4" Margin="10,4,10,14">
+                <TabControl Grid.Row="1" Style="{DynamicResource PluginTabControlStyle}">
+            <TabItem Header="概要">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Grid Margin="10,8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="受信の概況" Style="{DynamicResource PluginPrimarySectionHeaderStyle}"
+                                   Margin="2,0,0,5"/>
+                        <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,8">
                     <Border Style="{DynamicResource PluginMetricCardStyle}">
                         <StackPanel>
                             <TextBlock Text="直前区間の復号" Foreground="{DynamicResource TextDimBrush}"/>
@@ -57,18 +68,16 @@
                     </Border>
                     <Border Style="{DynamicResource PluginMetricCardStyle}">
                         <StackPanel>
-                            <TextBlock Text="最大時刻ずれ" Foreground="{DynamicResource TextDimBrush}"/>
-                            <TextBlock Text="{Binding LastSlotTimeOffsetText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/>
+                            <TextBlock Text="時計ずれ目安（中央値）" Foreground="{DynamicResource TextDimBrush}"
+                                       ToolTip="直前区間で復号した信号のDT中央値。正は受信信号が区間開始より後に到着したことを示します。"/>
+                            <TextBlock Text="{Binding LastSlotTimeOffsetText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"
+                                       ToolTip="個々の信号のDTは一覧または時系列の詳細で確認できます。"/>
                         </StackPanel>
                     </Border>
-                </UniformGrid>
-                <TabControl Grid.Row="2" Style="{DynamicResource PluginTabControlStyle}">
-            <TabItem Header="概要">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel Margin="10,8">
-                        <TextBlock Text="監視範囲" Style="{DynamicResource PluginPrimarySectionHeaderStyle}"
+                        </UniformGrid>
+                        <TextBlock Grid.Row="2" Text="監視範囲" Style="{DynamicResource PluginPrimarySectionHeaderStyle}"
                                    Margin="2,12,0,5"/>
-                        <Border Style="{DynamicResource PluginDetailPanelStyle}">
+                        <Border Grid.Row="3" Style="{DynamicResource PluginDetailPanelStyle}">
                             <StackPanel>
                                 <TextBlock Foreground="{DynamicResource TextPrimaryBrush}">
                                     <Run Text="{Binding DialFrequencyText, Mode=OneWay}"/>
@@ -78,7 +87,7 @@
                                            Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
                             </StackPanel>
                         </Border>
-                    </StackPanel>
+                    </Grid>
                 </ScrollViewer>
             </TabItem>
 
@@ -328,7 +337,7 @@
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <Border Margin="8,6" Padding="4">
                         <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextDimBrush}" FontSize="10">
-                            <Run Text="表示対象: 復号メッセージ内のMaidenheadグリッドロケーター　| 　表示局数: "/><Run Text="{Binding MapMarkers.Count, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"/><Run Text=" 局"/>
+                            <Run Text="表示対象: 復号メッセージ内のMaidenheadグリッドロケーター　|　表示局数: "/><Run Text="{Binding MapMarkers.Count, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"/><Run Text=" 局　|　地図保持: 直近"/><Run Text="{Binding RetentionMinutes, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"/><Run Text="分"/>
                         </TextBlock>
                     </Border>
                     <Border Grid.Row="1" Margin="4" Background="{DynamicResource PanelBaseBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="2" ClipToBounds="True">
@@ -401,10 +410,13 @@
                             <Border Style="{DynamicResource PluginMetricCardStyle}" Margin="0">
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions><RowDefinition Height="22"/><RowDefinition Height="22"/><RowDefinition Height="22"/></Grid.RowDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition Height="22"/><RowDefinition Height="22"/><RowDefinition Height="22"/><RowDefinition Height="22"/></Grid.RowDefinitions>
                                     <TextBlock Text="チャネルレベル" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Column="1" Text="{Binding ChannelLevelText}" FontFamily="{DynamicResource DisplayFontFamily}"/>
                                     <TextBlock Grid.Row="1" Text="探索音声帯域" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Row="1" Grid.Column="1" Text="200–3000 Hz" FontFamily="{DynamicResource DisplayFontFamily}"/>
                                     <TextBlock Grid.Row="2" Text="同期スコアしきい値" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MinimumSyncScore}" FontFamily="{DynamicResource DisplayFontFamily}"/>
+                                    <TextBlock Grid.Row="3" Text="IQクリップ率" Foreground="{DynamicResource TextDimBrush}"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ClipRateText}" FontFamily="{DynamicResource DisplayFontFamily}"
+                                               ToolTip="IまたはQがフルスケールの99.9%以上に達したサンプルの平滑化比率です。1%以上で警告します。"/>
                                 </Grid>
                             </Border>
                         </Expander>
@@ -421,7 +433,7 @@
                         <Grid Margin="0,5,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="22"/><RowDefinition Height="22"/><RowDefinition Height="22"/>
+                                <RowDefinition Height="22"/><RowDefinition Height="22"/><RowDefinition Height="22"/><RowDefinition Height="22"/>
                             </Grid.RowDefinitions>
                             <TextBlock Text="直近スロット" Foreground="{DynamicResource TextDimBrush}"/>
                             <TextBlock Grid.Column="1" Text="{Binding RecentValidationText}" Foreground="{DynamicResource TextPrimaryBrush}"
@@ -431,6 +443,10 @@
                             <TextBlock Grid.Row="2" Text="直前の復号時間" Foreground="{DynamicResource TextDimBrush}"/>
                             <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DecodeTime}" Foreground="{DynamicResource TextPrimaryBrush}"
                                        FontFamily="{DynamicResource DisplayFontFamily}"/>
+                            <TextBlock Grid.Row="3" Text="処理枠使用率" Foreground="{DynamicResource TextDimBrush}"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding DecodeBudgetText}" Foreground="{DynamicResource TextPrimaryBrush}"
+                                       FontFamily="{DynamicResource DisplayFontFamily}"
+                                       ToolTip="直前の復号時間を現在のモードのスロット長で割った値です。100%以上では次の区間に処理が重なる可能性があります。"/>
                         </Grid>
                         </StackPanel>
                         </Border>
@@ -438,6 +454,13 @@
                         <Expander Header="詳細・デバッグ" Style="{DynamicResource PluginDiagnosticsSectionStyle}" IsExpanded="False">
                             <StackPanel Margin="8,5">
                                 <TextBlock Foreground="{DynamicResource TextDimBrush}"><Run Text="候補上限 "/><Run Text="{Binding MaximumCandidates, Mode=OneWay}"/><Run Text=" / LDPC iteration "/><Run Text="{Binding LdpcIterations, Mode=OneWay}"/></TextBlock>
+                                <TextBlock Text="共有用診断情報（コールサイン、メッセージ、IQデータを含みません）"
+                                           Foreground="{DynamicResource TextDimBrush}" Margin="0,8,0,3"/>
+                                <TextBox Text="{Binding DiagnosticsReport, Mode=OneWay}" IsReadOnly="True"
+                                         AcceptsReturn="True" TextWrapping="NoWrap" MaxHeight="180"
+                                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                         FontFamily="{DynamicResource DisplayFontFamily}"
+                                         ToolTip="テキストを選択し、Ctrl+Cでコピーできます。"/>
                                 <Button Content="診断統計をリセット" Command="{Binding ResetDiagnosticStatisticsCommand}" Width="120" HorizontalAlignment="Right" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Expander>

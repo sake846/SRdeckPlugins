@@ -40,6 +40,7 @@ internal sealed partial class OneSegViewModel : ObservableObject
     private OneSegAudioTrackOption? selectedAudioTrack;
     private int desiredAudioTrackId = -1;
     private bool captionsEnabled = true;
+    private bool videoSuperResolutionEnabled;
     private bool captionBackgroundEnabled = true;
     private OneSegCaptionPositionOption selectedCaptionPosition;
     private string currentProgramTitle = "番組情報を受信待ち";
@@ -114,6 +115,8 @@ internal sealed partial class OneSegViewModel : ObservableObject
     public Action? StopScanRequested { get; set; }
     public Action<OneSegStation>? StationSelectionRequested { get; set; }
     public Action<int>? AudioTrackSelectionRequested { get; set; }
+    public Action? VideoOutputChanged { get; set; }
+    public Action<bool>? VideoSuperResolutionChanged { get; set; }
     public Action? CaptionSettingsChanged { get; set; }
     public Action<bool>? EmergencyNotificationsChanged { get; set; }
 
@@ -326,6 +329,15 @@ internal sealed partial class OneSegViewModel : ObservableObject
     }
     public Visibility CaptionVisibility => CaptionsEnabled && !string.IsNullOrWhiteSpace(Caption)
         ? Visibility.Visible : Visibility.Collapsed;
+    public bool VideoSuperResolutionEnabled
+    {
+        get => videoSuperResolutionEnabled;
+        set
+        {
+            if (SetProperty(ref videoSuperResolutionEnabled, value) && !synchronizingSelection)
+                VideoSuperResolutionChanged?.Invoke(value);
+        }
+    }
     public bool CaptionsEnabled
     {
         get => captionsEnabled;

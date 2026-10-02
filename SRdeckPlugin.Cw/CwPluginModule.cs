@@ -15,7 +15,7 @@ namespace SRdeckPlugin.Cw;
 public sealed partial class CwPluginModule : PluginModuleBase, IPluginChannelBlockConsumer,
     IPluginViewProvider, IFrequencyOverlayProvider, IPluginResultProvider,
     IPluginProcessingDiagnosticsProvider, IPluginProcessingWarmup,
-    IWaterfallAnnotationProvider, IWaterfallDisplayProvider
+    IWaterfallAnnotationProvider, IWaterfallDisplayProvider, IPluginExportProvider
 {
     public const string ChannelRequestId = "cw-skimmer-10khz";
     public const long DefaultCenterFrequencyHz = 7_030_000;
@@ -38,12 +38,14 @@ public sealed partial class CwPluginModule : PluginModuleBase, IPluginChannelBlo
         new(StringComparer.Ordinal);
     private readonly List<CwWaterfallCharacter> waterfallCharacters = [];
     private readonly PackedIqHistoryBuffer pretriggerBuffer = new(CaptureDurationSeconds);
+    private PluginJsonLinesHistoryWriter<CwDecodeResult>? historyWriter;
     private CwSettings settings = new();
     private long centerFrequencyHz = DefaultCenterFrequencyHz;
     private long audioSequence;
     private double monitorAudioPhase;
     private float monitorPower;
     private float monitorGain = 1f;
+    private byte[] monitorPcmBuffer = [];
     private long nextDiagnosticsTick;
     private long nextWaterfallAnnotationId;
     private IqBlockMetadata? lastCaptureMetadata;
@@ -84,7 +86,7 @@ public sealed partial class CwPluginModule : PluginModuleBase, IPluginChannelBlo
          PluginCapabilities.ChannelIqConsumer | PluginCapabilities.AudioProducer |
          PluginCapabilities.MainView |
          PluginCapabilities.SettingsView | PluginCapabilities.FrequencyOverlay |
-         PluginCapabilities.ResultPublisher | PluginCapabilities.Headless |
+         PluginCapabilities.ResultPublisher | PluginCapabilities.Export | PluginCapabilities.Headless |
          PluginCapabilities.WaterfallAnnotation | PluginCapabilities.WaterfallDisplay,
         "SRdeck",
         "GPL-3.0");
@@ -158,6 +160,12 @@ public sealed partial class CwPluginModule : PluginModuleBase, IPluginChannelBlo
     public event EventHandler? WaterfallAnnotationsChanged;
     public event EventHandler<PluginResultPublishedEventArgs>? ResultPublished;
 
+    public IReadOnlyList<PluginExportFormat> ExportFormats { get; } =
+    [
+        new("json", "JSON", ".json", "application/json"),
+        new("csv", "CSV", ".csv", "text/csv")
+    ];
+
     public FrameworkElement CreateMainView() => new CwPluginView { DataContext = viewModel };
     public FrameworkElement CreateSettingsView() => new CwSettingsView { DataContext = viewModel };
 
@@ -182,6 +190,7 @@ public sealed partial class CwPluginModule : PluginModuleBase, IPluginChannelBlo
         }
 
         hostContext.Tuning.AppliedConfigurationChanged += HandleAppliedConfigurationChanged;
+        historyWriter = CreateHistoryWriter(hostContext);
 
         long initialCenter = ResolveCenterFrequency(hostContext.Tuning.Current, settings.CenterFrequencyHz);
         Volatile.Write(ref centerFrequencyHz, initialCenter);
@@ -365,7 +374,7 @@ public sealed partial class CwPluginModule : PluginModuleBase, IPluginChannelBlo
         return ValueTask.CompletedTask;
     }
 
-    protected override ValueTask OnDisposeAsync(IPluginHostContext? hostContext)
+    protected override async ValueTask OnDisposeAsync(IPluginHostContext? hostContext)
     {
         receiver.TextDecoded -= OnTextDecoded;
         if (hostContext is not null)
@@ -381,6 +390,10 @@ public sealed partial class CwPluginModule : PluginModuleBase, IPluginChannelBlo
         lock (resultGate)
             waterfallCharacters.Clear();
         WaterfallAnnotationsChanged?.Invoke(this, EventArgs.Empty);
-        return ValueTask.CompletedTask;
+        if (historyWriter is not null)
+        {
+            await historyWriter.DisposeAsync().ConfigureAwait(false);
+            historyWriter = null;
+        }
     }
 }

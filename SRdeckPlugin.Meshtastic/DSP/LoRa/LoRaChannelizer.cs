@@ -141,8 +141,10 @@ internal sealed class LoRaChannelizer
                                                    (double)Math.Max(1, _inputSampleRateHz)) + 2);
         for (int n = 0; n < count; n++)
         {
-            double sampleI = inputI[n] * (1.0 / 32768.0);
-            double sampleQ = inputQ[n] * (1.0 / 32768.0);
+            // Mixing and CIC quantization both use ADC units; the former
+            // /32768 and *32768 cancel exactly. Keep the float rounding.
+            double sampleI = inputI[n];
+            double sampleQ = inputQ[n];
             float mixedI = (float)((sampleI * _oscillatorI) - (sampleQ * _oscillatorQ));
             float mixedQ = (float)((sampleI * _oscillatorQ) + (sampleQ * _oscillatorI));
 
@@ -163,8 +165,8 @@ internal sealed class LoRaChannelizer
             // A CIC integrator may wrap indefinitely. Two's-complement modular
             // arithmetic preserves the final comb result as long as that result
             // fits in Int64, which it does for 16-bit IQ and this decimation.
-            long fixedI = (long)(mixedI * 32768.0f);
-            long fixedQ = (long)(mixedQ * 32768.0f);
+            long fixedI = (long)mixedI;
+            long fixedQ = (long)mixedQ;
             unchecked
             {
                 _cicIntegrator1I += fixedI;

@@ -416,7 +416,7 @@
                             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                             <Border Margin="8,6" Padding="4">
                                 <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextDimBrush}" FontSize="10">
-                                    <Run Text="表示機体数: "/><Run Text="{Binding MapMarkers.Count, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"/><Run Text=" 機　|　位置情報源: ACARS Position Report レポート復号"/>
+                                    <Run Text="表示機体数: "/><Run Text="{Binding MapMarkers.Count, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"/><Run Text=" 機　|　地図保持: 直近"/><Run Text="{Binding RetentionMinutes, Mode=OneWay}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"/><Run Text="分　|　位置情報源: ACARS Position Report レポート復号"/>
                                 </TextBlock>
                             </Border>
                             <Border Grid.Row="1" Margin="4" Background="{DynamicResource PanelBaseBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="2" ClipToBounds="True">

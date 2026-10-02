@@ -31,7 +31,9 @@ public sealed partial class CwPluginModule
         }
         if (annotationsAdded) WaterfallAnnotationsChanged?.Invoke(this, EventArgs.Empty);
         context?.Dispatcher.Post(() => viewModel.Apply(result));
-        if (!result.AppendedText.Contains(' ')) return;
+        if (result.IsSentenceBoundary || result.IsFinal)
+            AppendHistory(result);
+        if (!result.AppendedText.Contains(' ') || result.Confidence < 0.35) return;
 
         foreach (string callsign in CwCallsignExtractor.Extract(result.Text))
         {
@@ -214,16 +216,32 @@ public sealed partial class CwPluginModule
             MonitorTimeConstant(0.005, sampleRateHz);
         float monitorGainReleaseCoefficient =
             MonitorTimeConstant(0.100, sampleRateHz);
-        double phaseStep = 2 * Math.PI * MonitorAudioCenterHz /
+        // Translate the selected skimmer track to a comfortable sidetone.
+        // Falling back to zero preserves the previous whole-passband monitor
+        // when no row has been selected yet.
+        double selectedOffsetHz = viewModel.SelectedMonitorOffsetHz ?? 0;
+        double phaseStep = 2 * Math.PI * (MonitorAudioCenterHz - selectedOffsetHz) /
             sampleRateHz;
-        byte[] pcm = new byte[samples.Length * sizeof(short)];
+        // Re-anchor each block to bound oscillator drift while avoiding
+        // trigonometric functions for every sample.
+        double oscillatorReal = Math.Cos(phase);
+        double oscillatorImaginary = Math.Sin(phase);
+        double stepReal = Math.Cos(phaseStep);
+        double stepImaginary = Math.Sin(phaseStep);
+        int byteCount = samples.Length * sizeof(short);
+        if (monitorPcmBuffer.Length < byteCount)
+            monitorPcmBuffer = new byte[byteCount];
+        byte[] pcm = monitorPcmBuffer;
         for (int index = 0; index < samples.Length; index++)
         {
             Complex32 sample = samples[index];
-            float raw = sample.I * (float)Math.Cos(phase) -
-                        sample.Q * (float)Math.Sin(phase);
-            phase += phaseStep;
-            if (phase >= 2 * Math.PI) phase -= 2 * Math.PI;
+            float raw = sample.I * (float)oscillatorReal -
+                        sample.Q * (float)oscillatorImaginary;
+            double nextReal = oscillatorReal * stepReal -
+                oscillatorImaginary * stepImaginary;
+            oscillatorImaginary = oscillatorImaginary * stepReal +
+                oscillatorReal * stepImaginary;
+            oscillatorReal = nextReal;
             if (!float.IsFinite(raw))
             {
                 power = 0;
@@ -290,7 +308,7 @@ public sealed partial class CwPluginModule
             BinaryPrimitives.WriteInt16LittleEndian(
                 pcm.AsSpan(index * sizeof(short), sizeof(short)), value);
         }
-        monitorAudioPhase = phase;
+        monitorAudioPhase = (phase + phaseStep * samples.Length) % (2 * Math.PI);
         monitorPower = power;
         monitorGain = gain;
 
@@ -301,7 +319,8 @@ public sealed partial class CwPluginModule
             metadata.Configuration.OutputSampleRateHz,
             1,
             PcmSampleFormat.Signed16LittleEndian,
-            pcm,
+            // The sink copies the submitted samples before returning.
+            pcm.AsMemory(0, byteCount),
             discontinuous));
     }
 
@@ -310,6 +329,7 @@ public sealed partial class CwPluginModule
         monitorAudioPhase = 0;
         monitorPower = 0;
         monitorGain = 1f;
+        monitorPcmBuffer = [];
     }
 
     private static float MonitorTimeConstant(double seconds, double sampleRateHz) =>

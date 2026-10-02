@@ -11,4 +11,6 @@ public sealed record CwDecodeResult(
     string AppendedText,
     string Text,
     bool IsFinal = false,
-    bool IsSentenceBoundary = false);
+    bool IsSentenceBoundary = false,
+    CwLanguage Language = CwLanguage.Western,
+    double Confidence = 1);

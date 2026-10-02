@@ -9,6 +9,13 @@ namespace SRdeckPlugin.Meshtastic.Services;
 
 public sealed partial class MeshtasticReceiveService
 {
+    private static readonly ParallelOptions ChannelReceiverParallelOptions = new()
+    {
+        // Avoid saturating small CPUs with channel search so the UI, spectrum
+        // FFT, and other streaming work have scheduling headroom.
+        MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2)
+    };
+
     private void ProcessBlocks()
     {
         long sequence = -1, sampleStart = -1;
@@ -57,7 +64,7 @@ public sealed partial class MeshtasticReceiveService
                                 detectionTicks = timing.DetectionTicks;
                             }
                             else
-                                Parallel.ForEach(_channelReceivers, receiver =>
+                                Parallel.ForEach(_channelReceivers, ChannelReceiverParallelOptions, receiver =>
                                 {
                                     LoRaChannelizerTiming timing = ProcessChannelReceiver(
                                         receiver, block, discontinuity, configurationChanged);

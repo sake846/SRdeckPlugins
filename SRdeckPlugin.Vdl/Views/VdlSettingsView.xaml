@@ -92,9 +92,9 @@
                                 <TextBlock Text="最大表示機数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                                 <TextBox Grid.Column="1" Text="{Binding MaximumAircraft, UpdateSourceTrigger=LostFocus}" Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
                                 <TextBlock Grid.Column="2" Text="Callsign一覧に同時に保持する最大機数" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Row="1" Text="機体非表示時間（分）" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
+                                <TextBlock Grid.Row="1" Text="地図保持時間（分）" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                                 <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding RetentionMinutes, UpdateSourceTrigger=LostFocus}" Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
-                                <TextBlock Grid.Row="1" Grid.Column="2" Text="電波途絶から一覧から消去するまでの時間" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="地図上に機体を表示・保持する時間（一覧は上限機数まで保持）" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
                                 <TextBlock Grid.Row="2" Text="航跡保持点数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
                                 <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding MaximumTrailPoints, UpdateSourceTrigger=LostFocus}" Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" />
                                 <TextBlock Grid.Row="2" Grid.Column="2" Text="地図上に保持する航跡点数（ディスク履歴とは別）" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" />
@@ -105,6 +105,7 @@
                              <controls:PluginResetView Grid.Row="3" />
                              <TextBlock Grid.Row="4" Text="過去録音" Style="{DynamicResource PluginSettingsSectionHeaderStyle}" />
                              <Grid Grid.Row="5" Style="{DynamicResource PluginSettingsActionRowStyle}">
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -114,9 +115,12 @@
                                            Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,0,16,0" />
                                 <Button Grid.Column="1" Content="IQ 録音 (直前3秒)" Command="{Binding TriggerCaptureCommand}"
                                         Style="{DynamicResource PluginButtonStyle}" Width="130" />
-                                <TextBlock Grid.Column="2" Text="{Binding CaptureStatus}" Style="{DynamicResource PluginSettingsActionStatusStyle}"
-                                           VerticalAlignment="Center" Margin="10,0,0,0" />
-                            </Grid>
+                                 <TextBlock Grid.Column="2" Text="{Binding CaptureStatus}" Style="{DynamicResource PluginSettingsActionStatusStyle}"
+                                            VerticalAlignment="Center" Margin="10,0,0,0" />
+                                <TextBlock Grid.Row="1" Text="保存したIQ WAVを受信時と同じプラグインで再生します。" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,6,16,0" />
+                                <Button Grid.Row="1" Grid.Column="1" Style="{DynamicResource PluginIqPlaybackButtonStyle}" Margin="0,6,0,0" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Style="{DynamicResource PluginIqPlaybackStatusStyle}" Margin="10,6,0,0" />
+                             </Grid>
                         </Grid>
                     </ScrollViewer>
                 </TabItem>

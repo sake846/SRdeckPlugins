@@ -16,6 +16,13 @@ Stable plugin ID: `cw`. 10/20/50 kHz multi-signal CW skimmer with adaptive Morse
 - Monitor audio generation for selected signals.
 - Rolling 10-second IQ pre-trigger capture.
 - JSONL history persistence and CSV/JSON export.
+- Selected-carrier monitor audio translated to an 800 Hz sidetone.
+- Character timing confidence and active-language metadata.
+
+History records are committed at sentence boundaries or when a signal track ends;
+retention follows the configured maximum row count. In Wabun mode, kana takes
+precedence where a code overlaps an International Morse digit (for example,
+SE/1); switch back to Western mode before sending a numeric group.
 
 ## Build
 

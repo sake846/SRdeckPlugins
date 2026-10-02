@@ -20,48 +20,90 @@ public sealed partial class AcarsViewModel
         OnPropertyChanged(nameof(LastReceptionText));
         ValidFrames = valid;
         RejectedFrames = rejected;
-        if (AcarsPositionParser.TryParseWithAltitude(reception.Text, out double latitude, out double longitude, out int? altitudeFeet))
+        DateTimeOffset cutoff = DateTimeOffset.Now.AddMinutes(-RetentionMinutes);
+        bool markerUpdated = false;
+        if (reception.ReceivedAt >= cutoff &&
+            AcarsPositionParser.TryParseWithAltitude(reception.Text, out double latitude, out double longitude, out int? altitudeFeet))
         {
-            string aircraft = string.IsNullOrWhiteSpace(reception.Aircraft) ? "機体不明" : reception.Aircraft;
-            mapMarkersByAircraft.TryGetValue(aircraft, out GeoMapMarker? previous);
-            List<GeoMapPoint> trail = previous?.Trail?.ToList() ?? [];
-            double? heading = previous?.HeadingDegrees;
-            string markerColor = GetAltitudeBandColor(altitudeFeet);
-
-            if (previous is null)
-                trail.Add(new(latitude, longitude, markerColor));
-            else if (HasMoved(previous.Latitude, previous.Longitude, latitude, longitude))
-            {
-                heading = InitialBearing(previous.Latitude, previous.Longitude, latitude, longitude);
-                trail.Add(new(latitude, longitude, markerColor));
-                if (trail.Count > MaximumTrailPoints)
-                    trail.RemoveRange(0, trail.Count - MaximumTrailPoints);
-            }
-
-            string altText = altitudeFeet.HasValue ? $"{altitudeFeet.Value:N0} ft" : "高度不明";
-            mapMarkersByAircraft[aircraft] = new(aircraft, latitude, longitude, aircraft,
-                $"Label {reception.Label} / {reception.ReceivedAt:HH:mm:ss} / 高度: {altText} / {reception.Text}",
-                markerColor, heading, trail.ToArray(), "aircraft", true);
-            MapMarkers.Clear();
-            foreach (GeoMapMarker marker in mapMarkersByAircraft.Values) MapMarkers.Add(marker);
-            OnPropertyChanged(nameof(PositionedAircraftCount));
+            UpdateMapMarker(reception, latitude, longitude, altitudeFeet);
+            markerUpdated = true;
         }
+        PruneMapMarkers(cutoff, forceRefresh: markerUpdated);
         RebuildCategories();
         RefreshFilteredHistory();
     }
 
+    private void UpdateMapMarker(AcarsReception reception, double latitude, double longitude, int? altitudeFeet)
+    {
+        string aircraft = AcarsReception.NormalizeRegistration(reception.Aircraft);
+        mapMarkersByAircraft.TryGetValue(aircraft, out var previousEntry);
+        GeoMapMarker? previous = previousEntry.Marker;
+        List<GeoMapPoint> trail = previous?.Trail?.ToList() ?? [];
+        double? heading = previous?.HeadingDegrees;
+        string markerColor = GetAltitudeBandColor(altitudeFeet);
+
+        if (previous is null)
+            trail.Add(new(latitude, longitude, markerColor));
+        else if (HasMoved(previous.Latitude, previous.Longitude, latitude, longitude))
+        {
+            heading = InitialBearing(previous.Latitude, previous.Longitude, latitude, longitude);
+            trail.Add(new(latitude, longitude, markerColor));
+            if (trail.Count > MaximumTrailPoints)
+                trail.RemoveRange(0, trail.Count - MaximumTrailPoints);
+        }
+
+        string altText = altitudeFeet.HasValue ? $"{altitudeFeet.Value:N0} ft" : "高度不明";
+        var marker = new GeoMapMarker(aircraft, latitude, longitude, aircraft,
+            $"Label {reception.Label} / {reception.ReceivedAt:HH:mm:ss} / 高度: {altText} / {reception.Text}",
+            markerColor, heading, trail.ToArray(), "aircraft", true);
+        mapMarkersByAircraft[aircraft] = (marker, reception.ReceivedAt);
+    }
+
+    private void PruneMapMarkers(DateTimeOffset cutoff, bool forceRefresh = false)
+    {
+        bool changed = forceRefresh;
+        foreach (var (id, entry) in mapMarkersByAircraft.ToArray())
+        {
+            if (entry.LastReceivedAt < cutoff)
+            {
+                mapMarkersByAircraft.Remove(id);
+                changed = true;
+            }
+        }
+        if (changed || MapMarkers.Count != mapMarkersByAircraft.Count)
+        {
+            MapMarkers.Clear();
+            foreach (var entry in mapMarkersByAircraft.Values) MapMarkers.Add(entry.Marker);
+            OnPropertyChanged(nameof(PositionedAircraftCount));
+        }
+    }
+
+    private void RebuildMapMarkers()
+    {
+        DateTimeOffset cutoff = DateTimeOffset.Now.AddMinutes(-RetentionMinutes);
+        mapMarkersByAircraft.Clear();
+        foreach (AcarsReception msg in Messages.Where(m => m.ReceivedAt >= cutoff).Reverse())
+        {
+            if (AcarsPositionParser.TryParseWithAltitude(msg.Text, out double lat, out double lon, out int? alt))
+            {
+                UpdateMapMarker(msg, lat, lon, alt);
+            }
+        }
+        PruneMapMarkers(cutoff, forceRefresh: true);
+    }
+
     private void TrimTrails()
     {
-        foreach (GeoMapMarker marker in mapMarkersByAircraft.Values.ToArray())
+        foreach (var (id, entry) in mapMarkersByAircraft.ToArray())
         {
-            if (marker.Trail is null || marker.Trail.Count <= maximumTrailPoints) continue;
-            mapMarkersByAircraft[marker.Id] = marker with
+            if (entry.Marker.Trail is null || entry.Marker.Trail.Count <= maximumTrailPoints) continue;
+            mapMarkersByAircraft[id] = (entry.Marker with
             {
-                Trail = marker.Trail.Skip(marker.Trail.Count - maximumTrailPoints).ToArray()
-            };
+                Trail = entry.Marker.Trail.Skip(entry.Marker.Trail.Count - maximumTrailPoints).ToArray()
+            }, entry.LastReceivedAt);
         }
         MapMarkers.Clear();
-        foreach (GeoMapMarker marker in mapMarkersByAircraft.Values) MapMarkers.Add(marker);
+        foreach (var entry in mapMarkersByAircraft.Values) MapMarkers.Add(entry.Marker);
         OnPropertyChanged(nameof(PositionedAircraftCount));
     }
 

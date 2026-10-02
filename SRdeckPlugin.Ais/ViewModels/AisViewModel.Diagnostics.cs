@@ -40,21 +40,7 @@ public sealed partial class AisViewModel
         RefreshFilteredTargets();
         OnPropertyChanged(nameof(RecentTargets));
 
-        MapMarkers.Clear();
-        foreach (AisTargetRow row in Targets.Where(item => item.Latitude is not null && item.Longitude is not null))
-        {
-            string color = row.IsAidToNavigation ? AisMapPresentation.AidToNavigationColor :
-                row.NavigationStatus is 1 or 5 ? AisMapPresentation.AnchoredVesselColor : AisMapPresentation.VesselColor;
-            List<GeoMapPoint> trail = GetUpdatedTrail(row, color);
-            double? heading = row.HeadingDegrees is int trueHeading && trueHeading is >= 0 and < 360
-                ? trueHeading
-                : row.CourseDegrees;
-            MapMarkers.Add(new(row.MmsiText, row.Latitude!.Value, row.Longitude!.Value,
-                string.IsNullOrWhiteSpace(row.DisplayName) ? row.MmsiText : row.DisplayName,
-                $"{row.MmsiText} / {row.SpeedKnots:F1} kt / {row.CourseDegrees:F1}° / {row.NavigationStatusText}",
-                color, heading, trail.ToArray(), row.IsBaseStation || row.IsAidToNavigation ? "station" : "vessel"));
-        }
-        OnPropertyChanged(nameof(PositionedTargetCount));
+        RefreshMapMarkers();
 
         ValidFrames = channelA.ValidFrames + channelB.ValidFrames;
         RejectedFrames = channelA.RejectedFrames + channelB.RejectedFrames;
@@ -146,6 +132,29 @@ public sealed partial class AisViewModel
         sampleRateHz >= 1_000_000
             ? $"{sampleRateHz / 1_000_000.0:F3} MS/s"
             : $"{sampleRateHz / 1_000.0:N1} kS/s";
+
+    public void RefreshMapMarkers()
+    {
+        DateTimeOffset cutoff = DateTimeOffset.Now.AddMinutes(-retentionMinutes);
+        MapMarkers.Clear();
+        foreach (AisTargetRow row in Targets.Where(item => item.Latitude is not null && item.Longitude is not null && item.LastSeen >= cutoff))
+        {
+            string color = row.IsAidToNavigation ? AisMapPresentation.AidToNavigationColor :
+                row.NavigationStatus is 1 or 5 ? AisMapPresentation.AnchoredVesselColor : AisMapPresentation.VesselColor;
+            List<GeoMapPoint> trail = GetUpdatedTrail(row, color);
+            double? heading = row.HeadingDegrees is int trueHeading && trueHeading is >= 0 and < 360
+                ? trueHeading
+                : row.CourseDegrees;
+            MapMarkers.Add(new(row.MmsiText, row.Latitude!.Value, row.Longitude!.Value,
+                string.IsNullOrWhiteSpace(row.DisplayName) ? row.MmsiText : row.DisplayName,
+                $"{row.MmsiText} / {row.SpeedKnots:F1} kt / {row.CourseDegrees:F1}° / {row.NavigationStatusText}",
+                color, heading, trail.ToArray(), row.IsBaseStation || row.IsAidToNavigation ? "station" : "vessel"));
+        }
+        var activeMapMmsis = MapMarkers.Select(m => uint.TryParse(m.Id, out uint id) ? id : 0).ToHashSet();
+        foreach (uint stale in trails.Keys.Where(item => !activeMapMmsis.Contains(item)).ToArray())
+            trails.Remove(stale);
+        OnPropertyChanged(nameof(PositionedTargetCount));
+    }
 
     private List<GeoMapPoint> GetUpdatedTrail(AisTargetRow row, string color)
     {

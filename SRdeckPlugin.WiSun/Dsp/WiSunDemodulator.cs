@@ -39,11 +39,10 @@ public sealed partial class WiSunDemodulator
     private const int MaximumFrameSamples =
         (MaximumCapturedPreambleBytes * 8 + SfdBitCount + PhrBitCount + MaximumPsduLength * 8) *
         SamplesPerBit;
-    // Covers one maximum frame, the synchronization history retained behind
-    // the scan cursor, and the deferred-trim slack. The current input block is
-    // added with EnsureCapacity before samples are appended.
+    // Start at a quarter of the maximum frame/history/trim envelope. Two
+    // geometric growth steps cover it without reserving it on every channel.
     internal const int InitialSampleBufferCapacity =
-        MaximumFrameSamples + RetainedHistorySamples + SampleTrimThreshold + 1;
+        (MaximumFrameSamples + RetainedHistorySamples + SampleTrimThreshold + 4) / 4;
     private const int Pn9Seed = 0x1FF;
     private const double MinimumTrackedSamplesPerBit = 7.5;
     private const double MaximumTrackedSamplesPerBit = 8.5;

@@ -16,7 +16,7 @@ public sealed class Ft8Codec
     private const uint Tokens = 2_063_592;
     private const ushort MaxGrid4 = 32_400;
     private readonly Dictionary<uint, string> callsigns = [];
-    // Each variable belongs to three parity checks.  The normalized min-sum
+    // Each variable belongs to three parity checks.  The sum-product
     // schedule below uses one directed value per edge in each direction.
     private readonly float[] variableToCheck = new float[CodewordBits * 3];
     private readonly float[] checkToVariable = new float[CodewordBits * 3];
@@ -338,6 +338,7 @@ public sealed class Ft8Codec
 
     private int DecodeLdpc(ReadOnlySpan<float> channel, int maximumIterations, Span<byte> plain)
     {
+        Span<float> tanhValues = stackalloc float[CodewordBits * 3];
         for (int edge = 0; edge < variableToCheck.Length; edge++)
             variableToCheck[edge] = channel[edge / 3];
 
@@ -346,6 +347,10 @@ public sealed class Ft8Codec
         {
             // Check-node update for the sum-product decoder.  Values use the
             // log(P(bit=1)/P(bit=0)) convention adopted by this receiver.
+            // Each edge contributes to several destinations; evaluate Tanh once
+            // per iteration while preserving the original product order.
+            for (int edge = 0; edge < variableToCheck.Length; edge++)
+                tanhValues[edge] = MathF.Tanh(-0.5f * variableToCheck[edge]);
             foreach (int[] checkEdges in EdgesByCheck)
             {
                 foreach (int destination in checkEdges)
@@ -354,7 +359,7 @@ public sealed class Ft8Codec
                     foreach (int source in checkEdges)
                     {
                         if (source == destination) continue;
-                        product *= MathF.Tanh(-0.5f * variableToCheck[source]);
+                        product *= tanhValues[source];
                     }
                     product = Math.Clamp(product, -0.999999f, 0.999999f);
                     checkToVariable[destination] = -MathF.Log((1 + product) / (1 - product));
