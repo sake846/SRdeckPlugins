@@ -254,7 +254,6 @@ public sealed partial class AnalogPluginModule
             if (settings is not null && SupportedProfiles.Any(profile => profile.Id == settings.ProfileId))
             {
                 _selectedProfileId = settings.ProfileId;
-                float squelchDbm = settings.SquelchThresholdDbm ?? settings.SquelchThresholdDbfs ?? -80f;
                 _receiverOptions = ValidateOptions(new AnalogReceiverOptions(
                     settings.FrequencyHz,
                     settings.StepHz,
@@ -262,7 +261,7 @@ public sealed partial class AnalogPluginModule
                     settings.IsReceiverEnabled,
                     settings.IsMuted,
                     settings.IsSquelchEnabled,
-                    squelchDbm,
+                    settings.SquelchThresholdDbm,
                     settings.IsAfcEnabled,
                     settings.IsLowerSideband,
                     settings.IsStereoEnabled,
@@ -336,12 +335,11 @@ public sealed partial class AnalogPluginModule
         bool IsReceiverEnabled = true,
         bool IsMuted = false,
         bool IsSquelchEnabled = false,
-        float? SquelchThresholdDbm = null,
+        float SquelchThresholdDbm = -80f,
         bool IsAfcEnabled = true,
         bool IsLowerSideband = false,
         bool IsStereoEnabled = true,
-        bool IsSsbCarrierFrequency = false,
-        float? SquelchThresholdDbfs = null);
+        bool IsSsbCarrierFrequency = false);
 
     public async ValueTask ResetSettingsAsync()
     {

@@ -244,18 +244,10 @@ public sealed partial class AisViewModel : ObservableObject
             float normalized = Math.Clamp(value, -160f, 0f);
             if (SetProperty(ref squelchThresholdDbm, normalized))
             {
-                OnPropertyChanged(nameof(SquelchThresholdDbfs));
                 SettingsUpdated();
             }
         }
     }
-
-    public float SquelchThresholdDbfs
-    {
-        get => SquelchThresholdDbm;
-        set => SquelchThresholdDbm = value;
-    }
-
 
     internal void SynchronizeSettings(int targetLimit, int retention, int historyLimit, int trailPoints,
         bool audioEnabled, int audioVolume, bool isSquelchEnabled = true,
@@ -284,7 +276,6 @@ public sealed partial class AisViewModel : ObservableObject
         OnPropertyChanged(nameof(MonitorAudioVolume));
         OnPropertyChanged(nameof(SquelchEnabled));
         OnPropertyChanged(nameof(SquelchThresholdDbm));
-        OnPropertyChanged(nameof(SquelchThresholdDbfs));
         OnPropertyChanged(nameof(DemodulationGateEnabled));
         OnPropertyChanged(nameof(SettingStatus));
     }

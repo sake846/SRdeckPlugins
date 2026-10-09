@@ -139,16 +139,8 @@ public sealed partial class HfdlPluginModule
     public static GroundStation StationFor(Channel channel) =>
         GroundStations.First(station => station.Id == channel.GroundStationId);
 
-    public static string NormalizeChannelId(string? channelId) => channelId switch
-    {
-        "tokyo-6559" => "gs01-6559",
-        "tokyo-10066" => DefaultChannelId,
-        "tokyo-11384" => "gs07-11384",
-        "tokyo-17916" => "gs05-17916",
-        "tokyo-21937" => "gs02-21937",
-        _ when channelId is not null && Channels.Any(channel => channel.Id == channelId) => channelId,
-        _ => DefaultChannelId
-    };
+    public static string NormalizeChannelId(string? channelId) =>
+        Channels.Any(channel => channel.Id == channelId) ? channelId! : DefaultChannelId;
 
     public static DateTimeOffset GetStationSolarTime(GroundStation station, DateTimeOffset utcNow) =>
         utcNow.ToUniversalTime().AddHours(station.Longitude / 15.0);

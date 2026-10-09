@@ -126,16 +126,9 @@ public sealed partial class WiSunViewModel
             {
                 _squelchThresholdDbm = Math.Clamp(value, -160.0f, 0.0f);
                 OnPropertyChanged();
-                OnPropertyChanged(nameof(SquelchThresholdDbfs));
                 ApplySettings();
             }
         }
-    }
-
-    public float SquelchThresholdDbfs
-    {
-        get => SquelchThresholdDbm;
-        set => SquelchThresholdDbm = value;
     }
 
     partial void OnIsReceiverEnabledChanged(bool value)

@@ -157,8 +157,6 @@ public sealed partial class AisPluginModule : PluginModuleBase, IPluginChannelBl
             try
             {
                 settings = (JsonSerializer.Deserialize<AisSettings>(document.Json) ?? new()).Normalize();
-                if (!document.Json.Contains("\"MaximumHistory\"", StringComparison.OrdinalIgnoreCase))
-                    settings = settings with { MaximumHistory = Math.Clamp(settings.MaximumTargets * 4, 2_000, 1_000_000) };
             }
             catch (JsonException exception)
             {

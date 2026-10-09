@@ -33,7 +33,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="Wi-SUN 920 MHz / IEEE 802.15.4g SUN FSK"
-                               Foreground="{DynamicResource TextDimBrush}" Margin="0,0,8,0"
+                               Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,8,0"
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                     <CheckBox Grid.Column="1" Content="受信有効" IsChecked="{Binding IsReceiverEnabled}"
                                Style="{DynamicResource PluginCheckBoxStyle}"

@@ -23,14 +23,10 @@ public sealed record Ft8Settings(
 {
     public Ft8Settings Normalize()
     {
-        string normalizedBandId = SelectedBandId.StartsWith("band-", StringComparison.Ordinal)
-            ? $"ft8-{SelectedBandId}"
-            : SelectedBandId;
-        Ft8Band selectedBand = Ft8PluginModule.Bands.FirstOrDefault(item => item.Id == normalizedBandId)
+        Ft8Band selectedBand = Ft8PluginModule.Bands.FirstOrDefault(item => item.Id == SelectedBandId)
             ?? Ft8PluginModule.Bands.First(item => item.Id == Ft8PluginModule.DefaultBandId);
         string[] additionalBandIds = (AdditionalBandIds ?? [])
             .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Select(id => id.StartsWith("band-", StringComparison.Ordinal) ? $"ft8-{id}" : id)
             .Where(id => !string.Equals(id, selectedBand.Id, StringComparison.Ordinal))
             .Where(id => Ft8PluginModule.Bands.Any(item =>
                 item.Id == id && item.Mode == selectedBand.Mode))

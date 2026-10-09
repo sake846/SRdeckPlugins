@@ -16,11 +16,6 @@ public sealed record AisSettings(
     string ChannelFilter = "both",
     bool DemodulationGateEnabled = false)
 {
-    public float SquelchThresholdDbfs
-    {
-        get => SquelchThresholdDbm;
-        init => SquelchThresholdDbm = value <= -50f ? value : (value - 80f);
-    }
     public AisSettings Normalize() => new(
         Math.Clamp(MaximumTargets, 50, 10_000),
         Math.Clamp(RetentionMinutes, 1, 1440),

@@ -17,11 +17,6 @@ public sealed record WiSunSettings
     public long FrequencyHz { get; init; } = 922_400_000;
     public long FrequencyStepHz { get; init; } = 200_000;
     public float SquelchThresholdDbm { get; init; } = -125.0f;
-    public float SquelchThresholdDbfs
-    {
-        get => SquelchThresholdDbm;
-        init => SquelchThresholdDbm = value <= -60.0f ? value : (value - 80.0f);
-    }
     public bool IsReceiverEnabled { get; init; } = true;
     public WiSunPhyProfile PhyProfile { get; init; } = WiSunPhyProfile.FanMode1b;
     public int[] FanChannels { get; init; } = [9];

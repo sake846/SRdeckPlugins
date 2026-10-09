@@ -9,14 +9,14 @@ using SRdeckPlugin.Wpf;
 namespace SRdeckPlugin.Meshtastic.Services;
 
 internal sealed record PersistedPluginSettings(
-    MeshtasticRegion Region,
-    MeshtasticModemPreset ModemPreset,
-    bool IsDiscoveryMode,
-    int RadioChannel,
-    string RadioChannels250,
-    string RadioChannels125,
-    int HistoryDisplayLimit,
-    int HistoryRetentionDays,
+    MeshtasticRegion Region = MeshtasticRegion.JP,
+    MeshtasticModemPreset ModemPreset = MeshtasticModemPreset.LongFast,
+    bool IsDiscoveryMode = true,
+    int RadioChannel = MeshtasticJpLongFastProfile.DefaultChannel,
+    string RadioChannels250 = "",
+    string RadioChannels125 = "",
+    int HistoryDisplayLimit = 10_000,
+    int HistoryRetentionDays = 90,
     MeshtasticModemPreset LastSpecifiedModemPreset = MeshtasticModemPreset.LongFast,
     GeoMapState? MapState = null,
     bool IsAudioMonitorEnabled = true,
@@ -113,32 +113,10 @@ internal sealed class MeshtasticSettingsService
         }
     }
 
-    private static PersistedPluginSettings CreateDefaults() => new(
-        MeshtasticRegion.JP,
-        MeshtasticModemPreset.LongFast,
-        true,
-        MeshtasticJpLongFastProfile.DefaultChannel,
-        MeshtasticJpLongFastProfile.DefaultChannel.ToString(CultureInfo.InvariantCulture),
-        MeshtasticJpLongFastProfile.DefaultChannel.ToString(CultureInfo.InvariantCulture),
-        10_000,
-        90);
+    private static PersistedPluginSettings CreateDefaults() => Normalize(new());
 
     private static PersistedPluginSettings Normalize(PersistedPluginSettings settings)
     {
-        // An empty object is what System.Text.Json produces for a first-run or
-        // pre-schema document. Treat it as a missing document instead of
-        // letting false/zero defaults reach the ViewModel.
-        if (settings.Region == MeshtasticRegion.JP &&
-            settings.ModemPreset == MeshtasticModemPreset.LongFast &&
-            !settings.IsDiscoveryMode && settings.RadioChannel == 0 &&
-            string.IsNullOrWhiteSpace(settings.RadioChannels250) &&
-            string.IsNullOrWhiteSpace(settings.RadioChannels125) &&
-            settings.HistoryDisplayLimit == 0 && settings.HistoryRetentionDays == 0 &&
-            settings.LastSpecifiedModemPreset == MeshtasticModemPreset.LongFast)
-        {
-            return CreateDefaults();
-        }
-
         MeshtasticRegion region = Enum.IsDefined(settings.Region) ? settings.Region : MeshtasticRegion.JP;
         MeshtasticModemPreset preset = Enum.IsDefined(settings.ModemPreset)
             ? settings.ModemPreset

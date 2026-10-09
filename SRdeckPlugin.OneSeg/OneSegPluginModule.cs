@@ -304,9 +304,6 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
             try
             {
                 settings = JsonSerializer.Deserialize<OneSegSettings>(document.Json) ?? new();
-                if (!document.Json.Contains("\"AutoRecordOnStart\"", StringComparison.OrdinalIgnoreCase) &&
-                    settings.RecordTransportStream)
-                    settings = settings with { AutoRecordOnStart = true };
                 settings = settings.Normalize();
             }
             catch (JsonException exception)
