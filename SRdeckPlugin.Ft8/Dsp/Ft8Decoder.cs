@@ -68,7 +68,13 @@ public sealed partial class Ft8Decoder
         int Candidates,
         int LdpcRejected,
         int CrcRejected,
-        TimeSpan Duration);
+        TimeSpan Duration,
+        bool CandidateLimitReached = false,
+        int CandidatePasses = 1,
+        int? CandidateLimitPerPass = null);
+
+    private sealed record CandidateSelection(List<Candidate> Candidates,
+        bool HasCandidatesBeyondLimit);
 
     public DecodeBatch DecodeSlot(ReadOnlySpan<Complex32> samples, DateTimeOffset slotStart,
         Guid streamId, long channelCenterFrequencyHz, Ft8Settings settings,
@@ -82,12 +88,15 @@ public sealed partial class Ft8Decoder
         CancellationToken cancellationToken)
     {
         if (samples.Length < SlotSamples - SampleRateHz)
-            return new([], 0, 0, 0, TimeSpan.Zero);
+            return new([], 0, 0, 0, TimeSpan.Zero, CandidatePasses: 0);
         var stopwatch = Stopwatch.StartNew();
         Waterfall waterfall = CreateWaterfall(samples);
         WsjtNoiseBaseline? snrBaseline = null;
-        List<Candidate> candidates = FindCandidates(waterfall, settings);
+        CandidateSelection selection = FindCandidates(waterfall, settings);
+        List<Candidate> candidates = selection.Candidates;
         int candidateCount = candidates.Count;
+        bool candidateLimitReached = selection.HasCandidatesBeyondLimit;
+        int candidatePasses = 1;
         var decoded = new List<Ft8Reception>();
         var decodedLocations = new List<DecodedLocation>();
         int ldpcRejected = 0;
@@ -192,6 +201,8 @@ public sealed partial class Ft8Decoder
                 ArrayPool<Complex32>.Shared.Return(residual);
             }
             candidateCount += secondPass.Candidates;
+            candidateLimitReached |= secondPass.CandidateLimitReached;
+            candidatePasses += secondPass.CandidatePasses;
             ldpcRejected += secondPass.LdpcRejected;
             crcRejected += secondPass.CrcRejected;
             foreach (Ft8Reception reception in secondPass.Messages)
@@ -208,7 +219,8 @@ public sealed partial class Ft8Decoder
         }
         stopwatch.Stop();
         return new(decoded.OrderBy(item => item.AudioFrequencyHz).ToArray(),
-            candidateCount, ldpcRejected, crcRejected, stopwatch.Elapsed);
+            candidateCount, ldpcRejected, crcRejected, stopwatch.Elapsed,
+            candidateLimitReached, candidatePasses, settings.MaximumCandidates);
     }
 
     private Waterfall CreateWaterfall(ReadOnlySpan<Complex32> samples)
@@ -248,7 +260,7 @@ public sealed partial class Ft8Decoder
         return new(magnitude, actualBlockCount, binCount, minimumBin);
     }
 
-    private static List<Candidate> FindCandidates(Waterfall waterfall, Ft8Settings settings)
+    private static CandidateSelection FindCandidates(Waterfall waterfall, Ft8Settings settings)
     {
         int maximumCount = TimeOversampling * FrequencyOversampling * 30 * (waterfall.BinCount - 7);
         Candidate[] candidates = ArrayPool<Candidate>.Shared.Rent(maximumCount);
@@ -262,7 +274,7 @@ public sealed partial class Ft8Decoder
         }
     }
 
-    private static List<Candidate> SelectCandidates(Waterfall waterfall, Ft8Settings settings,
+    private static CandidateSelection SelectCandidates(Waterfall waterfall, Ft8Settings settings,
         Span<Candidate> candidates)
     {
         int candidateCount = 0;
@@ -293,6 +305,7 @@ public sealed partial class Ft8Decoder
         // Suppress the dense cluster of adjacent time/frequency hypotheses around
         // each physical signal while keeping differently timed overlapping signals.
         var selected = new List<Candidate>(settings.MaximumCandidates);
+        bool hasCandidatesBeyondLimit = false;
         foreach (Candidate candidate in candidates)
         {
             int timeCoordinate = candidate.TimeOffset * TimeOversampling + candidate.TimeSub;
@@ -312,10 +325,14 @@ public sealed partial class Ft8Decoder
                 break;
             }
             if (overlaps) continue;
+            if (selected.Count == settings.MaximumCandidates)
+            {
+                hasCandidatesBeyondLimit = true;
+                break;
+            }
             selected.Add(candidate);
-            if (selected.Count == settings.MaximumCandidates) break;
         }
-        return selected;
+        return new(selected, hasCandidatesBeyondLimit);
     }
 
     private static int SyncScore(Waterfall waterfall, Candidate candidate)

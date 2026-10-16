@@ -349,6 +349,7 @@ public sealed partial class AcarsViewModel : ObservableObject
                 string.Equals(item.Key, selectedKey, StringComparison.OrdinalIgnoreCase));
         OnPropertyChanged(nameof(ReceivedAircraftCount));
         OnPropertyChanged(nameof(RecentAircraftGroups));
+        RefreshOverview();
     }
 
     private void RefreshFilteredHistory()

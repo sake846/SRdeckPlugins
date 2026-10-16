@@ -6,9 +6,10 @@
 
 SRdeckの公式プラグインをバージョン付きリリーススナップショットとして収録しています。
 
-公開ソーススナップショットには、実行ファイルパッケージ向けの10プラグインと、
-ソース公開のみのMeshtasticおよびワンセグを収録します。MeshtasticとワンセグのDLLはSRdeckの実行ファイル
-パッケージに含めません。再配布前に`PATENT-NOTICE.md`を確認してください。
+公開ソーススナップショットには、実行ファイルパッケージ向けのプラグインと、
+ソース公開のみのMeshtasticおよびワンセグを収録します。Meshtasticとワンセグは初期状態の
+ビルド対象から外し、DLLもSRdeckの実行ファイルパッケージに含めません。BATのビルド行は
+コメントアウトしてあり、下記の特許・ライセンスの注意事項を確認してから明示的に有効化します。
 
 製品の変更をこのリポジトリへ直接コミットしないでください。通常の開発・レビュー手順を利用してください。
 
@@ -22,8 +23,8 @@ SRdeckの公式プラグインをバージョン付きリリーススナップ�
 
 ## リリースメタデータ
 
-- リリースバージョン: `1.0.7`
-- 必要なSRdeckプラットフォームパッケージ: `1.0.7`
+- リリースバージョン: `1.0.8`
+- 必要なSRdeckプラットフォームパッケージ: `1.0.8`
 
 ## ビルド
 
@@ -32,7 +33,7 @@ SRdeckの公式プラグインをバージョン付きリリーススナップ�
 - Windows x64
 - .NET 10 SDK（`dotnet --info`で10.x SDKが表示されること）
 - Git（Gitでソースを取得する場合のみ。ZIPで取得する場合は不要）
-- `1.0.7`と同じバージョンのSRdeckプラットフォームNuGetパッケージ4個
+- `1.0.8`と同じバージョンのSRdeckプラットフォームNuGetパッケージ4個
 
 プラグインは`SRdeckPlugin.Contracts`、`SRdeckPlugin.Sdk`、`SRdeckPlugin.Wpf`、
 `SRdeckCore.SignalProcessing`をNuGetパッケージとして参照します。ビルド・動作確認に使う
@@ -51,13 +52,13 @@ CMake（VS 2022 は3.21以上、VS 2026 は4.2以上）が必要です。
 以降も同じウィンドウで、各コマンドが成功したことを確認してから次へ進みます。
 
 ```cmd
-set "RELEASE_VERSION=1.0.7"
-set "PLATFORM_VERSION=1.0.7"
+set "RELEASE_VERSION=1.0.8"
+set "PLATFORM_VERSION=1.0.8"
 ```
 
 #### Gitを使わない場合（ZIPをダウンロード）
 
-1. [対応するSRdeckPluginsのリリース](https://github.com/sake846/SRdeckPlugins/releases/tag/v1.0.7)
+1. [対応するSRdeckPluginsのリリース](https://github.com/sake846/SRdeckPlugins/releases/tag/v1.0.8)
    をブラウザーで開き、Assetsの **Source code (zip)** をダウンロードします。
 2. エクスプローラーの「すべて展開」でZIPを展開します。
 3. 展開されたフォルダーのうち、`SRdeckPlugins.sln`が入っているフォルダーを
@@ -85,10 +86,10 @@ cd SRdeckPlugins
 対応する[SRdeckのリリース](https://github.com/sake846/SRdeck/releases)から、次の4ファイルを
 ダウンロードしてください。
 
-- `SRdeckCore.SignalProcessing.1.0.7.nupkg`
-- `SRdeckPlugin.Contracts.1.0.7.nupkg`
-- `SRdeckPlugin.Sdk.1.0.7.nupkg`
-- `SRdeckPlugin.Wpf.1.0.7.nupkg`
+- `SRdeckCore.SignalProcessing.1.0.8.nupkg`
+- `SRdeckPlugin.Contracts.1.0.8.nupkg`
+- `SRdeckPlugin.Sdk.1.0.8.nupkg`
+- `SRdeckPlugin.Wpf.1.0.8.nupkg`
 
 ソースのフォルダーで次のコマンドを実行し、パッケージの配置先を作ります。
 
@@ -104,15 +105,17 @@ ZIPから取得したソースとパッケージの配置例は次のとおり�
 C:\SRdeckBuild\
 └─ SRdeckPlugins\
    ├─ SRdeckPlugins.sln
+   ├─ build.bat
+   ├─ NuGet.Config
    ├─ Directory.Build.props
    ├─ Directory.Build.targets
    ├─ SRdeckPlugin.Ais\
    │  └─ SRdeckPlugin.Ais.csproj
    └─ platform-packages\
-      ├─ SRdeckCore.SignalProcessing.1.0.7.nupkg
-      ├─ SRdeckPlugin.Contracts.1.0.7.nupkg
-      ├─ SRdeckPlugin.Sdk.1.0.7.nupkg
-      └─ SRdeckPlugin.Wpf.1.0.7.nupkg
+      ├─ SRdeckCore.SignalProcessing.1.0.8.nupkg
+      ├─ SRdeckPlugin.Contracts.1.0.8.nupkg
+      ├─ SRdeckPlugin.Sdk.1.0.8.nupkg
+      └─ SRdeckPlugin.Wpf.1.0.8.nupkg
 ```
 
 GitHub CLIをインストール済みなら、ブラウザーでのダウンロードの代わりに次のコマンドを使えます。
@@ -122,34 +125,70 @@ ZIPとブラウザーで取得する手順では、GitもGitHub CLIも不要で�
 gh release download "v%PLATFORM_VERSION%" --repo sake846/SRdeck --pattern "*.nupkg" --dir "%PACKAGE_DIRECTORY%"
 ```
 
-### 3. 全プラグインを復元・ビルドする
+### 3. 標準プラグインを復元・ビルドする
 
-`C:\SRdeckBuild\SRdeckPlugins`で、次のコマンドを実行します。
-`restore`は依存パッケージを取得するため、インターネット接続が必要です。
+4個のパッケージを`platform-packages`へ配置したら、ソースのフォルダーにある
+`build.bat`をダブルクリックするか、コマンドプロンプトから実行します。
 
 ```cmd
-dotnet restore .\SRdeckPlugins.sln ^
-  --source "%PACKAGE_DIRECTORY%" ^
-  --source https://api.nuget.org/v3/index.json ^
-  -p:SRdeckPlatformVersion=%PLATFORM_VERSION%
-
-dotnet build .\SRdeckPlugins.sln ^
-  -c Release ^
-  --no-restore ^
-  -p:SRdeckPlatformVersion=%PLATFORM_VERSION%
+build.bat
 ```
 
-`^`はコマンドプロンプトの行継続記号です。各`^`の後ろに空白を入れないでください。
+BATファイルが.NET SDKと対応するプラットフォームパッケージ4個の存在を確認し、
+依存パッケージの復元とソリューションのReleaseビルドを実行します。作業フォルダーは
+BATファイル自身の配置先、パッケージのバージョンはこのスナップショットの値を使います。
+依存パッケージの復元にはインターネット接続が必要です。終了時は結果を確認できるよう、
+キー入力を待ちます。
+Meshtasticとワンセグは`SRdeckPlugins.sln`にも含めないため、初期状態のBAT実行でも、
+ソリューションを直接ビルドした場合でも、この2個の復元・ビルドは実行しません。
 
-復元後に特定のプラグインだけをビルドする場合は、プロジェクトファイルを指定します。
+引数で構成と、終了時のキー入力待ちの省略（自動実行用）を指定できます。
+
+```cmd
+build.bat Debug
+build.bat Release --no-pause
+```
+
+復元またはビルドに失敗すると、その時点で停止し、0以外の終了コードを返します。
+
+#### 特許・ライセンスに関する注意とMeshtastic／ワンセグの有効化
+
+**MeshtasticのLoRa復調や、ワンセグの放送方式・音声／映像コーデックには、第三者の
+特許権が関わる可能性があります。** GPL-3.0-onlyによる許諾だけで、必要となるすべての
+第三者の特許権が許諾されるわけではありません
+（[GPLv3第11条](https://www.gnu.org/licenses/gpl-3.0.html#section11)参照）。ソースが公開されていることや、
+受信専用であることだけでは、特許非侵害の根拠にはなりません。本プロジェクトは、特許非侵害や
+必要な特許ライセンスがすべて取得済みであることを保証しません。
+
+有効化する前に、[PATENT-NOTICE.md](PATENT-NOTICE.md)、
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)、各プラグインの注意事項を確認してください。
+利用する国・地域と用途に適用される特許・ライセンス条件、必要な許諾の有無を確認し、
+**ビルド・使用が可能とユーザー自身が判断した場合にだけ、コメントを解除してください。**
+判断できない場合は、コメントアウトしたままにしてください。
+
+`build.bat`をテキストエディターで開き、次の行を探します。
+
+```bat
+rem call :BuildPlugin "SRdeckPlugin.Meshtastic\SRdeckPlugin.Meshtastic.csproj"
+rem call :BuildPlugin "SRdeckPlugin.OneSeg\SRdeckPlugin.OneSeg.csproj"
+```
+
+有効化するプラグインの行だけ、先頭の`rem `を削除し、保存してから`build.bat`を再実行します。
+それぞれ独立して有効化できます。BATは標準ソリューションのビルド後に、有効化したプロジェクトを
+個別に復元・ビルドします。有効化しても、DLLは公式の実行ファイルパッケージに含めません。
+
+復元後に標準プラグインのうち1個だけをビルドする場合は、プロジェクトファイルを指定します。
 例としてAISプラグインをビルドするコマンドは次のとおりです。
 
 ```cmd
 dotnet build .\SRdeckPlugin.Ais\SRdeckPlugin.Ais.csproj ^
   -c Release ^
   --no-restore ^
+  -p:Platform=x64 ^
   -p:SRdeckPlatformVersion=%PLATFORM_VERSION%
 ```
+
+`^`はコマンドプロンプトの行継続記号です。各`^`の後ろに空白を入れないでください。
 
 生成されるDLLは次の場所にあります。
 
@@ -179,8 +218,8 @@ DLLの検索先は`SRdeck.exe`と同じフォルダーです。`%LOCALAPPDATA%\S
 プラグインデータ用で、プラグインDLLの配置場所ではありません。DLLを差し替えた後は、
 SRdeckを完全に終了してから再起動してください。
 
-Meshtasticおよびワンセグはこのソーススナップショットからローカル検証用にビルドできますが、公式の
-SRdeck実行ファイルパッケージにはDLLを含めません。
+MeshtasticおよびワンセグをBATでローカル検証用にビルドするには、上記の明示的な有効化が必要です。
+公式のSRdeck実行ファイルパッケージにはDLLを含めません。
 
 ### トラブルシューティング
 

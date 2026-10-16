@@ -56,6 +56,7 @@ public sealed partial class AdsBPluginModule
                 foreach (IGrouping<string, ExportRecord> group in loaded.GroupBy(item => item.Icao))
                 {
                     ExportRecord item = group.Last();
+                    DateTimeOffset firstSeen = group.Min(x => x.ReceivedAt);
                     aircraft[item.Icao] = new AircraftState
                     {
                         Icao = item.Icao,
@@ -75,6 +76,7 @@ public sealed partial class AdsBPluginModule
                         Sil = item.Sil,
                         Latitude = item.Latitude,
                         Longitude = item.Longitude,
+                        FirstSeen = firstSeen,
                         LastSeen = item.ReceivedAt,
                         MessageCount = group.LongCount()
                     };

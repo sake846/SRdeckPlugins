@@ -18,7 +18,6 @@ public sealed partial class MeshtasticReceiveService : IDisposable
 {
     private const int QueueCapacity = 2048;
     private const int RingSafetyBlocks = 2;
-    private const int RecentPacketCapacity = 4096;
 
     private readonly ConcurrentQueue<IqBlock> _blockQueue = new();
     private readonly BlockingCollection<IqBlock> _blocks;
@@ -26,11 +25,9 @@ public sealed partial class MeshtasticReceiveService : IDisposable
     private Task _worker;
     private MeshtasticWorkerFailure? _workerFailure;
     private readonly MeshtasticIqBudget _iqBudget = new();
+    private readonly MeshtasticPacketProcessor _packetProcessor = new();
     private long _queueLimitDroppedBlocks;
     private readonly List<ChannelReceiver> _channelReceivers = new();
-    private readonly Dictionary<MeshtasticPacketKey, int> _recentPackets = new();
-    private readonly Queue<MeshtasticPacketKey> _recentPacketOrder = new();
-    private readonly object _recentPacketsGate = new();
     private readonly object _drainGate = new();
     private readonly object _streamGate = new();
     private readonly SemaphoreSlim _streamLifecycleGate = new(1, 1);
@@ -67,9 +64,6 @@ public sealed partial class MeshtasticReceiveService : IDisposable
     private long _synchronizedFrames;
     private long _decodedHeaders;
     private long _decodedPayloads;
-    private long _parsedMeshtasticPackets;
-    private long _duplicateMeshtasticPackets;
-    private long _decodedMeshtasticData;
     private long _nextSequence;
     private long _lastProcessedSequence = -1;
     private long _lastProcessedSampleEnd = -1;
@@ -94,12 +88,12 @@ public sealed partial class MeshtasticReceiveService : IDisposable
     private LoRaFrameSynchronization? _lastSynchronization;
     private LoRaExplicitHeader? _lastHeader;
     private LoRaPayloadFrame? _lastPayload;
-    private MeshtasticRadioPacket? _lastMeshtasticPacket;
-    private MeshtasticData? _lastMeshtasticData;
 
     public MeshtasticReceiveService()
     {
         _blocks = new BlockingCollection<IqBlock>(_blockQueue, QueueCapacity);
+        _packetProcessor.DataReceived += reception => MeshtasticDataReceived?.Invoke(reception);
+        _packetProcessor.PacketReceived += reception => MeshtasticPacketReceived?.Invoke(reception);
         if (MeshtasticJpLongFastProfile.CalculateChannelFrequencyHz(MeshtasticJpLongFastProfile.Channel) !=
             MeshtasticJpLongFastProfile.FrequencyHz)
         {
@@ -130,10 +124,10 @@ public sealed partial class MeshtasticReceiveService : IDisposable
         MeshtasticRegionProfile regionProfile = MeshtasticJpLongFastProfile.GetRegion(region);
         if (bandwidthSlots.Count == 0 || bandwidthSlots.Any(value => value.RadioChannels.Count == 0))
         { error = "各帯域の周波数スロットを1つ以上入力してください。"; return false; }
-        ChannelKey[] channelKeys = MeshtasticJpLongFastProfile.GetDetectionProfiles(preset)
+        MeshtasticChannelKey[] channelKeys = MeshtasticJpLongFastProfile.GetDetectionProfiles(preset)
             .Select(candidate => candidate.Name)
             .Distinct(StringComparer.Ordinal)
-            .Select(name => new ChannelKey(
+            .Select(name => new MeshtasticChannelKey(
                 name,
                 MeshtasticChannelDecryptor.DefaultLongFastKey,
                 MeshtasticChannelDecryptor.CalculateChannelHash(name, MeshtasticChannelDecryptor.DefaultLongFastKey)))
@@ -168,49 +162,56 @@ public sealed partial class MeshtasticReceiveService : IDisposable
         return true;
     }
 
-    public MeshtasticReceiveSnapshot Snapshot => new(
-        Volatile.Read(ref _targetInPassband) != 0,
-        Interlocked.Read(ref _submittedBlocks),
-        Interlocked.Read(ref _processedBlocks),
-        Interlocked.Read(ref _droppedBlocks),
-        _blocks.Count,
-        Volatile.Read(ref _maximumQueueDepth),
-        Volatile.Read(ref _currentQueueDelayUs) / 1000.0,
-        CalculateAverageMilliseconds(_totalQueueDelayUs, _timedBlockCount),
-        Volatile.Read(ref _maximumQueueDelayUs) / 1000.0,
-        Volatile.Read(ref _currentProcessingTimeUs) / 1000.0,
-        CalculateAverageMilliseconds(_totalProcessingTimeUs, _timedBlockCount),
-        Volatile.Read(ref _maximumProcessingTimeUs) / 1000.0,
-        Volatile.Read(ref _currentInputBlockTimeUs) / 1000.0,
-        Volatile.Read(ref _currentProcessingLoadBasisPoints) / 100.0,
-        CalculateLoadPercent(_totalProcessingTimeUs, _totalInputBlockTimeUs),
-        Volatile.Read(ref _maximumProcessingLoadBasisPoints) / 100.0,
-        Interlocked.Read(ref _detectedPreambles),
-        Interlocked.Read(ref _synchronizedFrames),
-        Interlocked.Read(ref _decodedHeaders),
-        Interlocked.Read(ref _decodedPayloads),
-        Interlocked.Read(ref _parsedMeshtasticPackets),
-        Interlocked.Read(ref _duplicateMeshtasticPackets),
-        Interlocked.Read(ref _decodedMeshtasticData),
-        _lastDetection,
-        _lastSynchronization,
-        _lastHeader,
-        _lastPayload,
-        _lastMeshtasticPacket,
-        _lastMeshtasticData,
-        CalculateOldestDeferredIqMs(),
-        CalculateDeferredRetentionRemainingMs(),
-        Interlocked.Read(ref _deferredRecoveredBlocks),
-        Interlocked.Read(ref _expiredHistoryBlocks),
-        CalculateAverageCpuMilliseconds(_totalChannelizationTicks, _timedBlockCount),
-        CalculateAverageCpuMilliseconds(_totalDetectionTicks, _timedBlockCount),
-        Volatile.Read(ref _lastInputSampleRateHz))
+    public MeshtasticReceiveSnapshot Snapshot
     {
-        WorkerFailure = Volatile.Read(ref _workerFailure),
-        RetainedIqBytes = _iqBudget.Snapshot.Bytes,
-        RetainedIqMilliseconds = _iqBudget.Snapshot.Microseconds / 1000.0,
-        QueueLimitDroppedBlocks = Interlocked.Read(ref _queueLimitDroppedBlocks)
-    };
+        get
+        {
+            MeshtasticPacketStatistics packets = _packetProcessor.Snapshot;
+            return new(
+                Volatile.Read(ref _targetInPassband) != 0,
+                Interlocked.Read(ref _submittedBlocks),
+                Interlocked.Read(ref _processedBlocks),
+                Interlocked.Read(ref _droppedBlocks),
+                _blocks.Count,
+                Volatile.Read(ref _maximumQueueDepth),
+                Volatile.Read(ref _currentQueueDelayUs) / 1000.0,
+                CalculateAverageMilliseconds(_totalQueueDelayUs, _timedBlockCount),
+                Volatile.Read(ref _maximumQueueDelayUs) / 1000.0,
+                Volatile.Read(ref _currentProcessingTimeUs) / 1000.0,
+                CalculateAverageMilliseconds(_totalProcessingTimeUs, _timedBlockCount),
+                Volatile.Read(ref _maximumProcessingTimeUs) / 1000.0,
+                Volatile.Read(ref _currentInputBlockTimeUs) / 1000.0,
+                Volatile.Read(ref _currentProcessingLoadBasisPoints) / 100.0,
+                CalculateLoadPercent(_totalProcessingTimeUs, _totalInputBlockTimeUs),
+                Volatile.Read(ref _maximumProcessingLoadBasisPoints) / 100.0,
+                Interlocked.Read(ref _detectedPreambles),
+                Interlocked.Read(ref _synchronizedFrames),
+                Interlocked.Read(ref _decodedHeaders),
+                Interlocked.Read(ref _decodedPayloads),
+                packets.ParsedPackets,
+                packets.DuplicatePackets,
+                packets.DecodedData,
+                _lastDetection,
+                _lastSynchronization,
+                _lastHeader,
+                _lastPayload,
+                packets.LastPacket,
+                packets.LastData,
+                CalculateOldestDeferredIqMs(),
+                CalculateDeferredRetentionRemainingMs(),
+                Interlocked.Read(ref _deferredRecoveredBlocks),
+                Interlocked.Read(ref _expiredHistoryBlocks),
+                CalculateAverageCpuMilliseconds(_totalChannelizationTicks, _timedBlockCount),
+                CalculateAverageCpuMilliseconds(_totalDetectionTicks, _timedBlockCount),
+                Volatile.Read(ref _lastInputSampleRateHz))
+            {
+                WorkerFailure = Volatile.Read(ref _workerFailure),
+                RetainedIqBytes = _iqBudget.Snapshot.Bytes,
+                RetainedIqMilliseconds = _iqBudget.Snapshot.Microseconds / 1000.0,
+                QueueLimitDroppedBlocks = Interlocked.Read(ref _queueLimitDroppedBlocks)
+            };
+        }
+    }
 
     private double CalculateOldestDeferredIqMs()
     {
@@ -233,6 +234,7 @@ public sealed partial class MeshtasticReceiveService : IDisposable
 
     public void ResetStatistics()
     {
+        _packetProcessor.ResetStatistics();
         Interlocked.Exchange(ref _queueLimitDroppedBlocks, 0);
         Interlocked.Exchange(ref _submittedBlocks, 0);
         Interlocked.Exchange(ref _processedBlocks, 0);
@@ -241,9 +243,6 @@ public sealed partial class MeshtasticReceiveService : IDisposable
         Interlocked.Exchange(ref _synchronizedFrames, 0);
         Interlocked.Exchange(ref _decodedHeaders, 0);
         Interlocked.Exchange(ref _decodedPayloads, 0);
-        Interlocked.Exchange(ref _parsedMeshtasticPackets, 0);
-        Interlocked.Exchange(ref _duplicateMeshtasticPackets, 0);
-        Interlocked.Exchange(ref _decodedMeshtasticData, 0);
         Interlocked.Exchange(ref _timedBlockCount, 0);
         Interlocked.Exchange(ref _totalQueueDelayUs, 0);
         Interlocked.Exchange(ref _maximumQueueDelayUs, 0);

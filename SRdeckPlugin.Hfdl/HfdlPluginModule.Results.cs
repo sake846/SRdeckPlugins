@@ -31,6 +31,7 @@ public sealed partial class HfdlPluginModule
             records = persisted.Where(item =>
                 (request.From is null || item.ReceivedAt >= request.From) &&
                 (request.To is null || item.ReceivedAt <= request.To))
+                    .SelectMany(HfdlMessageParser.RestoreHistory)
                     .TakeLast(settings.MaximumHistory).ToArray();
         }
         else
@@ -52,7 +53,7 @@ public sealed partial class HfdlPluginModule
             }
             else if (request.FormatId == "csv")
             {
-                var csv = new StringBuilder("receivedAt,frequencyHz,kind,flightId,source,destination,payload,modulation,signalQuality,type,isCrcValid,streamId,samplePosition,rawFrameHex,channelId,groundStationId\r\n");
+                var csv = new StringBuilder("receivedAt,frequencyHz,kind,flightId,source,destination,payload,modulation,signalQuality,type,isCrcValid,streamId,samplePosition,rawFrameHex,channelId,groundStationId,aircraftId,aircraftIcao,registration,isGroundStationMessage,decoderVersion\r\n");
                 foreach (HfdlReception item in records)
                     csv.Append(Csv(item.ReceivedAt.ToString("O", CultureInfo.InvariantCulture))).Append(',')
                         .Append(item.FrequencyHz).Append(',')
@@ -69,7 +70,12 @@ public sealed partial class HfdlPluginModule
                         .Append(item.SamplePosition.ToString(CultureInfo.InvariantCulture)).Append(',')
                         .Append(Csv(item.RawFrameHex)).Append(',')
                         .Append(Csv(item.ChannelId)).Append(',')
-                        .Append(Csv(item.GroundStationId)).Append("\r\n");
+                        .Append(Csv(item.GroundStationId)).Append(',')
+                        .Append(item.AircraftId?.ToString(CultureInfo.InvariantCulture)).Append(',')
+                        .Append(Csv(item.AircraftIcao)).Append(',')
+                        .Append(Csv(item.Registration)).Append(',')
+                        .Append(item.IsGroundStationMessage ? "true" : "false").Append(',')
+                        .Append(item.DecoderVersion).Append("\r\n");
                 await File.WriteAllTextAsync(request.DestinationPath, csv.ToString(),
                     new UTF8Encoding(false), cancellationToken).ConfigureAwait(false);
             }
@@ -101,32 +107,52 @@ public sealed partial class HfdlPluginModule
         host = null;
     }
 
-    private void Publish(HfdlFrame frame, HfdlMessage message)
+    private void Publish(HfdlFrame frame)
     {
-        string source = message.SourceAddress is int s ? $"{s:X6}" : string.Empty;
-        string destination = message.DestinationAddress is int d ? $"{d:X6}" : string.Empty;
-        var reception = new HfdlReception(frame.ReceivedAt.ToLocalTime(), frame.FrequencyHz, message.Kind, message.FlightId,
-            source, destination, Convert.ToHexString(message.Payload), frame.Modulation, frame.SignalQuality,
-            message.Type, message.IsCrcValid, frame.StreamId, frame.SamplePosition,
-            Convert.ToHexString(frame.Bytes), selectedProfileId,
-            SelectedChannel().GroundStationId.ToString(CultureInfo.InvariantCulture));
+        IReadOnlyList<HfdlMessage> messages = HfdlMessageParser.Parse(frame.Bytes);
+        for (int index = 0; index < messages.Count; index++)
+            if (messages[index].IsCrcValid) Publish(frame, messages[index], index);
+    }
+
+    private void Publish(HfdlFrame frame, HfdlMessage message, int index)
+    {
+        var reception = new HfdlReception(frame.ReceivedAt.ToLocalTime(), frame.FrequencyHz, "", "", "", "", "",
+            frame.Modulation, frame.SignalQuality, StreamId: frame.StreamId, SamplePosition: frame.SamplePosition,
+            RawFrameHex: Convert.ToHexString(frame.Bytes), ChannelId: selectedProfileId).WithMessage(message);
         lock (gate)
         {
+            if (reception.AircraftId is not null && !reception.IsGroundStationMessage)
+            {
+                HfdlReception? known = history.LastOrDefault(item =>
+                    item.GroundStationId == reception.GroundStationId && item.AircraftId == reception.AircraftId);
+                // Dynamic aircraft IDs can be reused; do not carry names across logoff or a new ICAO assignment.
+                if (known is not null && known.Type is not (0x2f or 0x3f) &&
+                    reception.ReceivedAt >= known.ReceivedAt && reception.ReceivedAt - known.ReceivedAt <= TimeSpan.FromMinutes(30) &&
+                    (reception.AircraftIcao.Length == 0 || reception.AircraftIcao == known.AircraftIcao))
+                    reception = reception with
+                    {
+                        FlightId = reception.FlightId.Length > 0 ? reception.FlightId : known.FlightId,
+                        Registration = reception.Registration.Length > 0 ? reception.Registration : known.Registration,
+                        AircraftIcao = reception.AircraftIcao.Length > 0 ? reception.AircraftIcao : known.AircraftIcao
+                    };
+            }
             history.Add(reception);
             if (history.Count > settings.MaximumHistory)
                 history.RemoveRange(0, history.Count - settings.MaximumHistory);
             AppendHistory(reception);
         }
+        message = message with { FlightId = reception.FlightId, Registration = reception.Registration,
+            AircraftIcao = reception.AircraftIcao };
         host?.Notifications.PlayReceptionAlarm(TimeSpan.FromMilliseconds(500));
         host?.Dispatcher.Post(() => viewModel.Add(reception, receiver.ValidFrameCount, receiver.RejectedFrameCount));
         ResultPublished?.Invoke(this, new(new(
-            $"{frame.StreamId:N}-{frame.SamplePosition}",
+            $"{frame.StreamId:N}-{frame.SamplePosition}-{index}",
             Descriptor.Id,
             frame.ReceivedAt,
             frame.StreamId,
             "hfdl.lpdu",
             PluginResultSeverity.Information,
-            string.IsNullOrEmpty(message.FlightId) ? message.Kind : message.FlightId,
+            reception.AircraftDisplay,
             message.Summary,
             frame.FrequencyHz,
             frame.SignalQuality,

@@ -529,3 +529,17 @@ RELEASE_NOTES/
 
 # Local-only evaluation and analysis records
 **/docs/evaluation/
+
+# PowerShell module analysis cache accidentally created at repository root
+Microsoft/
+
+# Temporary per-plugin git log dumps
+tmp_*.txt
+
+# WebView2 runtime user-data folders created next to the executable
+srdeck.exe.WebView2/
+SRdeck.exe.WebView2/
+EBWebView/
+
+# WPF temporary project files left behind by interrupted builds
+*_wpftmp.csproj

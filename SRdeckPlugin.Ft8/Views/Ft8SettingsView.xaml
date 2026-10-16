@@ -24,7 +24,7 @@
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="30" />
-                                <RowDefinition Height="30" />
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="30" />
                                 <RowDefinition Height="Auto" MinHeight="30" />
                                 <RowDefinition Height="30" />
@@ -38,12 +38,27 @@
                                       IsEnabled="{Binding IsBandSelectorEnabled}"/>
 
                             <TextBlock Grid.Row="1" Text="受信周波数"
+                                       VerticalAlignment="Top" Margin="0,6,0,0"
                                        Style="{DynamicResource PluginSettingsFieldLabelStyle}" />
-                            <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Bands}"
-                                      SelectedItem="{Binding SelectedBand}"
-                                      DisplayMemberPath="BandDisplayName" Style="{DynamicResource PluginComboBoxStyle}"
-                                      Width="240" HorizontalAlignment="Left"
-                                      IsEnabled="{Binding IsBandSelectorEnabled}" />
+                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,5">
+                                <ComboBox ItemsSource="{Binding Bands}"
+                                          SelectedItem="{Binding SelectedBand}"
+                                          DisplayMemberPath="BandDisplayName" Style="{DynamicResource PluginComboBoxStyle}"
+                                          Width="240" HorizontalAlignment="Left"
+                                          IsEnabled="{Binding IsBandSelectorEnabled}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <TextBox Text="{Binding CustomFrequencyMHzText, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{DynamicResource PluginTextBoxStyle}" Width="92" Height="24"
+                                             IsEnabled="{Binding IsBandSelectorEnabled}" />
+                                    <TextBlock Text="MHz" Style="{DynamicResource PluginSettingsHintStyle}"
+                                               VerticalAlignment="Center" Margin="5,0,8,0" />
+                                    <Button Content="カスタム適用" Command="{Binding ApplyCustomFrequencyCommand}"
+                                            Style="{DynamicResource PluginButtonStyle}" Width="82"
+                                            IsEnabled="{Binding IsBandSelectorEnabled}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding CustomFrequencyInputStatus}"
+                                           Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,2,0,0" />
+                            </StackPanel>
 
                             <TextBlock Grid.Row="2" Text="同時受信"
                                        Style="{DynamicResource PluginSettingsFieldLabelStyle}"
@@ -100,10 +115,13 @@
                                 <TextBlock Text="復号プリセット" Style="{DynamicResource PluginSettingsFieldLabelStyle}"
                                            VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <Button Content="標準" Command="{Binding ApplyStandardPresetCommand}"
+                                        Tag="{Binding IsStandardPresetSelected, Mode=OneWay}"
                                         Style="{DynamicResource PluginButtonStyle}" Width="52" Margin="0,0,5,0"/>
                                 <Button Content="弱信号優先" Command="{Binding ApplyWeakSignalPresetCommand}"
+                                        Tag="{Binding IsWeakSignalPresetSelected, Mode=OneWay}"
                                         Style="{DynamicResource PluginButtonStyle}" Width="72" Margin="0,0,5,0"/>
                                 <Button Content="低負荷" Command="{Binding ApplyLowLoadPresetCommand}"
+                                        Tag="{Binding IsLowLoadPresetSelected, Mode=OneWay}"
                                         Style="{DynamicResource PluginButtonStyle}" Width="52" Margin="0,0,8,0"/>
                                 <TextBlock Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center">
                                     <Run Text="現在: "/><Run Text="{Binding DecoderPresetName, Mode=OneWay}" FontWeight="SemiBold"/>
@@ -120,7 +138,7 @@
                                 <TextBlock Text="0～40" Style="{DynamicResource PluginSettingsHintStyle}"
                                            VerticalAlignment="Center" Margin="6,0,16,0" />
 
-                                <TextBlock Text="最大候補数" Style="{DynamicResource PluginSettingsFieldLabelStyle}"
+                                <TextBlock Text="1パス候補上限" Style="{DynamicResource PluginSettingsFieldLabelStyle}"
                                            VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <TextBox Text="{Binding MaximumCandidates, UpdateSourceTrigger=LostFocus}"
                                          Style="{DynamicResource PluginTextBoxStyle}" Width="52"

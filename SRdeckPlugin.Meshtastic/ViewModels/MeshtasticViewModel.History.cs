@@ -74,18 +74,13 @@ public partial class MeshtasticViewModel
             SelectedTimelineMessage ??= item;
             ScheduleMeshtasticDerivedRefresh();
 
-            if (!_meshtasticNodesById.TryGetValue(reception.Packet.From, out MeshtasticNodeDisplayItem? node))
-            {
-                node = new MeshtasticNodeDisplayItem(reception.Packet.From);
-                _meshtasticNodesById.Add(reception.Packet.From, node);
-                MeshtasticNodes.Insert(0, node);
-                SelectedMeshtasticNode ??= node;
-            }
+            MeshtasticNodeDisplayItem node = _nodeStore.GetOrAddNode(reception.Packet.From, out bool addedNode);
+            if (addedNode) SelectedMeshtasticNode ??= node;
             node.Update(reception, item.Summary, item.ModemPresetName, item.RegionName);
             if (reception.Data.DecodedPayload is MeshtasticNodeInfo)
             {
                 RefreshMeshtasticSenderNames(reception.Packet.From, node.DisplayName);
-                if (_meshtasticMapPointsById.TryGetValue(reception.Packet.From, out MeshtasticMapPoint? namedPoint))
+                if (_nodeStore.TryGetMapPoint(reception.Packet.From, out MeshtasticMapPoint? namedPoint))
                     namedPoint.Label = node.DisplayName;
             }
             if (node.HasPosition)
@@ -102,7 +97,7 @@ public partial class MeshtasticViewModel
     }
 
     private string ResolveMeshtasticSenderName(uint nodeNumber) =>
-        _meshtasticNodesById.TryGetValue(nodeNumber, out MeshtasticNodeDisplayItem? node)
+        _nodeStore.TryGetNode(nodeNumber, out MeshtasticNodeDisplayItem? node)
             ? node.DisplayName
             : $"!{nodeNumber:x8}";
 
@@ -127,12 +122,7 @@ public partial class MeshtasticViewModel
     private void UpdateMeshtasticMapPoint(MeshtasticNodeDisplayItem node)
     {
         if (!node.HasPosition) return;
-        if (!_meshtasticMapPointsById.TryGetValue(node.NodeNumber, out MeshtasticMapPoint? point))
-        {
-            point = new MeshtasticMapPoint(node.NodeNumber);
-            _meshtasticMapPointsById[node.NodeNumber] = point;
-            MeshtasticMapPoints.Add(point);
-        }
+        MeshtasticMapPoint point = _nodeStore.GetOrAddMapPoint(node.NodeNumber);
         point.Label = node.DisplayName;
         point.Latitude = node.Latitude!.Value;
         point.Longitude = node.Longitude!.Value;
@@ -158,8 +148,7 @@ public partial class MeshtasticViewModel
                     {
                         var node = new MeshtasticNodeDisplayItem(savedNode.NodeNumber);
                         node.Restore(savedNode);
-                        _meshtasticNodesById[savedNode.NodeNumber] = node;
-                        MeshtasticNodes.Add(node);
+                        _nodeStore.AddRestoredNode(node);
                         if (node.HasPosition) UpdateMeshtasticMapPoint(node);
                     }
                 }
@@ -189,7 +178,7 @@ public partial class MeshtasticViewModel
                     CultureInfo.InvariantCulture, out uint nodeNumber))
                 continue;
 
-            if (_meshtasticNodesById.TryGetValue(nodeNumber, out MeshtasticNodeDisplayItem? node))
+            if (_nodeStore.TryGetNode(nodeNumber, out MeshtasticNodeDisplayItem? node))
                 node.RecordReceivedAppType(item.Port);
         }
     }

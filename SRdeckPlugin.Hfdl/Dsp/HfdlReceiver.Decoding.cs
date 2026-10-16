@@ -59,7 +59,7 @@ public sealed partial class HfdlReceiver
             lastDataRate = acceptedCandidate.Mode.DataRate;
             long sourcePosition = workingSampleStart + (long)Math.Round(candidate.Value.SampleOffset *
                 (double)inputSampleRate / WorkingSampleRate);
-            if (mpdu.Length >= 5 && HfdlCrc.IsValid(mpdu))
+            if (mpdu.Length > 0)
             {
                 HfdlModulation modulation = acceptedCandidate.Mode.DataRate switch
                 { 1800 => HfdlModulation.EightPsk, 1200 => HfdlModulation.Qpsk, _ => HfdlModulation.Bpsk };

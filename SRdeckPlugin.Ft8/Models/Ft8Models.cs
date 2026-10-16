@@ -58,4 +58,10 @@ public readonly record struct Ft8DecoderDiagnostics(
     double IntermediateSampleRateHz = 0,
     bool UsesHostChannelRateConversion = false,
     double ChannelLevelDbfs = double.NegativeInfinity,
-    double ClipRatePercent = 0);
+    double ClipRatePercent = 0,
+    long? LastSlotCandidatesExamined = null,
+    long? LastSlotLdpcRejected = null,
+    long? LastSlotCrcRejected = null,
+    int? LastSlotCandidatePasses = null,
+    bool? LastSlotCandidateLimitReached = null,
+    int? LastSlotMaximumCandidates = null);

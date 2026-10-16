@@ -42,7 +42,7 @@ internal sealed partial class LoRaPreambleDetector
     private LoRaFinePeakEstimator? _finePeakEstimator;
     private readonly LoRaDetectorMetricsAccumulator? _metrics;
     private readonly LoRaSoftDecodingOptions? _softOptions;
-    private readonly LoRaCrcListDecodingOptions? _crcListOptions;
+    private readonly LoRaFrameDecoder _frameDecoder;
     private readonly LoRaSearchThresholdPolicy? _searchThresholdPolicy;
     private readonly LoRaSearchEnergyGate _searchEnergyGate;
     private readonly LoRaSnrEstimator _snrEstimator;
@@ -57,16 +57,6 @@ internal sealed partial class LoRaPreambleDetector
     private int _missedSymbols;
     private int _syncDirection;
     private int _sfdSymbols;
-    private readonly ushort[] _headerSymbols = new ushort[8];
-    private readonly LoRaSoftSymbol[]? _headerSoftSymbols;
-    private int _headerSymbolCount;
-    private readonly ushort[] _payloadBlockSymbols = new ushort[8];
-    private readonly LoRaSoftSymbol[]? _payloadBlockSoftSymbols;
-    private int _payloadBlockSymbolCount;
-    private List<byte>? _payloadNibbles;
-    private List<LoRaSoftSymbol>? _payloadSoftSymbols;
-    private LoRaExplicitHeader? _activeHeader;
-    private int _payloadCorrectedCodewords;
     private float _lastDownPeakHz;
     private float _sfdDownPeakHzSum;
     private float _carrierFrequencyCorrectionHz;
@@ -108,12 +98,10 @@ internal sealed partial class LoRaPreambleDetector
         if (softDecoding?.DecisionMode == LoRaFecDecisionMode.MaxLog)
         {
             _softOptions = softDecoding;
-            _headerSoftSymbols = new LoRaSoftSymbol[8];
-            _payloadBlockSoftSymbols = new LoRaSoftSymbol[8];
         }
         if (crcListDecoding is not null && _softOptions is null)
             throw new ArgumentException("CRC-aided list decoding requires max-log soft decoding.", nameof(crcListDecoding));
-        _crcListOptions = crcListDecoding;
+        _frameDecoder = new LoRaFrameDecoder(spreadingFactor, _softOptions, crcListDecoding);
         _searchEnergyGate = new LoRaSearchEnergyGate(
             searchEnergyGateOptions ?? LoRaSearchEnergyGateOptions.Default);
         if (searchThresholdOptions is not null)
@@ -536,12 +524,7 @@ internal sealed partial class LoRaPreambleDetector
         _missedSymbols = 0;
         _syncDirection = 0;
         _sfdSymbols = 0;
-        _headerSymbolCount = 0;
-        _payloadBlockSymbolCount = 0;
-        _payloadNibbles = null;
-        _payloadSoftSymbols = null;
-        _activeHeader = null;
-        _payloadCorrectedCodewords = 0;
+        _frameDecoder.Reset();
         _lastDownPeakHz = 0;
         _sfdDownPeakHzSum = 0;
         _carrierFrequencyCorrectionHz = 0;

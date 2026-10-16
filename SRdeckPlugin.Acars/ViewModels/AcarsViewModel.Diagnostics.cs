@@ -313,6 +313,7 @@ public sealed partial class AcarsViewModel
         OnPropertyChanged(nameof(PositionedAircraftCount));
         OnPropertyChanged(nameof(ReceivedAircraftCount));
         OnPropertyChanged(nameof(RecentAircraftGroups));
+        RefreshOverview();
         OnPropertyChanged(nameof(LastReceptionText));
         RefreshFilteredHistory();
         ClearRequested?.Invoke();

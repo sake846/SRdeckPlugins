@@ -27,34 +27,7 @@ public partial class MeshtasticPluginView : UserControl
         if (receiverHeight <= 0) return;
         double maxHeight = Math.Max(0, receiverHeight * 0.5);
 
-        if (MeshtasticNodeDetailRowDefinition != null)
-        {
-            MeshtasticNodeDetailRowDefinition.MaxHeight = maxHeight;
-            if (MeshtasticNodeDetailRowDefinition.Height.IsAbsolute &&
-                MeshtasticNodeDetailRowDefinition.Height.Value > maxHeight)
-            {
-                MeshtasticNodeDetailRowDefinition.Height = new GridLength(maxHeight);
-            }
-        }
-
-        if (MeshtasticTimelineDetailRowDefinition != null)
-        {
-            MeshtasticTimelineDetailRowDefinition.MaxHeight = maxHeight;
-            if (MeshtasticTimelineDetailRowDefinition.Height.IsAbsolute &&
-                MeshtasticTimelineDetailRowDefinition.Height.Value > maxHeight)
-            {
-                MeshtasticTimelineDetailRowDefinition.Height = new GridLength(maxHeight);
-            }
-        }
-
-        if (MeshtasticNodeDetailPane != null)
-        {
-            MeshtasticNodeDetailPane.MaxHeight = maxHeight;
-        }
-
-        if (MeshtasticTimelineDetailPane != null)
-        {
-            MeshtasticTimelineDetailPane.MaxHeight = maxHeight;
-        }
+        NodesView?.SetDetailMaxHeight(maxHeight);
+        TimelineView?.SetDetailMaxHeight(maxHeight);
     }
 }

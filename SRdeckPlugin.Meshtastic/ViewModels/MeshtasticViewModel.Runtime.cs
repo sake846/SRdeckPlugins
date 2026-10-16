@@ -247,13 +247,8 @@ public partial class MeshtasticViewModel
             SelectedTimelineMessage ??= item;
             ScheduleMeshtasticDerivedRefresh();
 
-            if (!_meshtasticNodesById.TryGetValue(reception.Packet.From, out MeshtasticNodeDisplayItem? node))
-            {
-                node = new MeshtasticNodeDisplayItem(reception.Packet.From);
-                _meshtasticNodesById[reception.Packet.From] = node;
-                MeshtasticNodes.Insert(0, node);
-                SelectedMeshtasticNode ??= node;
-            }
+            MeshtasticNodeDisplayItem node = _nodeStore.GetOrAddNode(reception.Packet.From, out bool addedNode);
+            if (addedNode) SelectedMeshtasticNode ??= node;
             node.Observe(reception, item.Summary, item.ModemPresetName);
             if (node.HasPosition) UpdateMeshtasticMapPoint(node);
             int nodeIndex = MeshtasticNodes.IndexOf(node);
@@ -322,10 +317,12 @@ public partial class MeshtasticViewModel
     private void ApplyMeshtasticStatistics(MeshtasticReceiveSnapshot snapshot)
     {
         _lastWorkerFailure = snapshot.WorkerFailure;
-        MeshtasticPerformanceStatus = MeshtasticPerformanceEvaluator.Evaluate(new(
+        _diagnosticPerformanceState = MeshtasticPerformanceEvaluator.EvaluateState(new(
             snapshot.SubmittedBlocks, snapshot.ProcessedBlocks, snapshot.DroppedBlocks, snapshot.QueueDepth,
             snapshot.CurrentQueueDelayMs, snapshot.CurrentInputBlockTimeMs, snapshot.AverageProcessingLoadPercent,
             snapshot.OldestDeferredIqMs, snapshot.DeferredRetentionRemainingMs));
+        MeshtasticPerformanceStatus = MeshtasticPerformanceEvaluator.Format(_diagnosticPerformanceState);
+        _diagnosticInPassband = snapshot.IsTargetInPassband;
         MeshtasticPerformanceDetails = $"処理負荷 {snapshot.AverageProcessingLoadPercent:F1}% · 待ち {snapshot.QueueDepth}ブロック · 欠落 {snapshot.DroppedBlocks}";
         MeshtasticIqRetentionText = $"IQ保持 {snapshot.RetainedIqBytes / 1048576.0:F1} / 64 MiB · {snapshot.RetainedIqMilliseconds / 1000.0:F2} / 5秒 · 上限棄却 {snapshot.QueueLimitDroppedBlocks}";
         _meshtasticDiagnosticLastUpdated = DateTime.Now.ToString("HH:mm:ss");

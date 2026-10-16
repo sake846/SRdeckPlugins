@@ -44,6 +44,12 @@ public sealed class Ft8Receiver
     private TimeSpan lastDecodeDuration;
     private int lastSlotValidMessages;
     private DateTimeOffset? lastDecodedSlotStart;
+    private long? lastSlotCandidatesExamined;
+    private long? lastSlotLdpcRejected;
+    private long? lastSlotCrcRejected;
+    private int? lastSlotCandidatePasses;
+    private bool? lastSlotCandidateLimitReached;
+    private int? lastSlotMaximumCandidates;
     private Task pendingDecode = Task.CompletedTask;
     private Ft8DecoderDiagnostics diagnosticsSnapshot;
     private double monitorOscillatorPhase;
@@ -361,6 +367,12 @@ public sealed class Ft8Receiver
                 lastDecodeDuration = batch.Duration;
                 lastSlotValidMessages = batch.Messages.Count;
                 lastDecodedSlotStart = decodeSlotStart;
+                lastSlotCandidatesExamined = batch.Candidates;
+                lastSlotLdpcRejected = batch.LdpcRejected;
+                lastSlotCrcRejected = batch.CrcRejected;
+                lastSlotCandidatePasses = batch.CandidatePasses;
+                lastSlotCandidateLimitReached = batch.CandidateLimitReached;
+                lastSlotMaximumCandidates = batch.CandidateLimitPerPass;
                 UpdateDiagnosticsSnapshot();
             }
             if (batch.Messages.Count > 0) MessagesDecoded?.Invoke(this, batch.Messages);
@@ -431,7 +443,9 @@ public sealed class Ft8Receiver
             lastSlotValidMessages, lastDecodedSlotStart,
             rateConversionIntermediateSampleRate, usesHostChannelRateConversion,
             channelPower > 0 ? 10 * Math.Log10(channelPower) : double.NegativeInfinity,
-            clipRatePercent);
+            clipRatePercent, lastSlotCandidatesExamined, lastSlotLdpcRejected,
+            lastSlotCrcRejected, lastSlotCandidatePasses, lastSlotCandidateLimitReached,
+            lastSlotMaximumCandidates);
         lock (diagnosticsGate) diagnosticsSnapshot = snapshot;
     }
 

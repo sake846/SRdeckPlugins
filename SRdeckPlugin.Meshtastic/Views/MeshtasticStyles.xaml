@@ -19,14 +19,6 @@
            BasedOn="{StaticResource PluginStatusHeaderTitleStyle}">
     </Style>
 
-    <Style x:Key="MeshtasticPanelStatusStyle" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}"/>
-        <Setter Property="FontFamily" Value="{DynamicResource MainFontFamily}"/>
-        <Setter Property="FontSize" Value="10"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
-    </Style>
-
     <!-- Slot actions sit on PanelSurfaceBrush cards; keep their face color on
          that same surface while retaining the shared raised-button template. -->
     <Style x:Key="MeshtasticSlotActionButtonStyle"

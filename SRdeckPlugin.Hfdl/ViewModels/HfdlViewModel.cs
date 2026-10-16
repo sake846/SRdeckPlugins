@@ -69,14 +69,11 @@ public sealed partial class HfdlViewModel : ObservableObject
     public IEnumerable<HfdlCategorySummary> RecentFlightGroups => FlightIdGroups.Take(3);
     public ObservableCollection<HfdlReception> FilteredMessages { get; } = [];
     public ObservableCollection<HfdlCategorySummary> FlightIdGroups { get; } = [];
-    public ObservableCollection<HfdlCategorySummary> KindGroups { get; } = [];
     public ObservableCollection<HfdlCategorySummary> FilteredFlightIdGroups { get; } = [];
-    public ObservableCollection<HfdlCategorySummary> FilteredKindGroups { get; } = [];
     public ObservableCollection<GeoMapMarker> MapMarkers { get; } = [];
-    public int IdentifiedFlightCount => FlightIdGroups.Count(group => group.Key != "Flight ID不明");
+    public int IdentifiedFlightCount => FlightIdGroups.Count(group => group.Key != "機体不明");
 
     [ObservableProperty] private string _searchText = string.Empty;
-    [ObservableProperty] private string _historyMode = "Flight ID 別";
     [ObservableProperty] private string _overallStatus = "待機中";
     [ObservableProperty] private OverallStatusKind _overallStatusKind = OverallStatusKind.Idle;
     [ObservableProperty] private string _overallPhase = "受信処理";
@@ -88,37 +85,6 @@ public sealed partial class HfdlViewModel : ObservableObject
     [ObservableProperty] private HfdlReception? _selectedTimelineReception;
 
     partial void OnSearchTextChanged(string value) => RefreshFilteredHistory();
-    partial void OnHistoryModeChanged(string value)
-    {
-        SelectedListGroup = null;
-        OnPropertyChanged(nameof(IsTimeSeriesMode));
-        OnPropertyChanged(nameof(IsFlightIdMode));
-        OnPropertyChanged(nameof(IsKindMode));
-        RefreshFilteredHistory();
-    }
-
-    public bool IsTimeSeriesMode
-    {
-        get => HistoryMode == "時系列";
-        set { if (value) HistoryMode = "時系列"; }
-    }
-    public bool IsFlightIdMode
-    {
-        get => HistoryMode == "Flight ID 別";
-        set { if (value) HistoryMode = "Flight ID 別"; }
-    }
-    public bool IsKindMode
-    {
-        get => HistoryMode == "種別別";
-        set { if (value) HistoryMode = "種別別"; }
-    }
-
-    public int FilteredCount => HistoryMode switch
-    {
-        "Flight ID 別" => FilteredFlightIdGroups.Count,
-        "種別別" => FilteredKindGroups.Count,
-        _ => FilteredMessages.Count
-    };
 
     public IReadOnlyList<HfdlPluginModule.GroundStation> GroundStations => HfdlPluginModule.GroundStations;
     public IReadOnlyList<HfdlPluginModule.Channel> Channels => HfdlPluginModule.Channels;
@@ -201,6 +167,7 @@ public sealed partial class HfdlViewModel : ObservableObject
             if (!SetProperty(ref maximumHistory, normalized)) return;
             while (Messages.Count > maximumHistory) Messages.RemoveAt(Messages.Count - 1);
             OnPropertyChanged(nameof(RecentMessages));
+            RefreshOverview();
             if (!synchronizing) MaximumHistoryChanged?.Invoke(normalized);
         }
     }

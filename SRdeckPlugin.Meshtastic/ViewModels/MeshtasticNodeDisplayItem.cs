@@ -48,6 +48,7 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LastSeenTime))]
     [NotifyPropertyChangedFor(nameof(LastSeenDateTimeText))]
+    [NotifyPropertyChangedFor(nameof(LastSeenDateTimeSingleLineText))]
     private string _lastSeen = "-";
     [ObservableProperty] private string _route = "-";
     [ObservableProperty] private string _mode = "-";
@@ -89,6 +90,7 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
     [NotifyPropertyChangedFor(nameof(ActivityStatus))]
     [NotifyPropertyChangedFor(nameof(LastSeenTime))]
     [NotifyPropertyChangedFor(nameof(LastSeenDateTimeText))]
+    [NotifyPropertyChangedFor(nameof(LastSeenDateTimeSingleLineText))]
     private DateTimeOffset? _lastSeenAt;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SlotAndPresetText))]
@@ -117,6 +119,9 @@ public sealed partial class MeshtasticNodeDisplayItem : ObservableObject
     public string LastSeenTime => LastSeenAt.HasValue ? LastSeenAt.Value.ToLocalTime().ToString("HH:mm:ss") : (LastSeen != "-" ? LastSeen : "");
     public string LastSeenDateTimeText => LastSeenAt.HasValue
         ? LastSeenAt.Value.ToLocalTime().ToString("yyyy/MM/dd\nHH:mm:ss", CultureInfo.InvariantCulture)
+        : (LastSeen != "-" ? LastSeen : "");
+    public string LastSeenDateTimeSingleLineText => LastSeenAt.HasValue
+        ? LastSeenAt.Value.ToLocalTime().ToString("yyyy/MM/dd HH:mm:ss", CultureInfo.InvariantCulture)
         : (LastSeen != "-" ? LastSeen : "");
     public string FirstSeenDateTimeText => FirstSeenAt.HasValue
         ? FirstSeenAt.Value.ToLocalTime().ToString("yyyy/MM/dd HH:mm:ss", CultureInfo.InvariantCulture)

@@ -46,6 +46,7 @@ public sealed partial class MeshtasticNodeDisplayItem
         OnPropertyChanged(nameof(LastSummaryText));
         OnPropertyChanged(nameof(LastSeenTime));
         OnPropertyChanged(nameof(LastSeenDateTimeText));
+        OnPropertyChanged(nameof(LastSeenDateTimeSingleLineText));
     }
 
     private static string FormatPacketRoute(MeshtasticRadioPacket packet) => packet.WasRelayed switch
@@ -118,6 +119,7 @@ public sealed partial class MeshtasticNodeDisplayItem
         OnPropertyChanged(nameof(ActivityStatus));
         OnPropertyChanged(nameof(LastSeenTime));
         OnPropertyChanged(nameof(LastSeenDateTimeText));
+        OnPropertyChanged(nameof(LastSeenDateTimeSingleLineText));
     }
 
     internal void RecordReceivedAppType(string? appType)

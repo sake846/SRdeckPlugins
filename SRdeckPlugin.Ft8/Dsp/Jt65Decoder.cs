@@ -38,10 +38,11 @@ public sealed class Jt65Decoder
         Complex32[] samples = Ft4Decoder.Resample(input, Ft8Receiver.OutputSampleRateHz,
             SampleRateHz);
         if (samples.Length < SampleRateHz * 48)
-            return new([], 0, 0, 0, stopwatch.Elapsed);
+            return new([], 0, 0, 0, stopwatch.Elapsed, CandidatePasses: 0);
 
         Spectrogram spectrum = CreateSpectrogram(samples);
-        List<Candidate> candidates = FindCandidates(spectrum, settings);
+        CandidateSelection selection = FindCandidates(spectrum, settings);
+        List<Candidate> candidates = selection.Candidates;
         var decoded = new List<Ft8Reception>();
         var locations = new List<(string Text, int Frequency, double Time)>();
         int rsRejected = 0;
@@ -103,7 +104,8 @@ public sealed class Jt65Decoder
 
         stopwatch.Stop();
         return new(decoded.OrderBy(item => item.AudioFrequencyHz).ToArray(), candidates.Count,
-            rsRejected, 0, stopwatch.Elapsed);
+            rsRejected, 0, stopwatch.Elapsed,
+            selection.HasCandidatesBeyondLimit, CandidateLimitPerPass: settings.MaximumCandidates);
     }
 
     private Spectrogram CreateSpectrogram(ReadOnlySpan<Complex32> samples)
@@ -146,7 +148,7 @@ public sealed class Jt65Decoder
         return new(powerDb, halfBlocks, minimumBin, binCount);
     }
 
-    private static List<Candidate> FindCandidates(Spectrogram spectrum, Ft8Settings settings)
+    private static CandidateSelection FindCandidates(Spectrogram spectrum, Ft8Settings settings)
     {
         var all = new List<Candidate>();
         int maximumStart = Math.Min(32, spectrum.Blocks - FrameSymbols * 2);
@@ -179,18 +181,25 @@ public sealed class Jt65Decoder
         }
 
         var selected = new List<Candidate>();
+        bool hasCandidatesBeyondLimit = false;
         foreach (Candidate candidate in all.OrderByDescending(item => item.Score))
         {
             if (selected.Any(item => Math.Abs(item.StartHalfSymbol - candidate.StartHalfSymbol) <= 2 &&
                     Math.Abs(item.BaseBin - candidate.BaseBin) <= 2))
                 continue;
+            if (selected.Count == settings.MaximumCandidates)
+            {
+                hasCandidatesBeyondLimit = true;
+                break;
+            }
             selected.Add(candidate);
-            if (selected.Count >= settings.MaximumCandidates) break;
         }
-        return selected;
+        return new(selected, hasCandidatesBeyondLimit);
     }
 
     private readonly record struct Candidate(int Score, int StartHalfSymbol, int BaseBin);
+    private sealed record CandidateSelection(List<Candidate> Candidates,
+        bool HasCandidatesBeyondLimit);
     private sealed record Spectrogram(float[] PowerDb, int Blocks, int MinimumBin, int BinCount)
     {
         public int MaximumBin => MinimumBin + BinCount;

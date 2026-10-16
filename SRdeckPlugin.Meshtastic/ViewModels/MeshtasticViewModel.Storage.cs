@@ -117,12 +117,9 @@ public partial class MeshtasticViewModel
         MeshtasticPacketGroups.Clear();
         MeshtasticReceptionAggregates.Clear();
         SelectedMeshtasticNodeLatestApplications.Clear();
-        MeshtasticNodes.Clear();
+        _nodeStore.Clear();
         FilteredMeshtasticNodes.Clear();
-        _meshtasticNodesById.Clear();
-        MeshtasticMapPoints.Clear();
         MapMarkers.Clear();
-        _meshtasticMapPointsById.Clear();
         SelectedMeshtasticNode = null;
         ResetMeshtasticHistoryWriter();
         PluginJsonLinesHistory.Delete(MeshtasticHistoryPath);

@@ -40,7 +40,7 @@ public sealed partial class CwViewModel : ObservableObject
 
     public ObservableCollection<CwSignalRow> Rows { get; } = [];
     public ObservableCollection<CwSignalRow> FilteredRows { get; } = [];
-    public IEnumerable<CwSignalRow> RecentSignals => Rows.Take(5);
+    public IEnumerable<CwSignalRow> RecentSignals => Rows;
     public ObservableCollection<CwTimelineRow> Timeline { get; } = [];
     public ObservableCollection<CwTimelineRow> FilteredTimeline { get; } = [];
     public IReadOnlyList<CwBandwidthOption> ReceiveBandwidthOptions => CwBandwidth.Options;

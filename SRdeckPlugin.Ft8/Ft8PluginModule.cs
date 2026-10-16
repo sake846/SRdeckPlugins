@@ -32,7 +32,22 @@ public sealed partial class Ft8PluginModule : PluginModuleBase, IIqBlockConsumer
         PluginReceiverBandColors.WithAlpha(0x48, PluginReceiverBandColors.Secondary);
     public const string BandListFileName = Ft8BandCatalog.FileName;
     public const string DefaultBandId = "ft8-band-20m";
+    private const string CustomBandIdPrefix = "ft8-custom-";
     public static IReadOnlyList<Ft8Band> Bands { get; } = Ft8BandCatalog.Bands;
+
+    internal static Ft8Band CreateCustomBand(long dialFrequencyHz, WeakSignalMode mode) =>
+        new($"{CustomBandIdPrefix}{mode.ToString().ToLowerInvariant()}", "カスタム",
+            dialFrequencyHz, "カスタム", mode);
+
+    internal static bool IsCustomBandId(string id) => TryGetCustomBandMode(id, out _);
+
+    internal static bool TryGetCustomBandMode(string id, out WeakSignalMode mode)
+    {
+        mode = default;
+        return id is not null && id.StartsWith(CustomBandIdPrefix, StringComparison.Ordinal) &&
+               Enum.TryParse(id[CustomBandIdPrefix.Length..], true, out mode) &&
+               Enum.IsDefined(mode);
+    }
 
     private readonly object gate = new();
     private readonly object processingGate = new();
@@ -60,6 +75,7 @@ public sealed partial class Ft8PluginModule : PluginModuleBase, IIqBlockConsumer
         RegisterStreamReset(pretriggerBuffer.Reset);
         receiver.MessagesDecoded += OnMessagesDecoded;
         viewModel.BandSelectionRequested = SelectBandFromView;
+        viewModel.CustomFrequencyRequested = SelectCustomFrequencyFromView;
         viewModel.NearbyBandSelectionChanged = ApplyNearbyBandSelection;
         viewModel.BuzzerEnabledChanged = value =>
         {
@@ -398,13 +414,19 @@ public sealed partial class Ft8PluginModule : PluginModuleBase, IIqBlockConsumer
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask SelectProfileAsync(string profileId, CancellationToken cancellationToken)
+    public ValueTask SelectProfileAsync(string profileId, CancellationToken cancellationToken)
+    {
+        Ft8Band next = FindBand(profileId) ??
+            throw new ArgumentException($"Unknown weak-signal profile '{profileId}'.", nameof(profileId));
+        return SelectBandAsync(next, cancellationToken);
+    }
+
+    private async ValueTask SelectBandAsync(Ft8Band next, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
-        Ft8Band next = Bands.FirstOrDefault(item => item.Id == profileId) ??
-            throw new ArgumentException($"Unknown weak-signal profile '{profileId}'.", nameof(profileId));
-        if (profileId == selectedBandId) return;
+        string profileId = next.Id;
+        if (profileId == selectedBandId && next.DialFrequencyHz == SelectedBand().DialFrequencyHz) return;
         PluginTuningResult? appliedTuning = host?.Tuning.Current;
         if (State is PluginLifecycleState.Active or PluginLifecycleState.Streaming)
         {
@@ -422,6 +444,9 @@ public sealed partial class Ft8PluginModule : PluginModuleBase, IIqBlockConsumer
             {
                 SelectedBandId = profileId,
                 Mode = next.Mode,
+                CustomDialFrequencyHz = IsCustomBandId(next.Id)
+                    ? next.DialFrequencyHz
+                    : settings.CustomDialFrequencyHz,
                 AdditionalBandIds = []
             };
             ResetAllReceivers();
@@ -447,4 +472,10 @@ public sealed partial class Ft8PluginModule : PluginModuleBase, IIqBlockConsumer
         SetStatus(State == PluginLifecycleState.Streaming
             ? $"受信中 / {next.DisplayName}" : $"待機中 / {next.DisplayName}");
     }
+
+    private Ft8Band? FindBand(string id) =>
+        Bands.FirstOrDefault(item => item.Id == id) ??
+        (TryGetCustomBandMode(id, out WeakSignalMode mode)
+            ? CreateCustomBand(settings.CustomDialFrequencyHz, mode)
+            : null);
 }

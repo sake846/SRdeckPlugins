@@ -23,7 +23,7 @@ public partial class MeshtasticViewModel
 {
     public void SelectMeshtasticNode(uint nodeNumber)
     {
-        if (_meshtasticNodesById.TryGetValue(nodeNumber, out MeshtasticNodeDisplayItem? node))
+        if (_nodeStore.TryGetNode(nodeNumber, out MeshtasticNodeDisplayItem? node))
             SelectedMeshtasticNode = node;
     }
 
@@ -33,15 +33,7 @@ public partial class MeshtasticViewModel
         if (node is null || !MeshtasticNodes.Contains(node)) return;
 
         bool wasSelected = ReferenceEquals(SelectedMeshtasticNode, node);
-        MeshtasticNodes.Remove(node);
-        if (_meshtasticNodesById.TryGetValue(node.NodeNumber, out MeshtasticNodeDisplayItem? cachedNode) &&
-            ReferenceEquals(cachedNode, node))
-        {
-            _meshtasticNodesById.Remove(node.NodeNumber);
-        }
-
-        if (_meshtasticMapPointsById.Remove(node.NodeNumber, out MeshtasticMapPoint? mapPoint))
-            MeshtasticMapPoints.Remove(mapPoint);
+        _nodeStore.RemoveNode(node);
 
         if (wasSelected) SelectedMeshtasticNode = null;
         RefreshFilteredMeshtasticNodes();

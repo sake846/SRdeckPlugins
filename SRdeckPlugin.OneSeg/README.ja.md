@@ -22,4 +22,9 @@ SRdeckの実行ファイルパッケージに含めません。再配布前に`P
 
 ## ビルド
 
-互換するSRdeckプラットフォームパッケージを用意し、`SRdeckPlugins.sln`のRelease構成をビルドしてください。
+ワンセグは公開`SRdeckPlugins.sln`とBATの初期状態のビルド対象から外しています。
+有効化する前に、公開スナップショットのREADME、`PATENT-NOTICE.md`、`THIRD-PARTY-NOTICES.md`を読み、
+用途と利用国・地域の特許・ライセンス条件を確認してください。ソース公開だけで第三者の特許権が
+すべて許諾されたり、特許非侵害が保証されたりするわけではありません。有効化できると自身で判断した場合にだけ、
+`build.bat`のOneSegの`call :BuildPlugin`行から先頭の`rem `を削除し、互換する
+SRdeckプラットフォームパッケージを用意してBATを実行してください。

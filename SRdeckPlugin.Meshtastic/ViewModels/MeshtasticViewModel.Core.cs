@@ -34,6 +34,8 @@ public partial class MeshtasticViewModel
     private long _lastMeshtasticSuccessfulPayloadTicks;
     private long _lastMeshtasticFailureTicks;
     private MeshtasticDiagnosticEvaluation? _meshtasticDiagnosticCache;
+    private MeshtasticPerformanceState _diagnosticPerformanceState;
+    private bool _diagnosticInPassband = true;
 
     [ObservableProperty] private MeshtasticDisplayItem? _selectedTimelineMessage;
 
@@ -54,56 +56,27 @@ public partial class MeshtasticViewModel
         $"{SelectedMeshtasticRegion} / {(IsMeshtasticDiscoveryMode ? "探索" : SelectedMeshtasticModemPreset.ToString())}";
     public string MeshtasticDiagnosticSignalText => MeshtasticLastSignalStatus.Replace("最終信号: ", "", StringComparison.Ordinal);
 
-    private MeshtasticDiagnosticEvaluation EvaluateMeshtasticDiagnostic()
-    {
-        if (_lastWorkerFailure is { } failure)
-            return new(OverallStatusKind.Error, "受信停止", "受信ワーカー",
-                failure.Exception.GetBaseException().Message, "確認: エラー記録を確認し、受信を停止して再開してください");
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        DateTimeOffset? lastSuccess = ReadUtcTicks(ref _lastMeshtasticSuccessfulPayloadTicks);
-        DateTimeOffset? lastFailure = ReadUtcTicks(ref _lastMeshtasticFailureTicks);
-        if (MeshtasticPerformanceStatus == "過負荷")
-            return new(OverallStatusKind.Critical, "過負荷", "リアルタイム処理",
-                MeshtasticPerformanceDetails, "確認: 探索プリセット数、スロット数、または入力サンプルレートを減らしてください");
-        if (MeshtasticPerformanceStatus == "注意")
-            return new(OverallStatusKind.Warning, "注意", "リアルタイム処理",
-                MeshtasticPerformanceDetails, "確認: 遅延IQの保持残り時間と入力サンプルレートを確認してください");
-        if (MeshtasticPassbandStatus.Contains("帯域外", StringComparison.Ordinal))
-            return new(OverallStatusKind.Warning, "要確認", "入力・選局",
-                "Meshtastic対象周波数が受信帯域外です", "確認: 地域、slot、中心周波数、入力帯域を確認してください");
-        if (MeshtasticPerformanceStatus is "待機中" or "測定準備中")
-            return new(OverallStatusKind.Idle, "入力待ち", "入力",
-                "IQ入力またはリアルタイム測定の開始を待っています", "確認: SDR接続と受信開始状態を確認してください");
-        if (lastFailure is DateTimeOffset failedAt && now - failedAt <= TimeSpan.FromSeconds(60) &&
-            (lastSuccess is null || failedAt > lastSuccess.Value))
-            return new(OverallStatusKind.Warning, "要確認", MeshtasticPayloadFailureCount > 0 ? "検証・復号" :
-                MeshtasticHeaderFailureCount > 0 ? "ヘッダー" : "同期",
-                MeshtasticLastFailureStatus.Replace("直近の失敗: ", "", StringComparison.Ordinal),
-                "確認: 信号margin、slot/PHY設定、失敗段階の件数を確認してください");
-        if (lastSuccess is DateTimeOffset succeededAt && now - succeededAt <= TimeSpan.FromSeconds(60))
-            return new(OverallStatusKind.Success, "正常", "検証・復号",
-                "直近60秒にMeshtastic payloadを正常に検証・復号しています", "確認: 受信処理は正常に動作しています");
-        if (MeshtasticHeaderCount > 0)
-            return new(OverallStatusKind.Running, "監視中", "payload",
-                "LoRa headerを取得し、payload完了を待っています", "確認: payload失敗とCRC内訳を確認しながら継続監視してください");
-        if (MeshtasticSynchronizedCount > 0)
-            return new(OverallStatusKind.Running, "監視中", "header",
-                "LoRa同期が成立し、headerを探索しています", "確認: header失敗と選択PHYを確認してください");
-        if (MeshtasticPreambleCount > 0)
-            return new(OverallStatusKind.Running, "監視中", "同期",
-                "LoRa preambleを検出し、同期を継続しています", "確認: 信号marginとslot設定を確認してください");
-        return new(OverallStatusKind.Running, "監視中", "信号待機",
-            "IQ入力は正常でMeshtastic信号を監視しています", "確認: 対象slotと周辺トラフィックを確認してください");
-    }
+    private MeshtasticDiagnosticEvaluation EvaluateMeshtasticDiagnostic() =>
+        MeshtasticDiagnosticEvaluator.Evaluate(new(
+            _diagnosticPerformanceState,
+            _diagnosticInPassband,
+            _lastWorkerFailure?.Exception.GetBaseException().Message,
+            MeshtasticPerformanceDetails,
+            ReadUtcTicks(ref _lastMeshtasticSuccessfulPayloadTicks),
+            ReadUtcTicks(ref _lastMeshtasticFailureTicks),
+            MeshtasticPayloadFailureCount,
+            MeshtasticHeaderFailureCount,
+            MeshtasticHeaderCount,
+            MeshtasticSynchronizedCount,
+            MeshtasticPreambleCount,
+            MeshtasticLastFailureStatus.Replace("直近の失敗: ", "", StringComparison.Ordinal)),
+            DateTimeOffset.UtcNow);
 
     private static DateTimeOffset? ReadUtcTicks(ref long ticks)
     {
         long value = Interlocked.Read(ref ticks);
         return value <= 0 ? null : new DateTimeOffset(value, TimeSpan.Zero);
     }
-
-    private readonly record struct MeshtasticDiagnosticEvaluation(OverallStatusKind Kind,
-        string Status, string Phase, string Summary, string Recommendation);
 
     public MeshtasticViewModel(MeshtasticReceiveService meshtasticReceiveService)
     {
@@ -287,12 +260,11 @@ public partial class MeshtasticViewModel
     public ObservableCollection<MeshtasticPacketGroupItem> MeshtasticPacketGroups { get; } = new MeshtasticDisplayCollection<MeshtasticPacketGroupItem>();
     public ObservableCollection<MeshtasticReceptionAggregateItem> MeshtasticReceptionAggregates { get; } = new MeshtasticDisplayCollection<MeshtasticReceptionAggregateItem>();
     public ObservableCollection<MeshtasticDisplayItem> SelectedMeshtasticNodeLatestApplications { get; } = new MeshtasticDisplayCollection<MeshtasticDisplayItem>();
-    public ObservableCollection<MeshtasticNodeDisplayItem> MeshtasticNodes { get; } = new();
+    public ObservableCollection<MeshtasticNodeDisplayItem> MeshtasticNodes => _nodeStore.Nodes;
     public ObservableCollection<MeshtasticNodeDisplayItem> FilteredMeshtasticNodes { get; } = new();
-    public ObservableCollection<MeshtasticMapPoint> MeshtasticMapPoints { get; } = new();
+    public ObservableCollection<MeshtasticMapPoint> MeshtasticMapPoints => _nodeStore.MapPoints;
     public ObservableCollection<GeoMapMarker> MapMarkers { get; } = new MeshtasticDisplayCollection<GeoMapMarker>();
-    private readonly Dictionary<uint, MeshtasticNodeDisplayItem> _meshtasticNodesById = new();
-    private readonly Dictionary<uint, MeshtasticMapPoint> _meshtasticMapPointsById = new();
+    private readonly MeshtasticNodeStore _nodeStore = new();
 
     [ObservableProperty]
     private string _meshtasticReceiverStatus = "受信待機中";

@@ -237,7 +237,7 @@ internal sealed partial class LoRaPreambleDetector
             timingCorrectionSamples,
             null,
             false);
-        _headerSymbolCount = 0;
+        _frameDecoder.BeginHeader();
         _consecutiveLowSnrSymbols = 0;
         _samplesSinceAnalysis = -(_symbolSamples / 4) + timingCorrectionSamples;
         _state = AcquisitionState.Header;
@@ -250,7 +250,7 @@ internal sealed partial class LoRaPreambleDetector
             _consecutiveLowSnrSymbols++;
             if (_consecutiveLowSnrSymbols >= 4)
             {
-                ReportDiagnostic("HEADER", $"Header symbol {_headerSymbolCount + 1} had persistently insufficient margin", peak, null, null, true);
+                ReportDiagnostic("HEADER", $"Header symbol {_frameDecoder.HeaderSymbolCount + 1} had persistently insufficient margin", peak, null, null, true);
                 ResetAcquisition();
                 return;
             }
@@ -267,16 +267,9 @@ internal sealed partial class LoRaPreambleDetector
             (int)MathF.Round((relativeRawSymbol - 1.0f) / 4.0f, MidpointRounding.AwayFromZero),
             _symbolValues / 4);
         int grayMappedSymbol = reducedRateSymbol ^ (reducedRateSymbol >> 1);
-        _headerSymbols[_headerSymbolCount] = (ushort)grayMappedSymbol;
-        if (_headerSoftSymbols is not null)
-            _headerSoftSymbols[_headerSymbolCount] = CreateSoftSymbol(peak, reducedRate: true);
-        _headerSymbolCount++;
-        if (_headerSymbolCount < _headerSymbols.Length) return;
-
-        LoRaExplicitHeader header = _softOptions is null
-            ? LoRaExplicitHeaderDecoder.Decode(_headerSymbols, _spreadingFactor)
-            : LoRaExplicitHeaderDecoder.DecodeSoft(
-                _headerSoftSymbols!, _spreadingFactor, _softOptions.MissingCandidatePenalty);
+        LoRaExplicitHeader? header = _frameDecoder.PushHeader((ushort)grayMappedSymbol,
+            _softOptions is not null ? CreateSoftSymbol(peak, reducedRate: true) : null);
+        if (header is null) return;
         if (_metrics is not null)
         {
             _metrics.HeadersDecoded++;
@@ -304,28 +297,17 @@ internal sealed partial class LoRaPreambleDetector
             null,
             false);
 
-        int requiredNibbles = (header.PayloadLength * 2) + (header.HasPayloadCrc ? 4 : 0);
-        _activeHeader = header;
-        _payloadNibbles = new List<byte>(requiredNibbles);
-        if (_softOptions is not null)
-            _payloadSoftSymbols = new List<LoRaSoftSymbol>(header.CodingRateDenominator * 2);
-        foreach (byte nibble in header.InitialPayloadNibbles)
-        {
-            if (_payloadNibbles.Count == requiredNibbles) break;
-            _payloadNibbles.Add(nibble);
-        }
-        _payloadCorrectedCodewords = header.CorrectedCodewords;
-        _payloadBlockSymbolCount = 0;
+        _frameDecoder.BeginPayload(header);
         _consecutiveLowSnrSymbols = 0;
         if (!TryCompletePayload()) _state = AcquisitionState.Payload;
     }
 
     private void ProcessPayload(SpectrumPeak peak)
     {
-        LoRaExplicitHeader? header = _activeHeader;
-        if (header == null || _payloadNibbles == null)
+        LoRaExplicitHeader? header = _frameDecoder.ActiveHeader;
+        if (header == null || !_frameDecoder.HasPayload)
         {
-            ReportDiagnostic("PAYLOAD", $"Payload symbol {_payloadBlockSymbolCount + 1} was unusable", peak, null, null, true);
+            ReportDiagnostic("PAYLOAD", $"Payload symbol {_frameDecoder.PayloadBlockSymbolCount + 1} was unusable", peak, null, null, true);
             ResetAcquisition();
             return;
         }
@@ -335,7 +317,7 @@ internal sealed partial class LoRaPreambleDetector
             _consecutiveLowSnrSymbols++;
             if (_consecutiveLowSnrSymbols >= 4)
             {
-                ReportDiagnostic("PAYLOAD", $"Payload symbol {_payloadBlockSymbolCount + 1} had persistently unusable margin", peak, null, null, true);
+                ReportDiagnostic("PAYLOAD", $"Payload symbol {_frameDecoder.PayloadBlockSymbolCount + 1} had persistently unusable margin", peak, null, null, true);
                 ResetAcquisition();
                 return;
             }
@@ -352,64 +334,17 @@ internal sealed partial class LoRaPreambleDetector
             (int)MathF.Round(relativeRawSymbol - 1.0f, MidpointRounding.AwayFromZero),
             _symbolValues);
         int grayMappedSymbol = binarySymbol ^ (binarySymbol >> 1);
-        _payloadBlockSymbols[_payloadBlockSymbolCount] = (ushort)grayMappedSymbol;
-        if (_payloadBlockSoftSymbols is not null)
-        {
-            LoRaSoftSymbol softSymbol = CreateSoftSymbol(peak, reducedRate: false);
-            _payloadBlockSoftSymbols[_payloadBlockSymbolCount] = softSymbol;
-            _payloadSoftSymbols!.Add(softSymbol);
-        }
-        _payloadBlockSymbolCount++;
-        if (_payloadBlockSymbolCount < header.CodingRateDenominator) return;
-
-        byte[] nibbles = _softOptions is null
-            ? LoRaPayloadDecoder.DecodeBlock(
-                _payloadBlockSymbols.AsSpan(0, header.CodingRateDenominator).ToArray(),
-                header.CodingRateDenominator,
-                _spreadingFactor,
-                out int correctedCodewords)
-            : LoRaPayloadDecoder.DecodeBlockSoft(
-                _payloadBlockSoftSymbols!.AsSpan(0, header.CodingRateDenominator).ToArray(),
-                header.CodingRateDenominator,
-                _spreadingFactor,
-                _softOptions.MissingCandidatePenalty,
-                out correctedCodewords);
-        _payloadCorrectedCodewords += correctedCodewords;
-        int requiredNibbles = (header.PayloadLength * 2) + (header.HasPayloadCrc ? 4 : 0);
-        foreach (byte nibble in nibbles)
-        {
-            if (_payloadNibbles.Count == requiredNibbles) break;
-            _payloadNibbles.Add(nibble);
-        }
-        _payloadBlockSymbolCount = 0;
-        TryCompletePayload();
+        if (_frameDecoder.PushPayload((ushort)grayMappedSymbol,
+            _softOptions is not null ? CreateSoftSymbol(peak, reducedRate: false) : null))
+            TryCompletePayload();
     }
 
     private bool TryCompletePayload()
     {
-        LoRaExplicitHeader? header = _activeHeader;
-        List<byte>? nibbles = _payloadNibbles;
-        if (header == null || nibbles == null) return false;
-
-        int requiredNibbles = (header.PayloadLength * 2) + (header.HasPayloadCrc ? 4 : 0);
-        if (nibbles.Count < requiredNibbles) return false;
-
-        LoRaSoftFrameInformation? softInformation = _softOptions is null
-            ? null
-            : new LoRaSoftFrameInformation(
-                _softOptions.DecisionMode,
-                _softOptions.CandidateCount,
-                _headerSoftSymbols!.ToArray(),
-                _payloadSoftSymbols!.ToArray());
-        LoRaPayloadFrame frame = LoRaPayloadDecoder.BuildFrame(
-            header, nibbles, _payloadCorrectedCodewords, softInformation);
-        if (_crcListOptions is not null &&
-            frame.HasPayloadCrc &&
-            frame.IsPayloadCrcValid is false &&
-            softInformation is not null)
+        LoRaPayloadFrame? frame = _frameDecoder.BuildCompletedPayload(out LoRaCrcListDecodingResult? listResult);
+        if (frame is null) return false;
+        if (listResult is not null)
         {
-            LoRaCrcListDecodingResult listResult = LoRaCrcListDecoder.TryRecover(
-                header, softInformation, _crcListOptions);
             if (_metrics is not null)
             {
                 _metrics.CrcListEligibleFrames++;
@@ -428,8 +363,6 @@ internal sealed partial class LoRaPreambleDetector
                 listResult.TimeLimitReached,
                 listResult.SelectedMetric,
                 listResult.ElapsedTicks));
-            if (listResult.RecoveredFrame is not null)
-                frame = listResult.RecoveredFrame;
         }
         if (_metrics is not null)
         {

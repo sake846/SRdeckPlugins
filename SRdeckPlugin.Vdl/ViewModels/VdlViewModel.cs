@@ -16,17 +16,14 @@ public sealed partial class VdlViewModel : ObservableObject
 
     private readonly ObservableCollection<VdlDecodedFrame> frames = [];
     private readonly ObservableCollection<VdlCategorySummary> callsignGroups = [];
-    private readonly ObservableCollection<VdlCategorySummary> protocolGroups = [];
     private readonly ObservableCollection<VdlDecodedFrame> filteredFrames = [];
     private readonly ObservableCollection<VdlCategorySummary> filteredCallsignGroups = [];
-    private readonly ObservableCollection<VdlCategorySummary> filteredProtocolGroups = [];
     private readonly ObservableCollection<GeoMapMarker> mapMarkers = [];
     private readonly Dictionary<string, (GeoMapMarker Marker, DateTimeOffset LastReceivedAt)> mapMarkersByAircraft = new(StringComparer.OrdinalIgnoreCase);
     private readonly Queue<DiagnosticWindowSample> diagnosticWindow = new();
     private DateTimeOffset? lastValidFrameObservedAt;
 
     [ObservableProperty] private string _searchText = string.Empty;
-    [ObservableProperty] private string _historyMode = "Callsign 別";
     [ObservableProperty] private string _overallStatus = "待機中";
     [ObservableProperty] private OverallStatusKind _overallStatusKind = OverallStatusKind.Idle;
     [ObservableProperty] private string _overallPhase = "受信処理";
@@ -38,41 +35,9 @@ public sealed partial class VdlViewModel : ObservableObject
     [ObservableProperty] private VdlDecodedFrame? _selectedTimelineFrame;
 
     partial void OnSearchTextChanged(string value) => RefreshFilteredHistory();
-    partial void OnHistoryModeChanged(string value)
-    {
-        SelectedListGroup = null;
-        OnPropertyChanged(nameof(IsTimeSeriesMode));
-        OnPropertyChanged(nameof(IsCallsignMode));
-        OnPropertyChanged(nameof(IsProtocolMode));
-        RefreshFilteredHistory();
-    }
-
-    public bool IsTimeSeriesMode
-    {
-        get => HistoryMode == "時系列";
-        set { if (value) HistoryMode = "時系列"; }
-    }
-    public bool IsCallsignMode
-    {
-        get => HistoryMode == "Callsign 別";
-        set { if (value) HistoryMode = "Callsign 別"; }
-    }
-    public bool IsProtocolMode
-    {
-        get => HistoryMode == "プロトコル／種別別";
-        set { if (value) HistoryMode = "プロトコル／種別別"; }
-    }
-
-    public int FilteredCount => HistoryMode switch
-    {
-        "Callsign 別" => filteredCallsignGroups.Count,
-        "プロトコル／種別別" => filteredProtocolGroups.Count,
-        _ => filteredFrames.Count
-    };
 
     public ObservableCollection<VdlDecodedFrame> FilteredFrames => filteredFrames;
     public ObservableCollection<VdlCategorySummary> FilteredCallsignGroups => filteredCallsignGroups;
-    public ObservableCollection<VdlCategorySummary> FilteredProtocolGroups => filteredProtocolGroups;
 
     private string selectedProfileId = "136975";
     private bool isAudioMonitorEnabled = false;
@@ -137,11 +102,11 @@ public sealed partial class VdlViewModel : ObservableObject
         SelectedTimelineFrame = null;
         frames.Clear();
         callsignGroups.Clear();
-        protocolGroups.Clear();
         mapMarkers.Clear();
         mapMarkersByAircraft.Clear();
         OnPropertyChanged(nameof(IdentifiedCallsignCount));
         OnPropertyChanged(nameof(RecentCallsignGroups));
+        RefreshOverview();
         OnPropertyChanged(nameof(LastReceptionText));
         RefreshFilteredHistory();
         ClearRequested?.Invoke();
@@ -313,7 +278,7 @@ public sealed partial class VdlViewModel : ObservableObject
     public long TotalFrameCount => ValidFrameCount + RejectedFrameCount;
     public double AcceptanceRate => TotalFrameCount == 0 ? 0 : ValidFrameCount * 100.0 / TotalFrameCount;
     public string AcceptanceRateText => TotalFrameCount == 0 ? "—" : $"{AcceptanceRate:F1} %";
-    public int IdentifiedCallsignCount => callsignGroups.Count(group => group.Key != "Callsign不明");
+    public int IdentifiedCallsignCount => callsignGroups.Count(group => group.Key != "機体不明");
     public string LastReceptionText => frames.Count == 0
         ? "—"
         : frames[0].ReceivedAt.ToLocalTime().ToString("HH:mm:ss");

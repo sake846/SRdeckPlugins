@@ -80,5 +80,10 @@ During reception and after retention-period changes, retention runs in the backg
 
 ## Build
 
-Build the matching `SRdeckPlugins.sln` release solution with the compatible
-SRdeck platform packages.
+Meshtastic is excluded from the default `SRdeckPlugins.sln` and BAT build.
+Before opting in, read the release snapshot's README, `PATENT-NOTICE.md`, and
+`THIRD-PARTY-NOTICES.md` and assess the patent and licensing conditions for your
+use and country or region. Source availability does not grant every third-party
+patent right or establish non-infringement. Only if you decide to enable it,
+remove the leading `rem ` from the Meshtastic `call :BuildPlugin` line in
+`build.bat`, then run the BAT with matching SRdeck platform packages.

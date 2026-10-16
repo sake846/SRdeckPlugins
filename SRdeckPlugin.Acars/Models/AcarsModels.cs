@@ -68,4 +68,20 @@ public sealed record AcarsReception(
     public string UninterpretedText => Protocols.AcarsMessageInterpreter
         .InterpretDetailed(Label, Text).UninterpretedText;
     public bool HasPosition => Protocols.AcarsPositionParser.TryParse(Text, out _, out _);
+
+    public string CategoryDisplay
+    {
+        get
+        {
+            string lbl = Label?.ToUpperInvariant() ?? string.Empty;
+            string txt = Text?.ToUpperInvariant() ?? string.Empty;
+            if (lbl is "5V" or "20" or "21" or "22" or "23" || txt.Contains("POS") || txt.Contains("LAT") || txt.Contains("LON")) return "位置";
+            if (lbl is "00" or "QA" or "Q0" or "10" or "11" or "12" or "13" or "15" || txt.Contains("OUT") || txt.Contains("OFF") || txt.Contains("ON") || txt.Contains("IN") || txt.Contains("GATE")) return "発着";
+            if (lbl is "51" or "52" or "80" or "D1" or "S6" or "S7" or "5U" or "RA" or "RB" or "RC" || txt.Contains("METAR") || txt.Contains("TAF") || txt.Contains("PIREP") || txt.Contains("WXRQ")) return "気象";
+            if (lbl is "B5" or "B6" or "B9" or "5D" || txt.Contains("CPDLC") || txt.Contains("ATIS") || txt.Contains("ATC")) return "管制";
+            if (lbl is "Q1" or "Q2" or "Q3" or "Q4" or "40" or "41" or "42" or "43" or "44" or "45" or "4A" || txt.Contains("#DFB") || txt.Contains("#DFD") || txt.Contains("#DFR") || txt.Contains("ACMS") || txt.Contains("ENG")) return "機体";
+            if (lbl is "14" or "16" or "17" or "18" or "30" or "31" or "36" or "39" or "H1" or "H2" or "H3" || txt.Contains("ETA") || txt.Contains("FPL") || txt.Contains("FUEL")) return "運航";
+            return "情報";
+        }
+    }
 }

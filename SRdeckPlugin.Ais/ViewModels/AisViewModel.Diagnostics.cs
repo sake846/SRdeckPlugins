@@ -39,6 +39,7 @@ public sealed partial class AisViewModel
         StableRecencyOrder.Reorder(Targets, item => item.LastSeen);
         RefreshFilteredTargets();
         OnPropertyChanged(nameof(RecentTargets));
+        RefreshOverview();
 
         RefreshMapMarkers();
 

@@ -53,56 +53,34 @@
                             <Ellipse Style="{DynamicResource PluginStatusIndicatorStyle}" Tag="{Binding OverallStatusKind}"/>
                             <TextBlock Text="受信状態" Style="{DynamicResource PluginStatusHeaderTitleStyle}"/>
                         </StackPanel>
+                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" Margin="8,0" ToolTip="{Binding Status}">
+                            <TextBlock.Text><MultiBinding StringFormat="{}{0} / {1}"><Binding Path="OverallStatus"/><Binding Path="Status"/></MultiBinding></TextBlock.Text>
+                        </TextBlock>
                         <Button Grid.Column="2" Content="クリア" Command="{Binding ClearAircraftCommand}" Width="60" Height="26" FontSize="10"/>
                     </Grid>
                 </Border>
                 <TabControl Grid.Row="1" Style="{DynamicResource PluginTabControlStyle}" Padding="0" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="10">
                     <!-- 1. 概要 -->
                     <TabItem Header="概要">
-                        <Grid Margin="10,8">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Text="受信の概況" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="2,0,0,5"/>
-                            <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,8">
-                                <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="追跡中の機体" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding Aircraft.Count}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
-                                <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="位置取得機" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding PositionedAircraftCount, StringFormat=N0}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
-                                <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="受信レート" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding ValidFramesPerSecond, StringFormat={}{0:F1} frame/s}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
-                                <Border Style="{DynamicResource PluginMetricCardStyle}"><StackPanel><TextBlock Text="正常率（累計）" Foreground="{DynamicResource TextDimBrush}"/><TextBlock Text="{Binding AcceptanceRateText}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="20" FontWeight="SemiBold"/></StackPanel></Border>
-                            </UniformGrid>
-                            <Border Grid.Row="2" Style="{DynamicResource PluginMetricCardStyle}" Padding="8,6">
-                                <StackPanel>
-                                    <TextBlock Text="受信成果" Style="{DynamicResource PluginSecondarySectionHeaderStyle}"/>
-                                    <TextBlock Text="{Binding OverallSummary}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                                    <TextBlock Text="{Binding OverallRecommendation}" Foreground="{DynamicResource TextDimBrush}" Margin="0,3,0,0" TextWrapping="Wrap"/>
-                                </StackPanel>
-                            </Border>
-                            <TextBlock Grid.Row="3" Text="最近変化した機体（最大3件）" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="2,2,0,5"/>
-                            <ListBox Grid.Row="4" ItemsSource="{Binding RecentAircraft}" Style="{DynamicResource PluginCompactListStyle}" VerticalAlignment="Stretch">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="0,0,0,1" Padding="6,5">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="75"/><ColumnDefinition Width="105"/><ColumnDefinition Width="90"/><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Icao}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                <TextBlock Grid.Column="1" Text="{Binding Callsign}" Foreground="{DynamicResource PluginDisplayAccentTertiaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                <TextBlock Grid.Column="2" Text="{Binding AltitudeFeet, StringFormat={}{0:N0} ft}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                <TextBlock Grid.Column="3" Text="{Binding SpeedKnots, StringFormat={}{0:F0} kt}" Foreground="{DynamicResource TextDimBrush}" FontFamily="{DynamicResource DisplayFontFamily}"/>
-                                                <TextBlock Grid.Column="4" Text="{Binding LastSeen, StringFormat=HH:mm:ss}" Foreground="{DynamicResource TextDimBrush}" FontFamily="{DynamicResource DisplayFontFamily}" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </Grid>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Margin="8">
+                                <controls:ReceptionOverviewPanel DataContext="{Binding Overview}"/>
+                                <TextBlock Text="詳しく確認" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="2,12,0,5"/>
+                                <TextBlock Text="{Binding Overview.DetailHint}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" Margin="2,0,2,6"/>
+                                <UniformGrid Columns="4">
+                                    <Button Content="一覧を開く" Tag="{Binding ElementName=OverviewListTab}" Click="OpenOverviewTab" Margin="2" Height="22"/>
+                                    <Button Content="時系列を開く" Tag="{Binding ElementName=OverviewTimelineTab}" Click="OpenOverviewTab" Margin="2" Height="22"/>
+                                    <Button Content="地図を開く" Tag="{Binding ElementName=OverviewMapTab}" Click="OpenOverviewTab" Margin="2" Height="22"/>
+                                    <Button Content="診断を開く" Tag="{Binding ElementName=OverviewDiagnosticsTab}" Click="OpenOverviewTab" Margin="2" Height="22"/>
+                                </UniformGrid>
+                                <TextBlock Text="受信できない場合や品質の理由を調べる場合は、診断で確認できます。" Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" Margin="2,4,2,0"/>
+                            </StackPanel>
+                        </ScrollViewer>
                     </TabItem>
 
                     <!-- 2. 対象一覧 -->
-                    <TabItem Header="一覧">
+                    <TabItem x:Name="OverviewListTab" Header="一覧">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -146,19 +124,30 @@
                                                         <RowDefinition Height="Auto"/>
                                                         <RowDefinition Height="Auto"/>
                                                     </Grid.RowDefinitions>
-                                                    <!-- 1行目: 機体識別 (左) + Squawk / 受信件数 (右) -->
+                                                    <!-- 1行目: 機体識別 / ICAO詳細 / SQ (左) + 受信件数 (右) -->
                                                     <Grid>
                                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                         <DockPanel LastChildFill="False">
                                                             <TextBlock DockPanel.Dock="Left" Text="{Binding AircraftDisplay}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                                                             <TextBlock DockPanel.Dock="Left" Margin="8,0,0,0" Text="{Binding AircraftDetail}" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                                                        </DockPanel>
-                                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
-                                                            <TextBlock Text="{Binding SquawkDisplay}" Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                                            <TextBlock Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center">
-                                                                <Run Text="{Binding Messages, Mode=OneWay, StringFormat=N0}"/><Run Text=" 件"/>
+                                                            <TextBlock DockPanel.Dock="Left" Margin="8,0,0,0" Text="{Binding SquawkDisplay}" Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" VerticalAlignment="Center">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Style.Triggers>
+                                                                            <Trigger Property="Text" Value="">
+                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            </Trigger>
+                                                                            <Trigger Property="Text" Value="{x:Null}">
+                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            </Trigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
                                                             </TextBlock>
-                                                        </StackPanel>
+                                                        </DockPanel>
+                                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" Margin="8,0,0,0">
+                                                            <Run Text="受信 "/><Run Text="{Binding Messages, Mode=OneWay, StringFormat=N0}"/><Run Text=" 件"/>
+                                                        </TextBlock>
                                                     </Grid>
                                                     <!-- 2行目: 緯度・経度 ＋ 航法諸元（各項目固定幅カラムで均等・完璧に整列） -->
                                                     <Grid Grid.Row="1" Margin="0,3,0,0">
@@ -313,7 +302,7 @@
                         </Grid>
                     </TabItem>
 
-                    <TabItem Header="時系列">
+                    <TabItem x:Name="OverviewTimelineTab" Header="時系列">
                         <Grid>
                             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="5"/><RowDefinition Height="160" MinHeight="96" MaxHeight="260"/></Grid.RowDefinitions>
                             <Grid Margin="8,6">
@@ -349,7 +338,7 @@
                                                             <RowDefinition Height="Auto"/>
                                                             <RowDefinition Height="Auto"/>
                                                         </Grid.RowDefinitions>
-                                                        <!-- 1行目: 機体識別 (左) + 種別バッジ / Squawk (右) -->
+                                                        <!-- 1行目: 機体識別 / ICAO詳細 / SQ (左) + 種別バッジ (右) -->
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*"/>
@@ -358,13 +347,27 @@
                                                             <DockPanel LastChildFill="False">
                                                                 <TextBlock DockPanel.Dock="Left" Text="{Binding AircraftDisplay}" Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                                                                 <TextBlock DockPanel.Dock="Left" Margin="8,0,0,0" Text="{Binding AircraftDetail}" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                                <TextBlock DockPanel.Dock="Left" Margin="8,0,0,0" Text="{Binding SquawkDisplay}" Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" VerticalAlignment="Center">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock">
+                                                                            <Style.Triggers>
+                                                                                <Trigger Property="Text" Value="">
+                                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                </Trigger>
+                                                                                <Trigger Property="Text" Value="{x:Null}">
+                                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                </Trigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
                                                             </DockPanel>
-                                                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
-                                                                <TextBlock Text="{Binding SquawkDisplay}" Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                                                <Border Background="{DynamicResource OverlayBackgroundBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="5,1">
-                                                                    <TextBlock Text="{Binding KindDisplay}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/>
-                                                                </Border>
-                                                            </StackPanel>
+                                                            <Border Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0"
+                                                                    Background="{DynamicResource OverlayBackgroundBrush}"
+                                                                    BorderBrush="{DynamicResource ControlBorderBrush}"
+                                                                    BorderThickness="1" CornerRadius="3" Padding="5,1">
+                                                                <TextBlock Text="{Binding KindDisplay}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/>
+                                                            </Border>
                                                         </Grid>
                                                         <!-- 2行目: 緯度・経度/要約 ＋ 航法諸元（各項目固定幅カラムで均等・完璧に整列） -->
                                                         <Grid Grid.Row="1" Margin="0,2,0,0">
@@ -453,7 +456,7 @@
                     </TabItem>
 
                     <!-- 4. 地図 -->
-                    <TabItem Header="地図">
+                    <TabItem x:Name="OverviewMapTab" Header="地図">
                         <Grid>
                             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                             <Border Margin="8,6" Padding="4">
@@ -487,7 +490,7 @@
                     </TabItem>
 
                     <!-- 5. 診断 -->
-                    <TabItem Header="診断">
+                    <TabItem x:Name="OverviewDiagnosticsTab" Header="診断">
                         <DockPanel Margin="12,10" LastChildFill="True">
                             <controls:DiagnosticsOverview DockPanel.Dock="Top"
                                 StatusKind="{Binding OverallStatusKind}"

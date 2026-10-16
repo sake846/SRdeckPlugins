@@ -329,6 +329,7 @@ public sealed partial class AisViewModel : ObservableObject
         OnPropertyChanged(nameof(FilteredCount));
         OnPropertyChanged(nameof(PositionedTargetCount));
         OnPropertyChanged(nameof(RecentTargets));
+        RefreshOverview();
         ClearRequested?.Invoke();
     }
 

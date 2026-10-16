@@ -54,7 +54,7 @@ internal static class MeshtasticHardwareCatalog
 
     private static IReadOnlyDictionary<uint, string> LoadProductNames(string? configuredDataDirectory)
     {
-        string dataDirectory = configuredDataDirectory ?? MeshtasticSettingsService.DefaultPluginDataDirectory;
+        string dataDirectory = configuredDataDirectory ?? MeshtasticDataPaths.DefaultDataDirectory;
         string path = Path.Combine(dataDirectory, FileName);
         try
         {

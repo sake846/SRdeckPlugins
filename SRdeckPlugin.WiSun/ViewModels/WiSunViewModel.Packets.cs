@@ -22,9 +22,6 @@ public sealed partial class WiSunViewModel
     public int NodeCount => RecentPanGroups.Sum(group => group.NodeCount);
     public string FrequencyHzText => $"{FrequencyMhz:F3} MHz";
 
-    public void StepFrequencyUp() => FrequencyMhz += FrequencyStepMhz;
-    public void StepFrequencyDown() => FrequencyMhz -= FrequencyStepMhz;
-
     public void ClearPackets()
     {
         SelectedTimelinePacket = null;

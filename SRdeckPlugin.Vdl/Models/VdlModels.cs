@@ -48,6 +48,7 @@ public sealed record VdlDecodedFrame(VdlFrame Raw, AvlcPacket? Avlc, VdlAcarsMes
 {
     public DateTimeOffset ReceivedAt => Raw.ReceivedAt.ToLocalTime();
     public long FrequencyHz => Raw.FrequencyHz;
+    public string FrequencyDisplay => $"{FrequencyHz / 1_000_000.0:F3} MHz";
     public string Hex => Raw.Hex;
     public string Source => Avlc is null ? "-" : $"{Avlc.Source.Address} ({Avlc.Source.TypeName})";
     public string Destination => Avlc is null ? "-" : $"{Avlc.Destination.Address} ({Avlc.Destination.TypeName})";
@@ -56,8 +57,11 @@ public sealed record VdlDecodedFrame(VdlFrame Raw, AvlcPacket? Avlc, VdlAcarsMes
         !string.IsNullOrWhiteSpace(Acars?.Registration) ? Acars.Registration.Trim() :
         Avlc?.Source.Type == AvlcAddressType.Aircraft ? Avlc.Source.Address :
         Avlc?.Destination.Type == AvlcAddressType.Aircraft ? Avlc.Destination.Address : "-";
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string AircraftDisplay => Callsign == "-" ? "機体不明" : Callsign;
     public string Text => Acars?.Text ?? ParseStatus;
     public string Summary => $"{Protocol} {Source} → {Destination} {FrameType}" +
         (Callsign == "-" ? string.Empty : $" / {Callsign}") +
         (string.IsNullOrWhiteSpace(Acars?.Text) ? string.Empty : $" / {Acars.Text}");
+    public string SingleLineSummary => Text.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Trim();
 }

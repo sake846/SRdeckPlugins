@@ -111,11 +111,7 @@ public sealed partial class MeshtasticReceiveService
         _lastProcessedSequence = -1;
         _lastProcessedSampleEnd = -1;
         _lastProcessedConfigurationVersion = -1;
-        lock (_recentPacketsGate)
-        {
-            _recentPackets.Clear();
-            _recentPacketOrder.Clear();
-        }
+        _packetProcessor.ResetStream();
         Interlocked.Increment(ref _ringGeneration);
         Volatile.Write(ref _targetInPassband, 0);
     }

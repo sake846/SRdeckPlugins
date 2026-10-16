@@ -229,10 +229,10 @@ public sealed partial class HfdlViewModel
         SelectedTimelineReception = null;
         Messages.Clear();
         FlightIdGroups.Clear();
-        KindGroups.Clear();
         OnPropertyChanged(nameof(IdentifiedFlightCount));
         OnPropertyChanged(nameof(LastReceptionText));
         OnPropertyChanged(nameof(RecentFlightGroups));
+        RefreshOverview();
         RefreshFilteredHistory();
         ClearRequested?.Invoke();
     }
@@ -240,13 +240,14 @@ public sealed partial class HfdlViewModel
     private void RebuildCategories()
     {
         var activeFlightGroups = Messages
-            .GroupBy(item => DisplayKey(item.FlightId, "Flight ID不明"))
+            .Where(item => !item.IsGroundStationMessage)
+            .GroupBy(item => item.AircraftDisplay)
             .OrderByDescending(group => group.Max(item => item.ReceivedAt))
             .Take(MaximumAircraft);
         ReplaceCategories(FlightIdGroups, activeFlightGroups);
-        ReplaceCategories(KindGroups, Messages.GroupBy(item => DisplayKey(item.Kind, "種別不明")));
         OnPropertyChanged(nameof(IdentifiedFlightCount));
         OnPropertyChanged(nameof(RecentFlightGroups));
+        RefreshOverview();
     }
 
     private static void ReplaceCategories(ObservableCollection<HfdlCategorySummary> target,
@@ -270,7 +271,7 @@ public sealed partial class HfdlViewModel
         foreach (HfdlReception msg in Messages)
         {
             if (string.IsNullOrEmpty(filter) ||
-                (msg.FlightId?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true) ||
+                msg.AircraftDisplay.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
                 (msg.Kind?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true) ||
                 (msg.PayloadHex?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true))
             {
@@ -289,30 +290,13 @@ public sealed partial class HfdlViewModel
             }
         }
 
-        FilteredKindGroups.Clear();
-        foreach (HfdlCategorySummary grp in KindGroups)
-        {
-            if (string.IsNullOrEmpty(filter) ||
-                grp.Key.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                grp.LatestPayload.Contains(filter, StringComparison.OrdinalIgnoreCase))
-            {
-                FilteredKindGroups.Add(grp);
-            }
-        }
-
-        ObservableCollection<HfdlCategorySummary> activeGroups =
-            IsFlightIdMode ? FilteredFlightIdGroups : FilteredKindGroups;
         SelectedListGroup = selectedKey is null
-            ? activeGroups.FirstOrDefault()
-            : (activeGroups.FirstOrDefault(group =>
-                string.Equals(group.Key, selectedKey, StringComparison.OrdinalIgnoreCase)) ?? activeGroups.FirstOrDefault());
+            ? FilteredFlightIdGroups.FirstOrDefault()
+            : (FilteredFlightIdGroups.FirstOrDefault(group =>
+                string.Equals(group.Key, selectedKey, StringComparison.OrdinalIgnoreCase)) ?? FilteredFlightIdGroups.FirstOrDefault());
         if (SelectedTimelineReception is null || !FilteredMessages.Contains(SelectedTimelineReception))
             SelectedTimelineReception = FilteredMessages.FirstOrDefault();
-        OnPropertyChanged(nameof(FilteredCount));
     }
-
-    private static string DisplayKey(string? value, string fallback) =>
-        string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 
     private void NotifyChannelSelectionChanged()
     {

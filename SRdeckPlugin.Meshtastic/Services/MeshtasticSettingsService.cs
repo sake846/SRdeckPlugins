@@ -40,16 +40,7 @@ internal sealed class MeshtasticSettingsService
     public string StatePath => Path.Combine(PluginDataDirectory, "state.json");
     public string HistoryPath => Path.Combine(PluginDataDirectory, "meshtastic-history.jsonl");
 
-    internal static string DefaultPluginDataDirectory
-    {
-        get
-        {
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            return string.IsNullOrWhiteSpace(appData)
-                ? Path.Combine(AppContext.BaseDirectory, "SRdeck", "plugins", "meshtastic")
-                : Path.Combine(appData, "SRdeck", "plugins", "meshtastic");
-        }
-    }
+    internal static string DefaultPluginDataDirectory => MeshtasticDataPaths.DefaultDataDirectory;
 
     public void Attach(IPluginHostContext hostContext)
     {

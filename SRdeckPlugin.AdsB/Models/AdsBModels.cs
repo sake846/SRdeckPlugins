@@ -135,10 +135,10 @@ public sealed record AdsBMessageRow
     }
 
     public string LatitudeDisplay => HasPosition
-        ? $"緯度 {Math.Abs(Latitude!.Value):F4}° {(Latitude.Value >= 0 ? 'N' : 'S')}"
+        ? $"緯度 {Math.Abs(Latitude!.Value):F4}°{(Latitude.Value >= 0 ? 'N' : 'S')}"
         : CleanSummary;
     public string LongitudeDisplay => HasPosition
-        ? $"経度 {Math.Abs(Longitude!.Value):F4}° {(Longitude.Value >= 0 ? 'E' : 'W')}"
+        ? $"経度 {Math.Abs(Longitude!.Value):F4}°{(Longitude.Value >= 0 ? 'E' : 'W')}"
         : string.Empty;
     public string AltitudeDisplay => AltitudeFeet.HasValue ? $"高度 {AltitudeFeet.Value:N0} ft" : string.Empty;
     public string VerticalRateDisplay => VerticalRateFeetPerMinute.HasValue && Math.Abs(VerticalRateFeetPerMinute.Value) >= 64
@@ -178,6 +178,7 @@ public sealed class AircraftState
     public bool IsOnGround { get; set; }
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
+    public DateTimeOffset FirstSeen { get; set; }
     public DateTimeOffset LastSeen { get; set; }
     public long MessageCount { get; set; }
 }

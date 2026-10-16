@@ -20,16 +20,24 @@ public sealed partial class Ft8PluginModule
 {
     private void SelectBandFromView(string profileId)
     {
-        if (profileId == selectedBandId ||
-            Interlocked.Exchange(ref profileChangeInProgress, 1) != 0) return;
-        Ft8Band previous = SelectedBand();
-        Ft8Band requested = Bands.FirstOrDefault(item => item.Id == profileId) ?? previous;
-        viewModel.SetBandChangeInProgress(true);
-        viewModel.Status = $"選局中 / {requested.DisplayName}";
-        _ = SelectBandFromViewAsync(profileId, previous);
+        Ft8Band requested = FindBand(profileId) ?? SelectedBand();
+        SelectBandFromView(requested);
     }
 
-    private async Task SelectBandFromViewAsync(string profileId, Ft8Band previous)
+    private void SelectCustomFrequencyFromView(long dialFrequencyHz) =>
+        SelectBandFromView(CreateCustomBand(dialFrequencyHz, viewModel.SelectedMode));
+
+    private void SelectBandFromView(Ft8Band requested)
+    {
+        Ft8Band current = SelectedBand();
+        if ((requested.Id == current.Id && requested.DialFrequencyHz == current.DialFrequencyHz) ||
+            Interlocked.Exchange(ref profileChangeInProgress, 1) != 0) return;
+        viewModel.SetBandChangeInProgress(true);
+        viewModel.Status = $"選局中 / {requested.DisplayName}";
+        _ = SelectBandFromViewAsync(requested, current);
+    }
+
+    private async Task SelectBandFromViewAsync(Ft8Band requested, Ft8Band previous)
     {
         try
         {
@@ -37,13 +45,13 @@ public sealed partial class Ft8PluginModule
             // driver-owned processing lock. Never let that work run inside the
             // ComboBox change notification on WPF's UI thread.
             await Task.Run(async () =>
-                await SelectProfileAsync(profileId, CancellationToken.None).ConfigureAwait(false))
+                await SelectBandAsync(requested, CancellationToken.None).ConfigureAwait(false))
                 .ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             host?.Logger.Log(PluginLogLevel.Warning, "ft8.band.rejected",
-                $"FT8 band change to '{profileId}' was rejected.", exception);
+                $"FT8 band change to '{requested.Id}' was rejected.", exception);
             host?.Dispatcher.Post(() =>
             {
                 viewModel.RollbackBand(previous);
@@ -104,7 +112,7 @@ public sealed partial class Ft8PluginModule
     }
 
     private Ft8Band SelectedBand() =>
-        Bands.FirstOrDefault(item => item.Id == selectedBandId) ??
+        FindBand(selectedBandId) ??
         Bands.First(item => item.Id == DefaultBandId);
 
     private static string CreateChannelRequestId(Ft8Band band) =>

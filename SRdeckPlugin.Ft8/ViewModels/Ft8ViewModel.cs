@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -27,6 +28,7 @@ public sealed partial class Ft8ViewModel : ObservableObject
     [ObservableProperty] private string _status = "未初期化";
     [ObservableProperty] private OverallStatusKind _overallStatusKind = OverallStatusKind.Idle;
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Bands))]
     [NotifyPropertyChangedFor(nameof(DialFrequencyText))]
     private Ft8Band? _selectedBand;
     [ObservableProperty]
@@ -34,6 +36,8 @@ public sealed partial class Ft8ViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ModeDescription))]
     [NotifyPropertyChangedFor(nameof(FecName))]
     private WeakSignalMode _selectedMode = WeakSignalMode.FT8;
+    [ObservableProperty] private string _customFrequencyMHzText = "14.074000";
+    [ObservableProperty] private string _customFrequencyInputStatus = "MHzで入力（例: 14.078000）";
     private bool suppressSelection;
     private bool suppressNearbyBandSelection;
 
@@ -43,7 +47,7 @@ public sealed partial class Ft8ViewModel : ObservableObject
     [ObservableProperty] private bool _savePayload = true;
     [ObservableProperty] private bool _splitHistoryByBand;
     [ObservableProperty] private int _mapMarkerLimit = 100;
-    [ObservableProperty] private int _minimumSyncScore = 4;
+    [ObservableProperty] private int _minimumSyncScore = 6;
     [ObservableProperty] private int _maximumCandidates = 240;
     [ObservableProperty] private int _ldpcIterations = 35;
     [ObservableProperty] private string _decoderPresetName = "標準";
@@ -92,8 +96,17 @@ public sealed partial class Ft8ViewModel : ObservableObject
     }
 
     public IReadOnlyList<WeakSignalMode> Modes { get; } = Enum.GetValues<WeakSignalMode>();
-    public IReadOnlyList<Ft8Band> Bands => Ft8PluginModule.Bands
-        .Where(item => item.Mode == SelectedMode).ToArray();
+    public IReadOnlyList<Ft8Band> Bands
+    {
+        get
+        {
+            var bands = Ft8PluginModule.Bands.Where(item => item.Mode == SelectedMode).ToList();
+            if (SelectedBand is { } selected && selected.Mode == SelectedMode &&
+                Ft8PluginModule.IsCustomBandId(selected.Id))
+                bands.Insert(0, selected);
+            return bands;
+        }
+    }
     public ObservableCollection<Ft8Reception> History { get; } = [];
     public ObservableCollection<Ft8Reception> FilteredHistory { get; } = [];
     public ObservableCollection<Ft8StationSummary> Stations { get; } = [];
@@ -106,6 +119,7 @@ public sealed partial class Ft8ViewModel : ObservableObject
     private void StartCapture() => CaptureRequested?.Invoke();
 
     public Action<string>? BandSelectionRequested { get; set; }
+    public Action<long>? CustomFrequencyRequested { get; set; }
     internal Action<int>? MaximumStationsChanged { get; set; }
     internal Action<int>? RetentionMinutesChanged { get; set; }
     internal Action<IReadOnlyList<string>>? NearbyBandSelectionChanged { get; set; }
@@ -125,7 +139,9 @@ public sealed partial class Ft8ViewModel : ObservableObject
     partial void OnSelectedModeChanged(WeakSignalMode value)
     {
         if (suppressSelection) return;
-        Ft8Band? matching = Ft8PluginModule.Bands.FirstOrDefault(item =>
+        Ft8Band? matching = SelectedBand is { } selected && Ft8PluginModule.IsCustomBandId(selected.Id)
+            ? Ft8PluginModule.CreateCustomBand(selected.DialFrequencyHz, value)
+            : Ft8PluginModule.Bands.FirstOrDefault(item =>
             item.Mode == value && item.Band == SelectedBand?.Band)
             ?? Ft8PluginModule.Bands.FirstOrDefault(item =>
                 item.Mode == value && item.Band.StartsWith("20 m", StringComparison.Ordinal))
@@ -209,18 +225,48 @@ public sealed partial class Ft8ViewModel : ObservableObject
     public bool IsBandSelectorEnabled => !IsBandChangeInProgress;
     public bool HasNearbyBands => NearbyBands.Count > 0;
     public int FilteredStationCount => FilteredStations.Count;
+    public bool IsStandardPresetSelected =>
+        (MinimumSyncScore, MaximumCandidates, LdpcIterations) == (6, 240, 35);
+    public bool IsWeakSignalPresetSelected =>
+        (MinimumSyncScore, MaximumCandidates, LdpcIterations) == (4, 500, 60);
+    public bool IsLowLoadPresetSelected =>
+        (MinimumSyncScore, MaximumCandidates, LdpcIterations) == (8, 120, 20);
 
     [RelayCommand]
-    private void ApplyStandardPreset() => ApplyDecoderPreset(4, 240, 35);
+    private void ApplyStandardPreset() => ApplyDecoderPreset(6, 240, 35);
 
     [RelayCommand]
-    private void ApplyWeakSignalPreset() => ApplyDecoderPreset(3, 500, 60);
+    private void ApplyCustomFrequency()
+    {
+        if (!decimal.TryParse(CustomFrequencyMHzText, NumberStyles.AllowDecimalPoint,
+                CultureInfo.InvariantCulture, out decimal megahertz) || megahertz <= 0 ||
+            megahertz > long.MaxValue / 1_000_000m)
+        {
+            CustomFrequencyInputStatus = "正の周波数を MHz で入力してください";
+            return;
+        }
+
+        long dialFrequencyHz = (long)decimal.Round(megahertz * 1_000_000m,
+            0, MidpointRounding.AwayFromZero);
+        if (dialFrequencyHz <= 0)
+        {
+            CustomFrequencyInputStatus = "1 Hz以上の周波数を入力してください";
+            return;
+        }
+        CustomFrequencyInputStatus = "MHzで入力（例: 14.078000）";
+        CustomFrequencyRequested?.Invoke(dialFrequencyHz);
+    }
 
     [RelayCommand]
-    private void ApplyLowLoadPreset() => ApplyDecoderPreset(6, 120, 20);
+    private void ApplyWeakSignalPreset() => ApplyDecoderPreset(4, 500, 60);
+
+    [RelayCommand]
+    private void ApplyLowLoadPreset() => ApplyDecoderPreset(8, 120, 20);
 
     public void Configure(Ft8Settings settings, Ft8Band band)
     {
+        CustomFrequencyMHzText = (settings.CustomDialFrequencyHz / 1_000_000m)
+            .ToString("F6", CultureInfo.InvariantCulture);
         MaximumHistory = settings.MaximumHistory;
         MaximumStations = settings.MaximumStations;
         RetentionMinutes = settings.RetentionMinutes;
@@ -247,6 +293,9 @@ public sealed partial class Ft8ViewModel : ObservableObject
         SelectedMode = band.Mode;
         SelectedBand = band;
         suppressSelection = false;
+        if (Ft8PluginModule.IsCustomBandId(band.Id))
+            CustomFrequencyMHzText = (band.DialFrequencyHz / 1_000_000m)
+                .ToString("F6", CultureInfo.InvariantCulture);
         OnPropertyChanged(nameof(SelectedBand));
         OnPropertyChanged(nameof(DialFrequencyText));
     }
@@ -295,8 +344,6 @@ public sealed partial class Ft8ViewModel : ObservableObject
         while (History.Count > MaximumHistory) History.RemoveAt(History.Count - 1);
         RefreshFilteredHistory();
         RebuildStationSummaries();
-        OverallStatusText = "正常";
-        OverallStatusKind = OverallStatusKind.Success;
     }
 
     public void ApplyDiagnostics(Ft8DecoderDiagnostics diagnostics, float? signalLevelDbm = null)
@@ -339,10 +386,14 @@ public sealed partial class Ft8ViewModel : ObservableObject
             $"{diagnostics.LastDecodeDuration.TotalMilliseconds:N0} ms";
         Candidates = diagnostics.CandidatesExamined.ToString("N0");
         Rejected = (diagnostics.LdpcRejected + diagnostics.CrcRejected).ToString("N0");
-        long recentCandidates = Math.Max(0, diagnostics.CandidatesExamined - diagnosticsCandidatesAtReset);
-        long recentLdpcRejected = Math.Max(0, diagnostics.LdpcRejected - diagnosticsLdpcRejectedAtReset);
-        long recentCrcRejected = Math.Max(0, diagnostics.CrcRejected - diagnosticsCrcRejectedAtReset);
-        if (previousDiagnostics is { } previous && diagnostics.LastSlotStart != previous.LastSlotStart)
+        long recentCandidates = diagnostics.LastSlotCandidatesExamined ??
+            Math.Max(0, diagnostics.CandidatesExamined - diagnosticsCandidatesAtReset);
+        long recentLdpcRejected = diagnostics.LastSlotLdpcRejected ??
+            Math.Max(0, diagnostics.LdpcRejected - diagnosticsLdpcRejectedAtReset);
+        long recentCrcRejected = diagnostics.LastSlotCrcRejected ??
+            Math.Max(0, diagnostics.CrcRejected - diagnosticsCrcRejectedAtReset);
+        if (diagnostics.LastSlotCandidatesExamined is null && previousDiagnostics is { } previous &&
+            diagnostics.LastDecodedSlotStart != previous.LastDecodedSlotStart)
         {
             recentCandidates = Math.Max(0, diagnostics.CandidatesExamined - previous.CandidatesExamined);
             recentLdpcRejected = Math.Max(0, diagnostics.LdpcRejected - previous.LdpcRejected);
@@ -350,9 +401,14 @@ public sealed partial class Ft8ViewModel : ObservableObject
         }
         long ldpcPassed = Math.Max(0, recentCandidates - recentLdpcRejected);
         long crcPassed = diagnostics.LastSlotValidMessages;
-        bool candidateLimitReached = recentCandidates >= MaximumCandidates;
-        RecentDetectionText = $"直近スロット: sync/調査候補 {recentCandidates:N0} / 上限 {MaximumCandidates:N0}";
-        RecentValidationText = $"直近スロット: LDPC通過 {ldpcPassed:N0} / 棄却 {recentLdpcRejected:N0} / CRC合格 {crcPassed:N0} / 不一致 {recentCrcRejected:N0}";
+        int lastSlotMaximumCandidates = diagnostics.LastSlotMaximumCandidates ?? MaximumCandidates;
+        bool candidateLimitReached = diagnostics.LastSlotCandidateLimitReached ??
+            recentCandidates >= lastSlotMaximumCandidates;
+        string candidateLimitText = diagnostics.LastSlotCandidatePasses is { } passes && passes > 0
+            ? $"1パス上限 {lastSlotMaximumCandidates:N0} × {passes}パス"
+            : $"上限 {lastSlotMaximumCandidates:N0}";
+        RecentDetectionText = $"直近復号スロット: sync/調査候補 {recentCandidates:N0} / {candidateLimitText}";
+        RecentValidationText = $"直近復号スロット: LDPC通過 {ldpcPassed:N0} / 棄却 {recentLdpcRejected:N0} / CRC合格 {crcPassed:N0} / 不一致 {recentCrcRejected:N0}";
 
         double slotSeconds = SelectedMode switch
         {
@@ -421,10 +477,12 @@ public sealed partial class Ft8ViewModel : ObservableObject
             OverallStatusText = "要確認";
             OverallStatusKind = OverallStatusKind.Warning;
             OverallPhase = "候補上限";
-            OverallSummary = $"直近スロットの調査候補が上限{MaximumCandidates:N0}件に達しました";
-            OverallRecommendation = decodeBudgetPercent < 80
-                ? "確認: 取りこぼしが疑われる場合は最大候補数を段階的に増やしてください"
-                : "確認: 処理枠に余裕が少ないため、同時受信バンド数または同期感度を見直してください";
+            OverallSummary = $"直近復号スロットで1パス上限{lastSlotMaximumCandidates:N0}件を超える候補があり、超過分を調査できませんでした";
+            OverallRecommendation = lastSlotMaximumCandidates >= 1000
+                ? "確認: 上限を超える候補を減らすには同期スコアを少し上げてください。弱い信号を拾いにくくなるため復号結果も確認してください"
+                : decodeBudgetPercent < 80
+                    ? "確認: 候補をさらに調べる場合は、最大候補数を段階的に増やしてください"
+                    : "確認: 処理枠に余裕が少ないため、同時受信バンド数または同期スコアを見直してください";
         }
         else if (decodedWithinTwoSlots && diagnostics.LastSlotValidMessages > 0)
         {
@@ -492,7 +550,7 @@ public sealed partial class Ft8ViewModel : ObservableObject
         $"RecentCrcRejected: {recentCrcRejected}",
         $"LastSlotValidMessages: {diagnostics.LastSlotValidMessages}",
         $"MinimumSyncScore: {MinimumSyncScore}",
-        $"MaximumCandidates: {MaximumCandidates}",
+        $"MaximumCandidatesPerPass: {MaximumCandidates}",
         $"FecIterations: {LdpcIterations}"
     ]);
 
@@ -550,8 +608,8 @@ public sealed partial class Ft8ViewModel : ObservableObject
         previousDiagnostics = null;
         Candidates = "0";
         Rejected = "0";
-        RecentDetectionText = "直近2スロット: sync候補 — / 調査候補 —";
-        RecentValidationText = "直近2スロット: LDPC — / CRC — / 有効 —";
+        RecentDetectionText = "直近復号スロット: sync/調査候補 —";
+        RecentValidationText = "直近復号スロット: LDPC — / CRC — / 有効 —";
     }
 
     private void AddMapMarker(Ft8Reception reception)
@@ -752,11 +810,14 @@ public sealed partial class Ft8ViewModel : ObservableObject
     {
         DecoderPresetName = (MinimumSyncScore, MaximumCandidates, LdpcIterations) switch
         {
-            (4, 240, 35) => "標準",
-            (3, 500, 60) => "弱信号優先",
-            (6, 120, 20) => "低負荷",
+            (6, 240, 35) => "標準",
+            (4, 500, 60) => "弱信号優先",
+            (8, 120, 20) => "低負荷",
             _ => "カスタム"
         };
+        OnPropertyChanged(nameof(IsStandardPresetSelected));
+        OnPropertyChanged(nameof(IsWeakSignalPresetSelected));
+        OnPropertyChanged(nameof(IsLowLoadPresetSelected));
     }
 
     private void NearbyBandOptionChanged()

@@ -348,8 +348,7 @@ public sealed partial class MeshtasticReceiveService
         }
     }
 
-    private sealed record ChannelKey(string Name, byte[] Key, byte Hash);
-    private sealed record ChannelConfiguration(MeshtasticRegion Region, int RadioChannel, int FrequencyHz, MeshtasticLoRaProfile Profile, ChannelKey[] ChannelKeys, int Version)
+    private sealed record ChannelConfiguration(MeshtasticRegion Region, int RadioChannel, int FrequencyHz, MeshtasticLoRaProfile Profile, MeshtasticChannelKey[] ChannelKeys, int Version)
     {
         public ChannelConfiguration(
             MeshtasticRegion region,
@@ -360,7 +359,7 @@ public sealed partial class MeshtasticReceiveService
             byte[] key,
             byte hash,
             int version)
-            : this(region, radioChannel, frequencyHz, profile, [new ChannelKey(name, key, hash)], version)
+            : this(region, radioChannel, frequencyHz, profile, [new MeshtasticChannelKey(name, key, hash)], version)
         {
         }
     }

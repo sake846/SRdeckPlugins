@@ -39,10 +39,11 @@ public sealed class Ft4Decoder
         var stopwatch = Stopwatch.StartNew();
         Complex32[] samples = Resample(input, Ft8Receiver.OutputSampleRateHz, SampleRateHz);
         if (samples.Length < SampleRateHz * 6)
-            return new([], 0, 0, 0, stopwatch.Elapsed);
+            return new([], 0, 0, 0, stopwatch.Elapsed, CandidatePasses: 0);
 
         Spectrogram spectrum = CreateSpectrogram(samples);
-        List<Candidate> candidates = FindCandidates(spectrum, settings);
+        CandidateSelection selection = FindCandidates(spectrum, settings);
+        List<Candidate> candidates = selection.Candidates;
         int ldpcRejected = 0;
         int crcRejected = 0;
         var decoded = new List<Ft8Reception>();
@@ -86,7 +87,8 @@ public sealed class Ft4Decoder
 
         stopwatch.Stop();
         return new(decoded.OrderBy(item => item.AudioFrequencyHz).ToArray(),
-            candidates.Count, ldpcRejected, crcRejected, stopwatch.Elapsed);
+            candidates.Count, ldpcRejected, crcRejected, stopwatch.Elapsed,
+            selection.HasCandidatesBeyondLimit, CandidateLimitPerPass: settings.MaximumCandidates);
     }
 
     private Spectrogram CreateSpectrogram(ReadOnlySpan<Complex32> samples)
@@ -122,7 +124,7 @@ public sealed class Ft4Decoder
         return new(powerDb, blocks, minimumBin, binCount);
     }
 
-    private static List<Candidate> FindCandidates(Spectrogram spectrum, Ft8Settings settings)
+    private static CandidateSelection FindCandidates(Spectrogram spectrum, Ft8Settings settings)
     {
         var all = new List<Candidate>();
         int maximumStartHalf = Math.Min(52, spectrum.Blocks - FrameSymbols * 2);
@@ -158,6 +160,7 @@ public sealed class Ft4Decoder
         }
 
         var selected = new List<Candidate>();
+        bool hasCandidatesBeyondLimit = false;
         foreach (Candidate candidate in all.OrderByDescending(item => item.Score))
         {
             bool overlaps = false;
@@ -171,10 +174,14 @@ public sealed class Ft4Decoder
                 break;
             }
             if (overlaps) continue;
+            if (selected.Count == settings.MaximumCandidates)
+            {
+                hasCandidatesBeyondLimit = true;
+                break;
+            }
             selected.Add(candidate);
-            if (selected.Count >= settings.MaximumCandidates) break;
         }
-        return selected;
+        return new(selected, hasCandidatesBeyondLimit);
     }
 
     private Candidate Refine(ReadOnlySpan<Complex32> samples, Candidate coarse)
@@ -307,6 +314,8 @@ public sealed class Ft4Decoder
     }
 
     private readonly record struct Candidate(int Score, int StartSample, double FrequencyHz);
+    private sealed record CandidateSelection(List<Candidate> Candidates,
+        bool HasCandidatesBeyondLimit);
     private sealed record Spectrogram(float[] PowerDb, int Blocks, int MinimumBin, int BinCount)
     {
         public int MaximumBin => MinimumBin + BinCount;

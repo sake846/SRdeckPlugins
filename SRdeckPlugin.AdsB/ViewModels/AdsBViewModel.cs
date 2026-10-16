@@ -166,6 +166,7 @@ public sealed partial class AdsBViewModel : ObservableObject
         trails.Clear();
         OnPropertyChanged(nameof(PositionedAircraftCount));
         RefreshFilteredHistory();
+        RefreshOverview();
         ClearRequested?.Invoke();
     }
 
@@ -290,6 +291,7 @@ public sealed partial class AdsBViewModel : ObservableObject
         StableRecencyOrder.Reorder(Aircraft, item => item.LastSeen);
         RefreshFilteredAircraft();
         OnPropertyChanged(nameof(RecentAircraft));
+        RefreshOverview();
         RefreshMapMarkers();
         ValidFrames = valid;
         RejectedFrames = rejected;
@@ -569,9 +571,17 @@ public sealed partial class AircraftRow : ObservableObject
     [ObservableProperty] private int? _verticalRate;
     [ObservableProperty] private double? _latitude;
     [ObservableProperty] private double? _longitude;
-    [ObservableProperty] private DateTimeOffset _firstSeen = DateTimeOffset.Now;
-    [ObservableProperty] private DateTimeOffset _lastSeen;
-    [ObservableProperty] private long _messages;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DurationText))]
+    [NotifyPropertyChangedFor(nameof(FirstSeenText))]
+    private DateTimeOffset _firstSeen;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DurationText))]
+    [NotifyPropertyChangedFor(nameof(ActivityStatusText))]
+    private DateTimeOffset _lastSeen;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ReceptionStatsText))]
+    private long _messages;
     [ObservableProperty] private int? _selectedAltitudeFeet;
     [ObservableProperty] private double? _selectedHeadingDegrees;
     [ObservableProperty]
@@ -595,12 +605,13 @@ public sealed partial class AircraftRow : ObservableObject
     public string SquawkDisplay => string.IsNullOrWhiteSpace(Squawk) ? string.Empty : $"SQ {Squawk}";
     public bool HasPosition => Latitude.HasValue && Longitude.HasValue;
 
-    public string FirstSeenText => FirstSeen.ToString("HH:mm:ss");
+    public string FirstSeenText => FirstSeen == default ? "—" : FirstSeen.ToString("HH:mm:ss");
 
     public string DurationText
     {
         get
         {
+            if (FirstSeen == default || LastSeen == default) return "1分未満";
             TimeSpan duration = LastSeen - FirstSeen;
             if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
             if (duration < TimeSpan.FromMinutes(1)) return "1分未満";
@@ -613,6 +624,7 @@ public sealed partial class AircraftRow : ObservableObject
     {
         get
         {
+            if (LastSeen == default) return "待機";
             TimeSpan sinceLast = DateTimeOffset.Now - LastSeen;
             if (sinceLast <= TimeSpan.FromMinutes(1)) return "補足中";
             if (sinceLast < TimeSpan.FromHours(1)) return $"{(int)sinceLast.TotalMinutes}分前";
@@ -664,11 +676,11 @@ public sealed partial class AircraftRow : ObservableObject
     }
 
     public string LatitudeDisplay => Latitude.HasValue
-        ? $"緯度 {Math.Abs(Latitude.Value):F4}° {(Latitude.Value >= 0 ? "N" : "S")}"
+        ? $"緯度 {Math.Abs(Latitude.Value):F4}°{(Latitude.Value >= 0 ? "N" : "S")}"
         : (Longitude.HasValue ? string.Empty : "位置未取得");
 
     public string LongitudeDisplay => Longitude.HasValue
-        ? $"経度 {Math.Abs(Longitude.Value):F4}° {(Longitude.Value >= 0 ? "E" : "W")}"
+        ? $"経度 {Math.Abs(Longitude.Value):F4}°{(Longitude.Value >= 0 ? "E" : "W")}"
         : string.Empty;
 
     public string AltitudeDisplay => AltitudeFeet.HasValue ? $"高度 {AltitudeFeet.Value:N0} ft" : string.Empty;
@@ -735,7 +747,11 @@ public sealed partial class AircraftRow : ObservableObject
     public void Apply(AircraftState value)
     {
         DateTimeOffset seen = value.LastSeen.ToLocalTime();
-        if (FirstSeen == default || FirstSeen > seen)
+        if (value.FirstSeen != default)
+        {
+            FirstSeen = value.FirstSeen.ToLocalTime();
+        }
+        else if (FirstSeen == default || FirstSeen > seen)
         {
             FirstSeen = seen;
         }
@@ -770,6 +786,10 @@ public sealed partial class AircraftRow : ObservableObject
         OnPropertyChanged(nameof(TrackDisplay));
         OnPropertyChanged(nameof(SquawkDisplay));
         OnPropertyChanged(nameof(CategoryBadges));
+        OnPropertyChanged(nameof(DurationText));
+        OnPropertyChanged(nameof(FirstSeenText));
+        OnPropertyChanged(nameof(ActivityStatusText));
+        OnPropertyChanged(nameof(ReceptionStatsText));
     }
 }
 

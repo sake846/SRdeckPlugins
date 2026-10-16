@@ -314,13 +314,13 @@ public sealed partial class VdlViewModel
     private void RebuildCategories()
     {
         var activeCallsignGroups = frames
-            .GroupBy(item => DisplayKey(item.Callsign, "Callsign不明"))
+            .GroupBy(item => item.AircraftDisplay)
             .OrderByDescending(group => group.Max(item => item.ReceivedAt))
             .Take(MaximumAircraft);
         ReplaceCategories(callsignGroups, activeCallsignGroups);
-        ReplaceCategories(protocolGroups, frames.GroupBy(item => DisplayKey(item.Protocol, "プロトコル不明")));
         OnPropertyChanged(nameof(IdentifiedCallsignCount));
         OnPropertyChanged(nameof(RecentCallsignGroups));
+        RefreshOverview();
     }
 
     private static void ReplaceCategories(ObservableCollection<VdlCategorySummary> target,
@@ -344,7 +344,7 @@ public sealed partial class VdlViewModel
         foreach (VdlDecodedFrame frame in frames)
         {
             if (string.IsNullOrEmpty(filter) ||
-                (frame.Callsign?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true) ||
+                frame.AircraftDisplay.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
                 (frame.Protocol?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true) ||
                 (frame.Summary?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true) ||
                 (frame.Text?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true))
@@ -364,26 +364,12 @@ public sealed partial class VdlViewModel
             }
         }
 
-        filteredProtocolGroups.Clear();
-        foreach (VdlCategorySummary grp in protocolGroups)
-        {
-            if (string.IsNullOrEmpty(filter) ||
-                grp.Key.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                grp.LatestText.Contains(filter, StringComparison.OrdinalIgnoreCase))
-            {
-                filteredProtocolGroups.Add(grp);
-            }
-        }
-
-        ObservableCollection<VdlCategorySummary> activeGroups =
-            IsCallsignMode ? filteredCallsignGroups : filteredProtocolGroups;
         SelectedListGroup = selectedKey is null
-            ? activeGroups.FirstOrDefault()
-            : (activeGroups.FirstOrDefault(group =>
-                string.Equals(group.Key, selectedKey, StringComparison.OrdinalIgnoreCase)) ?? activeGroups.FirstOrDefault());
+            ? filteredCallsignGroups.FirstOrDefault()
+            : (filteredCallsignGroups.FirstOrDefault(group =>
+                string.Equals(group.Key, selectedKey, StringComparison.OrdinalIgnoreCase)) ?? filteredCallsignGroups.FirstOrDefault());
         if (SelectedTimelineFrame is null || !filteredFrames.Contains(SelectedTimelineFrame))
             SelectedTimelineFrame = filteredFrames.FirstOrDefault();
-        OnPropertyChanged(nameof(FilteredCount));
     }
 
     private void UpdateMapMarker(VdlDecodedFrame frame, double latitude, double longitude)

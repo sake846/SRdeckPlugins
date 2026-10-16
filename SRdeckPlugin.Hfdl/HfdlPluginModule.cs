@@ -336,8 +336,7 @@ public sealed partial class HfdlPluginModule : PluginModuleBase, IIqBlockConsume
                 if (monitorBuffer is not null) ArrayPool<float>.Shared.Return(monitorBuffer);
             }
             foreach (HfdlFrame frame in frames)
-                if (HfdlMessageParser.TryParse(frame, out HfdlMessage? message) && message is not null && message.IsCrcValid)
-                    Publish(frame, message);
+                Publish(frame);
             UpdateDiagnostics(metadata);
         }
         return ValueTask.CompletedTask;
@@ -384,9 +383,7 @@ public sealed partial class HfdlPluginModule : PluginModuleBase, IIqBlockConsume
                 if (monitorBuffer is not null) ArrayPool<float>.Shared.Return(monitorBuffer);
             }
             foreach (HfdlFrame frame in frames)
-                if (HfdlMessageParser.TryParse(frame, out HfdlMessage? message) &&
-                    message is not null && message.IsCrcValid)
-                    Publish(frame, message);
+                Publish(frame);
             UpdateDiagnostics(metadata);
         }
         return ValueTask.CompletedTask;

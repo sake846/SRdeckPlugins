@@ -1,0 +1,130 @@
+<UserControl x:Class="SRdeckPlugin.Meshtastic.Views.MeshtasticTimelineView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:SRdeckPlugin.Meshtastic.Views"
+             xmlns:meshtastic="clr-namespace:SRdeckPlugin.Meshtastic"
+             xmlns:wpf="clr-namespace:SRdeckPlugin.Wpf;assembly=SRdeckPlugin.Wpf"
+             FontSize="10"
+             xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/SRdeckPlugin.Meshtastic;component/Views/MeshtasticViewResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*" MinHeight="0"/><RowDefinition Height="5"/><RowDefinition x:Name="MeshtasticTimelineDetailRowDefinition" Height="170" MinHeight="0"/></Grid.RowDefinitions>
+        <Grid Margin="8,6,8,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <WrapPanel VerticalAlignment="Center">
+                <CheckBox Content="復号済みのみ" IsChecked="{Binding MeshtasticHistoryDecodedOnly}"
+                          Style="{DynamicResource PluginCheckBoxStyle}" Margin="0,0,4,0" />
+                <CheckBox Content="直接受信のみ" IsChecked="{Binding MeshtasticHistoryDirectOnly}"
+                          Style="{DynamicResource PluginCheckBoxStyle}" />
+            </WrapPanel>
+            <TextBlock Grid.Column="1" Text="検索" Style="{DynamicResource PluginListSearchLabelStyle}" />
+            <TextBox Grid.Column="2"
+                     Text="{Binding MeshtasticHistorySearchText, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{DynamicResource PluginListSearchTextBoxStyle}" />
+        </Grid>
+        <Border Grid.Row="1" Style="{DynamicResource PluginTimelineBorderStyle}">
+            <Grid>
+                 <DataGrid x:Name="MeshtasticTimelineDataGrid"
+                           ItemsSource="{Binding VisibleMeshtasticMessages}"
+                           SelectedItem="{Binding SelectedTimelineMessage, Mode=TwoWay}"
+                           Style="{DynamicResource PluginTimelineDataGridStyle}">
+                    <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="日時" Width="82" SortMemberPath="ReceivedAt"
+                                                CellStyle="{DynamicResource PluginTimelineTimestampCellStyle}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding ReceivedDateTimeText}"
+                                               Style="{DynamicResource PluginTimelineTimestampTextStyle}"
+                                               LineHeight="13"
+                                               VerticalAlignment="Top" Margin="0" />
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="受信イベント" Width="*" MinWidth="200" SortMemberPath="SenderName">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,2,0,2"
+                                          TextElement.FontFamily="{DynamicResource DisplayFontFamily}">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <DockPanel LastChildFill="False">
+                                                <TextBlock DockPanel.Dock="Left" Text="{Binding SenderName}"
+                                                           Style="{DynamicResource PluginTimelineIdentityTextStyle}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Sender}" Margin="8,0,0,0"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           VerticalAlignment="Center" />
+                                            </DockPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding RelayText}" Margin="8,0,0,0"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" />
+                                        </Grid>
+                                        <Grid Grid.Row="1" Margin="0,3,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Foreground="{DynamicResource TextDimBrush}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center">
+                                                <Run Text="Packet "/><Run Text="{Binding PacketIdText, Mode=OneWay}" FontFamily="{DynamicResource DisplayFontFamily}"/>
+                                                <Run Text="  "/><Run Text="{Binding QualityText, Mode=OneWay}"/>
+                                                <Run Text="  "/><Run Text="{Binding Port, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock Grid.Column="1" Text="{Binding SlotAndPresetText}" Margin="8,0,0,0"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Grid>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Text="条件に一致する履歴はありません。">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource PluginEmptyStateTextStyle}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasItems, ElementName=MeshtasticTimelineDataGrid}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+         </Border>
+        <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows"/>
+        <controls:SelectionDetailPane x:Name="MeshtasticTimelineDetailPane" Grid.Row="3" MinHeight="0" DetailContent="{Binding SelectedTimelineMessage}"
+            EmptyText="時系列のパケットを選択すると、経路・復号・無線条件の詳細が表示されます">
+            <controls:SelectionDetailPane.DetailContentTemplate><DataTemplate><StackPanel Margin="6,4">
+                 <TextBlock Text="{Binding SenderName}" Style="{DynamicResource PluginIdentityTextStyle}" Margin="0,0,0,4"/>
+                 <TextBlock Text="{Binding Port}" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" FontFamily="{DynamicResource DisplayFontFamily}" FontWeight="SemiBold" Margin="0,2,0,4"/>
+                 <ContentControl Content="{Binding DisplayFields}" ContentTemplate="{StaticResource MeshtasticDetailFieldsTemplate}" HorizontalContentAlignment="Stretch" Margin="0,0,0,8" />
+                 <TextBlock Text="ペイロード" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="0,4,0,3"/>
+                 <TextBlock Text="{Binding PayloadHex}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap" Margin="0,0,0,4"/>
+             </StackPanel></DataTemplate></controls:SelectionDetailPane.DetailContentTemplate>
+        </controls:SelectionDetailPane>
+    </Grid>
+</UserControl>

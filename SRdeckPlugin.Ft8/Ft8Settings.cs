@@ -6,7 +6,7 @@ namespace SRdeckPlugin.Ft8;
 public sealed record Ft8Settings(
     string SelectedBandId = Ft8PluginModule.DefaultBandId,
     int MaximumHistory = 10_000,
-    int MinimumSyncScore = 4,
+    int MinimumSyncScore = 6,
     int MaximumCandidates = 240,
     int LdpcIterations = 35,
     bool MonitorAudioEnabled = true,
@@ -19,12 +19,18 @@ public sealed record Ft8Settings(
     int MapMarkerLimit = 100,
     WeakSignalMode Mode = WeakSignalMode.FT8,
     IReadOnlyList<string>? AdditionalBandIds = null,
-    bool BuzzerEnabled = true)
+    bool BuzzerEnabled = true,
+    long CustomDialFrequencyHz = 14_074_000)
 {
     public Ft8Settings Normalize()
     {
-        Ft8Band selectedBand = Ft8PluginModule.Bands.FirstOrDefault(item => item.Id == SelectedBandId)
-            ?? Ft8PluginModule.Bands.First(item => item.Id == Ft8PluginModule.DefaultBandId);
+        long customDialFrequencyHz = CustomDialFrequencyHz > 0
+            ? CustomDialFrequencyHz
+            : Ft8PluginModule.Bands.First(item => item.Id == Ft8PluginModule.DefaultBandId).DialFrequencyHz;
+        Ft8Band selectedBand = Ft8PluginModule.TryGetCustomBandMode(SelectedBandId, out WeakSignalMode customMode)
+            ? Ft8PluginModule.CreateCustomBand(customDialFrequencyHz, customMode)
+            : Ft8PluginModule.Bands.FirstOrDefault(item => item.Id == SelectedBandId)
+              ?? Ft8PluginModule.Bands.First(item => item.Id == Ft8PluginModule.DefaultBandId);
         string[] additionalBandIds = (AdditionalBandIds ?? [])
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .Where(id => !string.Equals(id, selectedBand.Id, StringComparison.Ordinal))
@@ -48,6 +54,7 @@ public sealed record Ft8Settings(
         Math.Clamp(MapMarkerLimit, 50, 10_000),
         selectedBand.Mode,
         additionalBandIds,
-        BuzzerEnabled);
+        BuzzerEnabled,
+        customDialFrequencyHz);
     }
 }

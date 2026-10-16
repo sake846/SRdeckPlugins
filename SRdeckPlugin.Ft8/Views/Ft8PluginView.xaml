@@ -453,7 +453,7 @@
                         </Expander>
                         <Expander Header="詳細・デバッグ" Style="{DynamicResource PluginDiagnosticsSectionStyle}" IsExpanded="False">
                             <StackPanel Margin="8,5">
-                                <TextBlock Foreground="{DynamicResource TextDimBrush}"><Run Text="候補上限 "/><Run Text="{Binding MaximumCandidates, Mode=OneWay}"/><Run Text=" / LDPC iteration "/><Run Text="{Binding LdpcIterations, Mode=OneWay}"/></TextBlock>
+                                <TextBlock Foreground="{DynamicResource TextDimBrush}"><Run Text="1パス候補上限 "/><Run Text="{Binding MaximumCandidates, Mode=OneWay}"/><Run Text=" / LDPC iteration "/><Run Text="{Binding LdpcIterations, Mode=OneWay}"/></TextBlock>
                                 <TextBlock Text="共有用診断情報（コールサイン、メッセージ、IQデータを含みません）"
                                            Foreground="{DynamicResource TextDimBrush}" Margin="0,8,0,3"/>
                                 <TextBox Text="{Binding DiagnosticsReport, Mode=OneWay}" IsReadOnly="True"

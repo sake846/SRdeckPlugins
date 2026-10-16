@@ -139,29 +139,17 @@ public static partial class HfdlPhysicalLayer
         }
     }
 
-    /// <summary>Extracts a CRC-valid HFDL MPDU, or returns an empty array.</summary>
+    /// <summary>Extracts a complete HFDL PDU with a valid header FCS, or returns an empty array.</summary>
     public static byte[] ExtractMpdu(ReadOnlySpan<bool> bits)
         => TryExtractMpdu(bits, out byte[] mpdu) ? mpdu : [];
 
-    /// <summary>Attempts to extract a CRC-valid HFDL MPDU.</summary>
+    /// <summary>Retains all declared LPDUs after the MPDU header, or the fixed-size SPDU.</summary>
     public static bool TryExtractMpdu(ReadOnlySpan<bool> bits, out byte[] mpdu)
     {
         byte[] bytes = BitsToBytesLsbFirst(bits);
-        ushort crc = 0xffff;
-        int validLength = 0;
-        // Check every possible ending in one forward pass. Keep the last
-        // match to preserve the longest-prefix and either-byte-order rules.
-        for (int index = 0; index < bytes.Length - 2; index++)
-        {
-            crc = HfdlCrc.Update(crc, bytes[index]);
-            if (index < 2) continue;
-            ushort expected = (ushort)~crc;
-            if (expected == (bytes[index + 1] | bytes[index + 2] << 8) ||
-                expected == (bytes[index + 1] << 8 | bytes[index + 2]))
-                validLength = index + 3;
-        }
-        mpdu = validLength == 0 ? [] : bytes[..validLength];
-        return validLength != 0;
+        bool valid = HfdlPdu.TryReadLengths(bytes, out _, out int length) && length <= bytes.Length;
+        mpdu = valid ? bytes[..length] : [];
+        return valid;
     }
 
     private static byte[] BitsToBytesLsbFirst(ReadOnlySpan<bool> bits)

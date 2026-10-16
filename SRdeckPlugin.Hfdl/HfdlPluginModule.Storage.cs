@@ -72,6 +72,7 @@ public sealed partial class HfdlPluginModule
         {
             string path = GetHistoryPath(context);
             HfdlReception[] loaded = PluginJsonLinesHistory.LoadAll<HfdlReception>(path)
+                .SelectMany(HfdlMessageParser.RestoreHistory)
                 .TakeLast(settings.MaximumHistory).ToArray();
             if (File.Exists(path)) PluginJsonLinesHistory.Rewrite(path, loaded);
             lock (gate) history.AddRange(loaded);

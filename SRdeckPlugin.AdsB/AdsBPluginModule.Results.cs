@@ -137,7 +137,14 @@ public sealed partial class AdsBPluginModule
         lock (gate)
         {
             if (!aircraft.TryGetValue(message.Icao, out state!))
-                aircraft[message.Icao] = state = new AircraftState { Icao = message.Icao };
+                aircraft[message.Icao] = state = new AircraftState
+                {
+                    Icao = message.Icao,
+                    FirstSeen = frame.ReceivedAt,
+                    LastSeen = frame.ReceivedAt
+                };
+            if (state.FirstSeen == default || state.FirstSeen > frame.ReceivedAt)
+                state.FirstSeen = frame.ReceivedAt;
             if (!string.IsNullOrWhiteSpace(message.Callsign)) state.Callsign = message.Callsign;
             if (message.AltitudeFeet is not null)
             {
