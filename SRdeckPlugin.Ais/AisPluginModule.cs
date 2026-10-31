@@ -95,7 +95,7 @@ public sealed partial class AisPluginModule : PluginModuleBase, IPluginChannelBl
 
     public override PluginDescriptor Descriptor { get; } = new(
         "ais",
-        "AIS",
+        "船舶監視（AIS）",
         "Dual-channel maritime AIS GMSK receiver",
         new Version(1, 0, 0),
         new Version(1, 0),

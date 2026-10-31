@@ -100,7 +100,7 @@ public sealed partial class HfFaxPluginModule : PluginModuleBase, IPluginChannel
 
     public override PluginDescriptor Descriptor { get; } = new(
         "hffax",
-        "HF-FAX",
+        "気象ファクシミリ（HF-FAX）",
         "HF weather radiofacsimile receiver with APT start/stop detection",
         new Version(1, 0, 0),
         new Version(1, 0),

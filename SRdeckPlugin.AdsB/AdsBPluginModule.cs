@@ -92,7 +92,7 @@ public sealed partial class AdsBPluginModule : PluginModuleBase, IIqBlockConsume
 
     public override PluginDescriptor Descriptor { get; } = new(
         "adsb",
-        "ADS-B",
+        "航空機監視（ADS-B）",
         "1090 MHz Mode S Extended Squitter receiver",
         new Version(1, 0, 0),
         new Version(1, 0),

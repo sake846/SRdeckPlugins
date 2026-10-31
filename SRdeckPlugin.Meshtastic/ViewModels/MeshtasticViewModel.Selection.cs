@@ -79,6 +79,13 @@ public partial class MeshtasticViewModel
             left.Summary == right.Summary && left.Receptions.SequenceEqual(right.Receptions));
         ReplaceMeshtasticItems(MeshtasticReceptionAggregates, result.ReceptionAggregates);
         ReplaceMeshtasticItems(MeshtasticTextMessages, result.TextMessages);
+        ReplaceMeshtasticItems(MeshtasticLinkQuality, result.LinkQuality);
+        DateTimeOffset? firstReceivedAt = result.LinkQuality.Min(item => item.FirstReceivedAt);
+        DateTimeOffset? lastReceivedAt = result.LinkQuality.Max(item => item.LastReceivedAt);
+        MeshtasticLinkQualityScope = result.LinkQuality.Count == 0 ? "分析対象の履歴はありません。"
+            : $"保持中の履歴 {result.LinkQuality.Sum(item => item.ReceptionCount)} 件 / {result.LinkQuality.Count} リンク条件\n" +
+              (firstReceivedAt is null ? "受信日時不明"
+                  : $"{firstReceivedAt.Value.ToLocalTime():yyyy/MM/dd HH:mm:ss} ～ {lastReceivedAt!.Value.ToLocalTime():yyyy/MM/dd HH:mm:ss}");
 
         MeshtasticActiveNodeCount = result.ActiveNodeCount;
         MeshtasticUndecodedHistoryCount = result.UndecodedHistoryCount;

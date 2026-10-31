@@ -8,6 +8,7 @@ This file covers third-party material used by the SRdeck host and public plugin 
 - Microsoft.Extensions.DependencyInjection 9.0.0 — Copyright .NET Foundation and Contributors
 - Microsoft.Extensions.DependencyInjection.Abstractions 9.0.0 — Copyright .NET Foundation and Contributors
 - Microsoft.Xaml.Behaviors.Wpf 1.1.142 — Copyright Microsoft Corporation
+- System.IO.Ports 10.0.0 — Copyright .NET Foundation and Contributors
 
 Licensed under the MIT License:
 

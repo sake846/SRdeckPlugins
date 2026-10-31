@@ -264,7 +264,7 @@ public sealed partial class OneSegPluginModule : PluginModuleBase, IPluginChanne
     });
 
     public override PluginDescriptor Descriptor { get; } = new(
-        "oneseg", "ワンセグ", "ISDB-T 1セグメント テレビ・音声・字幕・番組表受信機",
+        "oneseg", "テレビ放送（ワンセグ）", "ISDB-T 1セグメント テレビ・音声・字幕・番組表受信機",
         new Version(1,0,0), new Version(1,0), new Version(1,0),
         PluginCapabilities.ChannelIqConsumer | PluginCapabilities.MainView |
         PluginCapabilities.SettingsView, "SRdeck", "GPL-3.0");

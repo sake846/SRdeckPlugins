@@ -114,8 +114,41 @@ public sealed class MeshtasticHistoryAnalyzer
             receptionAggregates,
             textMessages,
             activeNodeCount,
-            messages.Count(item => !item.IsDecoded));
+            messages.Count(item => !item.IsDecoded))
+        {
+            LinkQuality = GetLinkQuality(messages)
+        };
     }
+
+    /// <summary>Signal statistics use direct receptions only; relays measure a different RF link.</summary>
+    public IReadOnlyList<MeshtasticLinkQualityItem> GetLinkQuality(IEnumerable<MeshtasticDisplayItem> messages)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+        return messages
+            .GroupBy(item => (Sender: item.Sender.ToUpperInvariant(), item.RegionName, item.ModemPresetName, item.RadioSlot))
+            .Select(group =>
+            {
+                MeshtasticDisplayItem latest = group.MaxBy(item => item.ReceivedAt)!;
+                MeshtasticDisplayItem[] direct = group.Where(IsDirectLinkReception).ToArray();
+                int relayed = group.Count(item => !IsDirectLinkReception(item) && item.WasRelayed == true);
+                DateTimeOffset[] times = group.Select(item => item.ReceivedAt).Where(time => time != default).ToArray();
+                return new MeshtasticLinkQualityItem(
+                    latest.Sender, latest.SenderName, latest.SlotAndPresetText,
+                    group.Count(), direct.Length, relayed, group.Count() - direct.Length - relayed,
+                    times.Length == 0 ? null : times.Min(), times.Length == 0 ? null : times.Max(),
+                    MeshtasticSignalStatistics.From(direct.Select(item => item.EstimatedSnrDb)),
+                    MeshtasticSignalStatistics.From(direct.Select(item => item.EstimatedRssiDbm)),
+                    MeshtasticSignalStatistics.From(direct.Select(item => item.EstimatedRssiDbfs)));
+            })
+            .OrderByDescending(item => item.LastReceivedAt)
+            .ThenBy(item => item.Sender, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.RadioCondition, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    // Legacy senders can omit HopStart; zero cannot establish a direct RF link.
+    private static bool IsDirectLinkReception(MeshtasticDisplayItem item) =>
+        item.IsDirect && item.WasRelayed != true && item.HopStart > 0 && item.HopStart == item.HopLimit;
 
     public IReadOnlyList<MeshtasticDisplayItem> ResolveSenderNames(
         IReadOnlyList<MeshtasticDisplayItem> messages,
@@ -158,4 +191,7 @@ public sealed record MeshtasticHistoryAnalysisResult(
     IReadOnlyList<MeshtasticReceptionAggregateItem> ReceptionAggregates,
     IReadOnlyList<MeshtasticDisplayItem> TextMessages,
     int ActiveNodeCount,
-    int UndecodedHistoryCount);
+    int UndecodedHistoryCount)
+{
+    public IReadOnlyList<MeshtasticLinkQualityItem> LinkQuality { get; init; } = [];
+}

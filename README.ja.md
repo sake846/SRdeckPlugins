@@ -6,6 +6,9 @@
 
 SRdeckの公式プラグインをバージョン付きリリーススナップショットとして収録しています。
 
+未知信号の解析ワークベンチは、既定のビルドとプラグイン同梱の実行ZIPに含まれます。
+コンスタレーション、周波数偏移分布、シンボルレート候補の使い方は[専用ガイド](SRdeckPlugin.SignalWorkbench/README.ja.md)を参照してください。
+
 公開ソーススナップショットには、実行ファイルパッケージ向けのプラグインと、
 ソース公開のみのMeshtasticおよびワンセグを収録します。Meshtasticとワンセグは初期状態の
 ビルド対象から外し、DLLもSRdeckの実行ファイルパッケージに含めません。BATのビルド行は
@@ -23,8 +26,8 @@ SRdeckの公式プラグインをバージョン付きリリーススナップ�
 
 ## リリースメタデータ
 
-- リリースバージョン: `1.0.8`
-- 必要なSRdeckプラットフォームパッケージ: `1.0.8`
+- リリースバージョン: `1.0.9`
+- 必要なSRdeckプラットフォームパッケージ: `1.0.9`
 
 ## ビルド
 
@@ -33,16 +36,16 @@ SRdeckの公式プラグインをバージョン付きリリーススナップ�
 - Windows x64
 - .NET 10 SDK（`dotnet --info`で10.x SDKが表示されること）
 - Git（Gitでソースを取得する場合のみ。ZIPで取得する場合は不要）
-- `1.0.8`と同じバージョンのSRdeckプラットフォームNuGetパッケージ4個
+- `1.0.9`と同じバージョンのSRdeckプラットフォームNuGetパッケージ4個
 
 プラグインは`SRdeckPlugin.Contracts`、`SRdeckPlugin.Sdk`、`SRdeckPlugin.Wpf`、
 `SRdeckCore.SignalProcessing`をNuGetパッケージとして参照します。ビルド・動作確認に使う
 SRdeckホストとNuGetパッケージのバージョンを一致させてください。異なるSRdeckリリースの
 パッケージを混在させないでください。
 
-この公開スナップショットのプラグインのビルドは CMake を呼び出しません。
-SRdeck 本体もソースからビルドする場合は、別途 MSVC x64/x86 ビルドツール、Windows 10 / 11 SDK、
-CMake（VS 2022 は3.21以上、VS 2026 は4.2以上）が必要です。
+T98プラグインまたはSRdeck本体をソースからビルドするには、MSVC x64/x86ビルドツール、
+Windows 10 / 11 SDK、CMake（VS 2022は3.21以上、VS 2026は4.2以上）が必要です。
+T98は同梱ソースから誤り訂正・秘話解析用のネイティブDLLをビルドします。ビルド中にネイティブソースを取得しません。
 インストール手順と CMake エラー別の対処は [開発環境](https://github.com/sake846/SRdeck/wiki/Development-Environment) を参照してください。
 
 ### 1. 対応するソーススナップショットを取得する
@@ -52,13 +55,13 @@ CMake（VS 2022 は3.21以上、VS 2026 は4.2以上）が必要です。
 以降も同じウィンドウで、各コマンドが成功したことを確認してから次へ進みます。
 
 ```cmd
-set "RELEASE_VERSION=1.0.8"
-set "PLATFORM_VERSION=1.0.8"
+set "RELEASE_VERSION=1.0.9"
+set "PLATFORM_VERSION=1.0.9"
 ```
 
 #### Gitを使わない場合（ZIPをダウンロード）
 
-1. [対応するSRdeckPluginsのリリース](https://github.com/sake846/SRdeckPlugins/releases/tag/v1.0.8)
+1. [対応するSRdeckPluginsのリリース](https://github.com/sake846/SRdeckPlugins/releases/tag/v1.0.9)
    をブラウザーで開き、Assetsの **Source code (zip)** をダウンロードします。
 2. エクスプローラーの「すべて展開」でZIPを展開します。
 3. 展開されたフォルダーのうち、`SRdeckPlugins.sln`が入っているフォルダーを
@@ -86,10 +89,10 @@ cd SRdeckPlugins
 対応する[SRdeckのリリース](https://github.com/sake846/SRdeck/releases)から、次の4ファイルを
 ダウンロードしてください。
 
-- `SRdeckCore.SignalProcessing.1.0.8.nupkg`
-- `SRdeckPlugin.Contracts.1.0.8.nupkg`
-- `SRdeckPlugin.Sdk.1.0.8.nupkg`
-- `SRdeckPlugin.Wpf.1.0.8.nupkg`
+- `SRdeckCore.SignalProcessing.1.0.9.nupkg`
+- `SRdeckPlugin.Contracts.1.0.9.nupkg`
+- `SRdeckPlugin.Sdk.1.0.9.nupkg`
+- `SRdeckPlugin.Wpf.1.0.9.nupkg`
 
 ソースのフォルダーで次のコマンドを実行し、パッケージの配置先を作ります。
 
@@ -112,10 +115,10 @@ C:\SRdeckBuild\
    ├─ SRdeckPlugin.Ais\
    │  └─ SRdeckPlugin.Ais.csproj
    └─ platform-packages\
-      ├─ SRdeckCore.SignalProcessing.1.0.8.nupkg
-      ├─ SRdeckPlugin.Contracts.1.0.8.nupkg
-      ├─ SRdeckPlugin.Sdk.1.0.8.nupkg
-      └─ SRdeckPlugin.Wpf.1.0.8.nupkg
+      ├─ SRdeckCore.SignalProcessing.1.0.9.nupkg
+      ├─ SRdeckPlugin.Contracts.1.0.9.nupkg
+      ├─ SRdeckPlugin.Sdk.1.0.9.nupkg
+      └─ SRdeckPlugin.Wpf.1.0.9.nupkg
 ```
 
 GitHub CLIをインストール済みなら、ブラウザーでのダウンロードの代わりに次のコマンドを使えます。
@@ -221,10 +224,19 @@ SRdeckを完全に終了してから再起動してください。
 MeshtasticおよびワンセグをBATでローカル検証用にビルドするには、上記の明示的な有効化が必要です。
 公式のSRdeck実行ファイルパッケージにはDLLを含めません。
 
+### T98の音声出力
+
+T98の4FSK音声にはDVStick 30やThumbDVなどのAMBEドングルが必須です。
+プラグインでCOMポートとボーレートを設定してください。ドングルがない場合も受信・解析はできますが、音声は出力しません。
+T98のPSK音声は未対応です。T98の配置時にはプラグインDLL、2個のネイティブDLL、`System.IO.Ports.dll`、
+プラグインの注意事項と`licenses`フォルダーを揃えてください。
+共通AMBEソースは各プラグインの内部へ組み込みます。
+[T98のガイド](SRdeckPlugin.AribT98/README.ja.md)を参照してください。
+
 ### トラブルシューティング
 
-- CMake エラー: このソリューションは CMake を呼び出しません。実行したコマンドとエラーの
-  `-S` のパスを確認し、ホストや開発用統合リポジトリをビルドしている場合は上記のネイティブ環境を用意してください。
+- CMakeエラー: T98は誤り訂正・秘話解析用のネイティブDLLをビルドします。
+  上記のネイティブ環境を用意し、エラーの`-S`のパスを確認してください。
 - SRdeckパッケージの`NU1101`エラー: `platform-packages`に4個すべての`.nupkg`があり、
   バージョンが`%PLATFORM_VERSION%`と一致するか確認してください。
 - 実行時の型不足・互換性エラー: ホストとプラットフォームパッケージを同じSRdeckリリースに

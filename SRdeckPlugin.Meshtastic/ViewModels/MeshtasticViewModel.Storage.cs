@@ -116,6 +116,8 @@ public partial class MeshtasticViewModel
         MeshtasticTextMessages.Clear();
         MeshtasticPacketGroups.Clear();
         MeshtasticReceptionAggregates.Clear();
+        MeshtasticLinkQuality.Clear();
+        MeshtasticLinkQualityScope = "分析対象の履歴はありません。";
         SelectedMeshtasticNodeLatestApplications.Clear();
         _nodeStore.Clear();
         FilteredMeshtasticNodes.Clear();

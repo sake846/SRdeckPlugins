@@ -163,7 +163,7 @@ public sealed partial class AcarsPluginModule : PluginModuleBase, IIqBlockConsum
 
     public override PluginDescriptor Descriptor { get; } = new(
         "acars",
-        "ACARS",
+        "航空データ通信（ACARS）",
         "VHF ACARS AM-MSK receiver and ARINC 618 decoder",
         new Version(1, 0, 0),
         new Version(1, 0),

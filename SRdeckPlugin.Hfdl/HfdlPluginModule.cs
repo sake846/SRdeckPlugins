@@ -149,7 +149,7 @@ public sealed partial class HfdlPluginModule : PluginModuleBase, IIqBlockConsume
 
     public override PluginDescriptor Descriptor { get; } = new(
         "hfdl",
-        "HFDL",
+        "航空データ通信（HFDL）",
         "HF Data Link ARINC 635 burst receiver and decoder",
         new Version(1, 0, 0),
         new Version(1, 0),

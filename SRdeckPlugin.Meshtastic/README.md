@@ -34,6 +34,22 @@ The display converts dBFS to dBm with the host receiver's calibration; accuracy 
 on that calibration and receiver gain. Without host telemetry it explicitly shows dBFS.
 Missing RSSI in older history remains `RSSI —`; historical values are not recalibrated.
 
+## Link quality analysis
+
+The `リンク品質` tab compares the in-memory display history by sender, region,
+modem preset, and slot. It shows reception counts (direct, relayed, unknown),
+last reception, and direct-reception SNR/RSSI averages, minima, maxima and sample
+counts. Averages are arithmetic means of dB readings; repeated receptions count
+separately. Undecoded packets are included. The scope count and time range are
+shown above the table, independently of timeline filters.
+
+Relayed signal readings describe another RF link and are excluded from direct
+signal statistics. Legacy `HopStart=0` records are classified as unknown, as
+described by the [MeshPacket specification](https://github.com/meshtastic/protobufs/blob/master/meshtastic/mesh.proto).
+Missing and non-finite values are excluded; dBm and dBFS are kept separate.
+Analysis follows history restoration, updates and clearing. Reception counts do
+not measure delivery or loss rates because the total transmitted count is unknown.
+
 ## Fine symbol decisions
 
 After preamble acquisition, peak positions use the existing FFT's integer-bin

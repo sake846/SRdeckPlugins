@@ -69,7 +69,7 @@ public sealed partial class AnalogPluginModule :
 
     public override PluginDescriptor Descriptor { get; } = new(
         "analog",
-        "アナログ復調",
+        "アナログ音声（AM/FM/SSB）",
         "AM, FM, and SSB audio demodulation",
         new Version(1, 0),
         new Version(1, 0),

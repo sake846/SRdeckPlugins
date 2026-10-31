@@ -53,7 +53,7 @@ public sealed class MaritimeVhfPluginModule : PluginModuleBase,
 
     public override PluginDescriptor Descriptor { get; } = new(
         "maritime-vhf",
-        "国際VHF",
+        "国際海上無線（VHF/DSC）",
         "International maritime VHF voice receiver with DSC channel 70 auto-follow",
         new Version(1, 0, 0),
         new Version(1, 0),

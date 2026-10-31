@@ -1,0 +1,20 @@
+<UserControl x:Class="SRdeckPlugin.Sstv.Views.SstvSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+        <StackPanel Margin="10">
+            <ContentControl Content="SSTV 受信設定" Style="{DynamicResource PluginSettingsHeaderStyle}"/>
+            <TextBlock Text="受信周波数 (Hz)" Foreground="{DynamicResource TextDimBrush}" Margin="0,8,0,4"/>
+            <TextBox Text="{Binding FrequencyHz, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"
+                     Style="{DynamicResource PluginTextBoxStyle}"/>
+            <CheckBox Content="FM入力（オフの場合はUSB）" IsChecked="{Binding Fm}"
+                      Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,8"/>
+            <Button Content="設定を適用" Command="{Binding ApplySettingsCommand}"
+                    Style="{DynamicResource PluginButtonStyle}" HorizontalAlignment="Left"/>
+            <TextBlock Text="USBは無線機のダイヤル周波数、FMは搬送波周波数を指定します。方式はVISから自動判別します。"
+                       Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" Margin="0,10,0,0"/>
+            <TextBlock Text="対応: Martin M1/M2・Scottie S1/S2・Robot 36・PD120"
+                       Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+        </StackPanel>
+    </Border>
+</UserControl>

@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)AmbeDongleDecoder.cs;$(MSBuildThisFileDirectory)AmbeChannelFec.cs"
+             Link="Codec\%(Filename)%(Extension)" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.0" />
+    <None Include="$(MSBuildThisFileDirectory)THIRD-PARTY-NOTICES.md"
+          Link="AMBE.THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(MSBuildThisFileDirectory)LICENSES\*.txt"
+          Link="licenses\ambe\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(NuGetPackageRoot)\system.io.ports\10.0.0\THIRD-PARTY-NOTICES.TXT"
+          Link="licenses\System.IO.Ports.NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

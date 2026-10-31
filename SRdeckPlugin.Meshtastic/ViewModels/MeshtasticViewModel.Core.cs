@@ -259,6 +259,8 @@ public partial class MeshtasticViewModel
     public ObservableCollection<MeshtasticDisplayItem> MeshtasticTextMessages { get; } = new MeshtasticDisplayCollection<MeshtasticDisplayItem>();
     public ObservableCollection<MeshtasticPacketGroupItem> MeshtasticPacketGroups { get; } = new MeshtasticDisplayCollection<MeshtasticPacketGroupItem>();
     public ObservableCollection<MeshtasticReceptionAggregateItem> MeshtasticReceptionAggregates { get; } = new MeshtasticDisplayCollection<MeshtasticReceptionAggregateItem>();
+    public ObservableCollection<MeshtasticLinkQualityItem> MeshtasticLinkQuality { get; } = new MeshtasticDisplayCollection<MeshtasticLinkQualityItem>();
+    [ObservableProperty] private string _meshtasticLinkQualityScope = "分析対象の履歴はありません。";
     public ObservableCollection<MeshtasticDisplayItem> SelectedMeshtasticNodeLatestApplications { get; } = new MeshtasticDisplayCollection<MeshtasticDisplayItem>();
     public ObservableCollection<MeshtasticNodeDisplayItem> MeshtasticNodes => _nodeStore.Nodes;
     public ObservableCollection<MeshtasticNodeDisplayItem> FilteredMeshtasticNodes { get; } = new();

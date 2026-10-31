@@ -1,0 +1,90 @@
+<UserControl x:Class="SRdeckPlugin.SignalWorkbench.Views.WorkbenchView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:views="clr-namespace:SRdeckPlugin.SignalWorkbench.Views"
+ FontFamily="{DynamicResource MainFontFamily}" FontSize="12"
+ Foreground="{DynamicResource TextPrimaryBrush}">
+ <Grid Margin="6">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+  <Border Style="{DynamicResource PluginStatusHeaderStyle}" Padding="10,8">
+   <StackPanel>
+    <TextBlock Text="未知信号の解析ワークベンチ" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"/>
+    <TextBlock Text="{Binding Status}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+   </StackPanel>
+  </Border>
+  <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+   <StackPanel Margin="4,10,4,4">
+    <Border Style="{DynamicResource PluginSettingsSectionStyle}" Padding="10">
+     <StackPanel>
+      <TextBlock Text="選択帯域" Style="{DynamicResource PluginPrimarySectionHeaderStyle}"/>
+      <TextBlock Text="{Binding Frequency}" FontFamily="{DynamicResource DisplayFontFamily}" FontSize="24" Margin="0,5"/>
+      <WrapPanel>
+       <TextBlock Text="解析帯域 (Hz)" VerticalAlignment="Center" Margin="0,0,8,0"/>
+       <ComboBox ItemsSource="{Binding Bandwidths}" SelectedItem="{Binding SelectedBandwidthHz}"
+        Style="{DynamicResource PluginComboBoxStyle}" Width="110" Margin="0,0,8,0"
+        AutomationProperties.Name="解析帯域 Hz"/>
+       <Button Content="帯域を適用" Command="{Binding ApplyBandwidthCommand}" Padding="12,4"
+        Style="{DynamicResource PluginButtonStyle}" Margin="0,0,12,0"/>
+       <CheckBox Content="表示を保持" IsChecked="{Binding IsFrozen}"
+        Style="{DynamicResource PluginCheckBoxStyle}" VerticalAlignment="Center"
+        ToolTip="表示を保持している間も受信・解析は継続します。選局・帯域変更・不連続で解除します。"/>
+      </WrapPanel>
+      <TextBlock Text="左ペインやスペクトラムで周波数を選択してください。帯域変更時は解析窓をリセットします。"
+       Style="{DynamicResource PluginSettingsHintStyle}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+     </StackPanel>
+    </Border>
+    <Border Style="{DynamicResource PluginMetricCardStyle}" Margin="0,8,0,0" Padding="10">
+     <StackPanel>
+      <TextBlock Text="{Binding Level, StringFormat=入力レベル（未校正）: {0}}"/>
+      <TextBlock Text="{Binding Window}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+     </StackPanel>
+    </Border>
+    <TextBlock Text="コンスタレーション（未同期IQ）" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="0,16,0,6"/>
+    <views:WorkbenchPlot Snapshot="{Binding Snapshot}" Height="250" ClipToBounds="True"
+     AutomationProperties.Name="RMS正規化した未同期IQコンスタレーション"/>
+    <TextBlock Text="RMS正規化 / I・Q軸 ±2.5 / 搬送波・シンボル同期前の散布図です。シンボル判定点ではありません。"
+     Style="{DynamicResource PluginSettingsHintStyle}" TextWrapping="Wrap"/>
+    <TextBlock Text="周波数偏移分布" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="0,16,0,6"/>
+    <views:WorkbenchPlot Snapshot="{Binding Snapshot}" Kind="FrequencyHistogram" Height="210" ClipToBounds="True"
+     AutomationProperties.Name="隣接IQの位相差から求めた瞬時周波数ヒストグラム"/>
+    <TextBlock Text="{Binding HistogramRange}" TextWrapping="Wrap" Margin="0,5,0,0"/>
+    <TextBlock Text="{Binding FrequencyStatistics}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+    <TextBlock Text="中心周波数に対する瞬時周波数です。弱いサンプル対を除外し、横軸は1–99%点から自動設定します。端のビンには範囲外も含みます。平均値は変調の影響を含みます。"
+     Style="{DynamicResource PluginSettingsHintStyle}" TextWrapping="Wrap"/>
+    <TextBlock Text="FSK解析（候補）" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="0,16,0,6"/>
+    <TextBlock Text="{Binding FskSummary}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+    <TextBlock Text="{Binding FskDetails}" TextWrapping="Wrap" Margin="0,4,0,6"/>
+    <DataGrid ItemsSource="{Binding Snapshot.Fsk.Tones}" AutoGenerateColumns="False" IsReadOnly="True"
+     CanUserAddRows="False" MinColumnWidth="100" Height="150" Style="{DynamicResource PluginDataGridStyle}"
+     AutomationProperties.Name="FSKトーン周波数と出現割合">
+     <DataGrid.Columns>
+      <DataGridTextColumn Header="周波数 (Hz)" Binding="{Binding FrequencyHz, StringFormat=F1}" Width="*"/>
+      <DataGridTextColumn Header="出現割合" Binding="{Binding Occupancy, StringFormat=P1}" Width="*"/>
+      <DataGridTextColumn Header="標準偏差 (Hz)" Binding="{Binding StandardDeviationHz, StringFormat=F1}" Width="*"/>
+     </DataGrid.Columns>
+    </DataGrid>
+    <TextBlock Text="周波数は選局点基準です。割合は有効なサンプル対のうち各トーン付近にある比率です。複数信号の混在も候補になり得ます。"
+     Style="{DynamicResource PluginSettingsHintStyle}" TextWrapping="Wrap"/>
+    <TextBlock Text="周波数判別波形（解析窓の先頭1,024点）" Margin="0,10,0,6" TextWrapping="Wrap"/>
+    <views:WorkbenchPlot Snapshot="{Binding Snapshot}" Kind="FrequencyTrace" Height="170" ClipToBounds="True"
+     AutomationProperties.Name="FSKの周波数判別波形"/>
+    <TextBlock Text="シンボルレート候補" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="0,16,0,6"/>
+    <TextBlock Text="{Binding CandidateStatus}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+    <DataGrid ItemsSource="{Binding Snapshot.Candidates}" AutoGenerateColumns="False" IsReadOnly="True"
+     CanUserAddRows="False" MinColumnWidth="100" Height="160" Style="{DynamicResource PluginDataGridStyle}"
+     AutomationProperties.Name="シンボルレート候補と周期ピークの根拠">
+     <DataGrid.Columns>
+      <DataGridTextColumn Header="候補レート" Binding="{Binding Rate}" Width="*"/>
+      <DataGridTextColumn Header="ピーク / 中央値" Binding="{Binding Prominence}" Width="*"/>
+      <DataGridTextColumn Header="検出根拠" Binding="{Binding Evidence}" Width="*"/>
+      <DataGridTextColumn Header="h (FSK)" Binding="{Binding ModulationIndex, StringFormat=F3, TargetNullValue=—}" Width="100"/>
+     </DataGrid.Columns>
+    </DataGrid>
+    <TextBlock Text="h = 隣接トーン間隔 / 各レート候補。2FSKでは2Δf / Rsです。レート候補に高調波などが含まれるため、hも候補値です。"
+     Style="{DynamicResource PluginSettingsHintStyle}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+    <TextBlock Text="包絡電力・位相変化・周波数変化と、FSK検出時のトーン遷移の周期ピークから最大5件を表示します。dB値はスペクトル中央値に対する強さで、正解の確率ではありません。高調波・副調波・アナログ変調も候補になり得ます。方式の確定には別途検証が必要です。"
+     Style="{DynamicResource PluginSettingsHintStyle}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+   </StackPanel>
+  </ScrollViewer>
+ </Grid>
+</UserControl>

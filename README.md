@@ -7,6 +7,9 @@
 This repository contains the official SRdeck plugins as a versioned release
 snapshot.
 
+The Unknown Signal Analysis Workbench is included in the default build and the plugin-inclusive executable ZIP.
+See its [guide](SRdeckPlugin.SignalWorkbench/README.md) for constellation, frequency-deviation and symbol-rate candidate analysis.
+
 The public source snapshot contains the plugins selected for executable packages
 and the Meshtastic and OneSeg source-only plugins. Meshtastic and OneSeg are
 excluded from the default build and the SRdeck executable packages. Their BAT
@@ -26,8 +29,8 @@ For detailed plugin specifications, reception procedures, and development guides
 
 ## Release metadata
 
-- Release version: `1.0.8`
-- Required SRdeck platform package version: `1.0.8`
+- Release version: `1.0.9`
+- Required SRdeck platform package version: `1.0.9`
 
 ## Building
 
@@ -37,16 +40,17 @@ For detailed plugin specifications, reception procedures, and development guides
 - .NET 10 SDK (`dotnet --info` should show an installed 10.x SDK)
 - Git (only if cloning the source; not required for the ZIP download)
 - The four SRdeck platform NuGet packages with the same version as
-  `1.0.8`
+  `1.0.9`
 
 The plugin projects consume `SRdeckPlugin.Contracts`, `SRdeckPlugin.Sdk`,
 `SRdeckPlugin.Wpf`, and `SRdeckCore.SignalProcessing` as NuGet packages. The
 package version must match the SRdeck host version used for testing. Do not
 mix packages from different SRdeck releases.
 
-The plugin build in this public snapshot does not invoke CMake. Building the
-SRdeck host from source also requires MSVC x64/x86 build tools, a Windows 10 or
-11 SDK, and CMake (3.21 or newer for VS 2022; 4.2 or newer for VS 2026).
+Building T98 or the SRdeck host from source requires MSVC x64/x86
+build tools, a Windows 10 or 11 SDK, and CMake (3.21 or newer for VS 2022;
+4.2 or newer for VS 2026). T98 builds its FEC and privacy-analysis DLLs from
+vendored source without downloading native source during the build.
 See [Development Environment](https://github.com/sake846/SRdeck/wiki/Development-Environment)
 for installation steps and CMake troubleshooting.
 
@@ -57,13 +61,13 @@ Command Prompt from the Start menu and set the versions first. Keep using the
 same window, and check that each command succeeds before continuing.
 
 ```cmd
-set "RELEASE_VERSION=1.0.8"
-set "PLATFORM_VERSION=1.0.8"
+set "RELEASE_VERSION=1.0.9"
+set "PLATFORM_VERSION=1.0.9"
 ```
 
 #### Without Git: download the ZIP
 
-1. Open the [matching SRdeckPlugins release](https://github.com/sake846/SRdeckPlugins/releases/tag/v1.0.8)
+1. Open the [matching SRdeckPlugins release](https://github.com/sake846/SRdeckPlugins/releases/tag/v1.0.9)
    in a browser and download **Source code (zip)** under Assets.
 2. Extract the ZIP using File Explorer's **Extract All** command.
 3. Place the extracted folder containing `SRdeckPlugins.sln` at
@@ -91,10 +95,10 @@ cd SRdeckPlugins
 Download these four files from the matching
 [SRdeck release](https://github.com/sake846/SRdeck/releases):
 
-- `SRdeckCore.SignalProcessing.1.0.8.nupkg`
-- `SRdeckPlugin.Contracts.1.0.8.nupkg`
-- `SRdeckPlugin.Sdk.1.0.8.nupkg`
-- `SRdeckPlugin.Wpf.1.0.8.nupkg`
+- `SRdeckCore.SignalProcessing.1.0.9.nupkg`
+- `SRdeckPlugin.Contracts.1.0.9.nupkg`
+- `SRdeckPlugin.Sdk.1.0.9.nupkg`
+- `SRdeckPlugin.Wpf.1.0.9.nupkg`
 
 Run these commands from the source directory to create the package directory:
 
@@ -118,10 +122,10 @@ C:\SRdeckBuild\
    ├─ SRdeckPlugin.Ais\
    │  └─ SRdeckPlugin.Ais.csproj
    └─ platform-packages\
-      ├─ SRdeckCore.SignalProcessing.1.0.8.nupkg
-      ├─ SRdeckPlugin.Contracts.1.0.8.nupkg
-      ├─ SRdeckPlugin.Sdk.1.0.8.nupkg
-      └─ SRdeckPlugin.Wpf.1.0.8.nupkg
+      ├─ SRdeckCore.SignalProcessing.1.0.9.nupkg
+      ├─ SRdeckPlugin.Contracts.1.0.9.nupkg
+      ├─ SRdeckPlugin.Sdk.1.0.9.nupkg
+      └─ SRdeckPlugin.Wpf.1.0.9.nupkg
 ```
 
 If GitHub CLI is installed, this command can download the packages instead of
@@ -235,11 +239,20 @@ Meshtastic and OneSeg require the explicit opt-in described above before the BAT
 file builds them for local testing. Their DLLs are intentionally not included
 in the official SRdeck executable packages.
 
+### T98 hardware voice
+
+T98 4FSK voice requires an external AMBE dongle such as DVstick 30 or ThumbDV.
+Set its COM port and baud rate in the plugin. Without the dongle, reception
+and analysis remain available but no voice is produced. T98 PSK voice is unsupported.
+For T98, deploy the plugin DLL, both native DLLs, `System.IO.Ports.dll`, the plugin notice
+and the `licenses` directory together.
+Common AMBE sources are compiled into each plugin independently.
+See the [T98 guide](SRdeckPlugin.AribT98/README.md).
+
 ### Troubleshooting
 
-- CMake errors: this solution does not invoke CMake. Check the command and the
-  `-S` path in the error. If building the host or the development monorepo,
-  install the native build prerequisites described above.
+- CMake errors: T98 builds native FEC and privacy-analysis DLLs. Install the
+  native build prerequisites described above and check the `-S` path in the error.
 - `NU1101` for an SRdeck package: check that `platform-packages` contains all
   four `.nupkg` files and that their versions equal `%PLATFORM_VERSION%`.
 - Missing or incompatible types at runtime: build and test with a host and

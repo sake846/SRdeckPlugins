@@ -68,7 +68,7 @@ public sealed partial class WiSunPluginModule :
     private int _hasReceivedStreamData;
     public override PluginDescriptor Descriptor { get; } = new(
         "wisun",
-        "Wi-SUN",
+        "IoT通信（Wi-SUN）",
         "920MHz Band Wi-SUN / IEEE 802.15.4g SUN FSK Signal Demodulator",
         new Version(1, 0),
         new Version(1, 0),

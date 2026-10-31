@@ -65,6 +65,10 @@
                             <views:MeshtasticMapView x:Name="MapView" />
                         </TabItem>
 
+                        <TabItem x:Name="MeshtasticLinkQualityTab" Header="リンク品質">
+                            <views:MeshtasticLinkQualityView x:Name="LinkQualityView" />
+                        </TabItem>
+
                         <TabItem Header="診断">
                             <views:MeshtasticDiagnosticsView x:Name="DiagnosticsView" />
                         </TabItem>

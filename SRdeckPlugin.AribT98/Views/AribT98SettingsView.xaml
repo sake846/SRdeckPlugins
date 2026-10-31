@@ -1,0 +1,137 @@
+<UserControl x:Class="SRdeckPlugin.AribT98.Views.AribT98SettingsView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+ FontSize="10" FontFamily="{DynamicResource MainFontFamily}" Foreground="{DynamicResource TextPrimaryBrush}">
+ <Grid>
+  <Border x:Name="SettingsPanel" Style="{DynamicResource PluginSettingsPanelStyle}">
+   <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <!-- Keep the settings header outside the collapsible body. -->
+    <ContentControl Content="{Binding AppliedChannelSummary}" Tag="{Binding AppliedModulation}" Style="{DynamicResource PluginSettingsHeaderStyle}"/>
+    <!-- The host expansion binding is attached on Loaded, after a Window exists. -->
+    <TabControl x:Name="SettingsBody" Grid.Row="1" MaxHeight="270" SelectedIndex="{Binding SelectedSettingsTabIndex}" Style="{DynamicResource PluginSettingsTabControlStyle}">
+     <TabItem Header="受信設定">
+      <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+       <StackPanel>
+        <StackPanel.Style>
+         <Style TargetType="StackPanel"><Style.Triggers>
+          <DataTrigger Binding="{Binding ApplyCommand.IsRunning}" Value="True"><Setter Property="IsEnabled" Value="False"/></DataTrigger>
+         </Style.Triggers></Style>
+        </StackPanel.Style>
+        <Grid Margin="0,0,0,8">
+         <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="130"/><ColumnDefinition Width="14"/><ColumnDefinition Width="24"/><ColumnDefinition Width="90"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="52"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+         <TextBlock Text="種別" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+         <ComboBox Grid.Column="1" ItemsSource="{Binding ChannelPlans}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SelectedChannelPlan}" Width="130" Height="22" HorizontalAlignment="Left" VerticalAlignment="Center" Style="{DynamicResource PluginComboBoxStyle}" AutomationProperties.Name="無線局の種別"/>
+         <TextBlock Grid.Column="3" Text="CH" Style="{DynamicResource PluginSettingsFieldLabelStyle}" HorizontalAlignment="Center"/>
+         <ComboBox Grid.Column="4" ItemsSource="{Binding Channels}" DisplayMemberPath="Label" SelectedItem="{Binding SelectedChannel}" Width="90" Height="22" HorizontalAlignment="Left" VerticalAlignment="Center" Style="{DynamicResource PluginComboBoxStyle}" MaxDropDownHeight="340" AutomationProperties.Name="受信チャネル"/>
+         <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center" Margin="2,0,0,0">
+          <Button Content="−" Command="{Binding PreviousChannelCommand}" Style="{DynamicResource PluginLeftStepButtonStyle}" Width="24" ToolTip="前のチャネルを選局" AutomationProperties.Name="前のチャネル"/>
+          <Button Content="＋" Command="{Binding NextChannelCommand}" Style="{DynamicResource PluginRightStepButtonStyle}" Width="24" ToolTip="次のチャネルを選局" AutomationProperties.Name="次のチャネル"/>
+         </StackPanel>
+         <Button Grid.Column="6" Content="呼出 15" Command="{Binding CallingChannelCommand}" Style="{DynamicResource PluginButtonStyle}" Width="52" VerticalAlignment="Center" Margin="2,0,0,0" ToolTip="呼出CH15を選局" AutomationProperties.Name="呼出 15"/>
+         <TextBlock Grid.Column="7" Text="周波数" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="8,0,6,0"/>
+         <TextBox x:Name="FrequencyTextBox" Grid.Column="8" Text="{Binding FrequencyHz, Mode=OneWay, StringFormat={}{0:N0}}" Height="22" Width="110" Padding="5,2" HorizontalAlignment="Left" HorizontalContentAlignment="Right" Style="{DynamicResource PluginTextBoxStyle}" ToolTip="数字＋M/m: MHz、数字＋K/k: kHz、Enter: Hz" PreviewMouseDown="FrequencyTextBox_OnPreviewMouseDown" GotKeyboardFocus="FrequencyTextBox_OnGotKeyboardFocus" KeyDown="FrequencyTextBox_OnKeyDown" LostFocus="FrequencyTextBox_OnLostFocus" AutomationProperties.Name="信号中心周波数 Hz"/>
+        </Grid>
+        <Grid Margin="0,0,0,8">
+         <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="64"/><ColumnDefinition Width="92"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+         <TextBlock Text="UC" Style="{DynamicResource PluginSettingsFieldLabelStyle}" ToolTip="ユーザコードで音声を選択"/>
+         <TextBox Grid.Column="1" Text="{Binding UserCode, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Style="{DynamicResource PluginTextBoxStyle}" AutomationProperties.Name="ユーザコード"/>
+         <TextBlock Grid.Column="2" Text="0：すべて受信" Margin="8,0,0,0" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center"/>
+         <ToggleButton Grid.Column="3" Content="スピーカー" IsChecked="{Binding MonitorAudioEnabled, Mode=TwoWay}" IsEnabled="{Binding IsFourFsk}" Style="{DynamicResource PluginToggleButtonStyle}" Width="72" VerticalAlignment="Center" AutomationProperties.Name="スピーカー"/>
+        </Grid>
+        <Grid Margin="0,0,0,8">
+         <Grid.ColumnDefinitions><ColumnDefinition Width="72"/><ColumnDefinition Width="72"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+         <TextBlock Text="現在の秘話鍵" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+         <TextBox Grid.Column="1" Text="{Binding PrivacyKey, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="72" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}" AutomationProperties.Name="現在の秘話鍵"/>
+         <ToggleButton x:Name="ParallelPrivacySearch" Grid.Column="2" Content="並列探索" IsChecked="{Binding ParallelPrivacySearchEnabled, Mode=TwoWay}" IsEnabled="{Binding IsFourFsk}" Style="{DynamicResource PluginToggleButtonStyle}" Width="72" VerticalAlignment="Center" Margin="8,0,0,0" AutomationProperties.Name="秘話コードの並列探索"/>
+        </Grid>
+        <WrapPanel Margin="0,0,0,8">
+         <TextBlock Text="秘話コードのプリセット" Style="{DynamicResource PluginSettingsFieldLabelStyle}" Margin="0,0,8,0"/>
+         <TextBox Text="{Binding PrivacyPreset1, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="72" Style="{DynamicResource PluginTextBoxStyle}" Margin="0,0,4,0" AutomationProperties.Name="秘話コードプリセット1"/>
+         <TextBox Text="{Binding PrivacyPreset2, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="72" Style="{DynamicResource PluginTextBoxStyle}" Margin="0,0,4,0" AutomationProperties.Name="秘話コードプリセット2"/>
+         <TextBox Text="{Binding PrivacyPreset3, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="72" Style="{DynamicResource PluginTextBoxStyle}" Margin="0,0,4,0" AutomationProperties.Name="秘話コードプリセット3"/>
+         <TextBox Text="{Binding PrivacyPreset4, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="72" Style="{DynamicResource PluginTextBoxStyle}" Margin="0,0,4,0" AutomationProperties.Name="秘話コードプリセット4"/>
+         <TextBox Text="{Binding PrivacyPreset5, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="72" Style="{DynamicResource PluginTextBoxStyle}" AutomationProperties.Name="秘話コードプリセット5"/>
+         <TextBlock Text="0：未設定" Style="{DynamicResource PluginSettingsHintStyle}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+        </WrapPanel>
+        <WrapPanel IsEnabled="{Binding IsFourFsk}">
+         <StackPanel Orientation="Horizontal" Height="24" Margin="0,0,12,4">
+          <TextBlock Text="AMBE接続先" Width="80" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+          <TextBox Text="{Binding AmbePort, UpdateSourceTrigger=PropertyChanged}" Width="200" Height="22" Style="{DynamicResource PluginTextBoxStyle}" ToolTip="COM6 または udp://192.168.1.10:2460 を指定してください。UDPのポート省略時は2460。空欄で音声デコードを無効にします。" AutomationProperties.Name="AMBE接続先"/>
+         </StackPanel>
+         <StackPanel Orientation="Horizontal" Height="24" Margin="0,0,0,4">
+          <TextBlock Text="通信速度" Margin="0,0,6,0" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+          <ComboBox ItemsSource="{Binding AmbeBaudRates}" SelectedItem="{Binding AmbeBaudRate}" ToolTip="COM接続時のみ使用" Width="100" Height="22" Style="{DynamicResource PluginComboBoxStyle}" AutomationProperties.Name="AMBEドングル通信速度"/>
+         </StackPanel>
+        </WrapPanel>
+        <TextBlock Text="COM6 / udp://192.168.1.10:2460（UDP）。通信速度はCOM接続時のみ使用。" TextWrapping="Wrap" Style="{DynamicResource PluginSettingsHintStyle}"/>
+       </StackPanel>
+      </ScrollViewer>
+     </TabItem>
+     <TabItem Header="詳細設定">
+      <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+       <StackPanel>
+        <StackPanel.Style>
+         <Style TargetType="StackPanel"><Style.Triggers>
+          <DataTrigger Binding="{Binding ApplyCommand.IsRunning}" Value="True"><Setter Property="IsEnabled" Value="False"/></DataTrigger>
+         </Style.Triggers></Style>
+        </StackPanel.Style>
+        <Grid>
+         <Grid.ColumnDefinitions><ColumnDefinition Width="112"/><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+         <Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="34"/></Grid.RowDefinitions>
+         <TextBlock Text="変調方式" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+         <ComboBox Grid.Column="1" ItemsSource="{Binding Modulations}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Modulation}" Style="{DynamicResource PluginComboBoxStyle}" AutomationProperties.Name="STD-T98変調方式"/>
+         <TextBlock Grid.Column="2" Text="DJ-DPS72Wなどは4FSK" Margin="8,0" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center"/>
+         <TextBlock Grid.Row="1" Text="PSK任意コード" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+         <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PskScramblerSeed, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="120" HorizontalAlignment="Left" IsEnabled="{Binding IsPsk}" Style="{DynamicResource PluginTextBoxStyle}" AutomationProperties.Name="PSK任意スクランブルコード"/>
+         <TextBlock Grid.Row="1" Grid.Column="2" Text="S=1用 / 空欄：未設定" Margin="8,0" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center"/>
+        </Grid>
+        <TextBlock Text="PSKは制御情報・TCH抽出のみで音声未対応。S=0は受信UCからPN9解除、S=1は既知の任意コードを使用します。" Style="{DynamicResource PluginSettingsHintStyle}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+        <DockPanel Margin="0,8,0,0">
+         <TextBlock Text="変更は未適用　" Foreground="#E6C46B" FontWeight="SemiBold">
+          <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding HasPendingSettings}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+         </TextBlock>
+         <TextBlock Text="{Binding SettingsStatus}" TextWrapping="Wrap" Foreground="{DynamicResource TextDimBrush}"/>
+        </DockPanel>
+       </StackPanel>
+      </ScrollViewer>
+     </TabItem>
+     <TabItem Header="プラグイン設定">
+      <ScrollViewer Style="{DynamicResource PluginSettingsBodyStyle}">
+       <Grid Margin="2">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <controls:PluginResetView/>
+        <TextBlock Grid.Row="1" Text="受信履歴" Style="{DynamicResource PluginSettingsSectionHeaderStyle}"/>
+        <Grid Grid.Row="2" HorizontalAlignment="Left">
+         <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="110"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+         <TextBlock Text="履歴保持件数" Style="{DynamicResource PluginSettingsFieldLabelStyle}"/>
+         <TextBox Grid.Column="1" Text="{Binding MaximumHistory, UpdateSourceTrigger=LostFocus}" Width="100" HorizontalAlignment="Left" Style="{DynamicResource PluginTextBoxStyle}"/>
+         <TextBlock Grid.Column="2" Text="件の履歴を保存し、次回起動時に復元します（100～100,000件）" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+        </Grid>
+        <TextBlock Grid.Row="3" Text="過去録音" Style="{DynamicResource PluginSettingsSectionHeaderStyle}"/>
+        <StackPanel Grid.Row="4" Margin="2,4,2,8">
+         <TextBlock Text="{Binding IqBufferedSeconds, StringFormat=保持中：{0:F2} 秒 / 最大20秒}" Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,0,0,2"/>
+         <Grid Style="{DynamicResource PluginSettingsActionRowStyle}">
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <TextBlock Text="受信中に直前20秒のIQデータを保存します。" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+          <Button Grid.Column="1" Content="IQ 録音 (直前20秒)" Command="{Binding SaveRecentIqCommand}" Style="{DynamicResource PluginButtonStyle}" Width="130" HorizontalAlignment="Left" AutomationProperties.Name="直前20秒のIQを保存"/>
+          <TextBlock Grid.Column="2" Text="{Binding IqCaptureStatus}" Style="{DynamicResource PluginSettingsActionStatusStyle}" VerticalAlignment="Center"/>
+          <TextBlock Grid.Row="1" Text="保存したIQ WAVを受信時と同じプラグインで再生します。" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,6,16,0"/>
+          <Button Grid.Row="1" Grid.Column="1" Style="{DynamicResource PluginIqPlaybackButtonStyle}" Margin="0,6,0,0" AutomationProperties.Name="IQ WAVを再生"/>
+          <TextBlock Grid.Row="1" Grid.Column="2" Style="{DynamicResource PluginIqPlaybackStatusStyle}" Margin="10,6,0,0"/>
+         </Grid>
+         <TextBox Text="{Binding LastIqCapturePath, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" MinHeight="44" Height="Auto" Style="{DynamicResource PluginTextBoxStyle}" Margin="0,0,0,8" AutomationProperties.Name="IQ保存先"/>
+         <TextBlock Text="選局済み48 kHz IQを16 bit・2チャンネルWAVで保存します。左がI、右がQです。SDRの全受信帯域や復号後の音声ではありません。20秒未満なら取得済みの分だけ保存します。" Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" Margin="0,4"/>
+         <TextBlock Text="停止後も保存できます。受信の再開始・選局・設定変更・入力の不連続・プラグイン切り替えで履歴をクリアします。秘話コードの自動適用はIQ履歴を消去しません。" Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" Margin="0,8"/>
+         <TextBlock Text="保存先はプラグインのデータフォルダー内の captures です。WAVとJSON、周波数情報の.gainを一緒に保管してください。SRdeckでの再生時に.gainから中心周波数を復元します。IQ振幅は未校正で、キーはJSONに含めません。" Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" Margin="0,4"/>
+        </StackPanel>
+       </Grid>
+      </ScrollViewer>
+     </TabItem>
+    </TabControl>
+   </Grid>
+  </Border>
+ </Grid>
+</UserControl>

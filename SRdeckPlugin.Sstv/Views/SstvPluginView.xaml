@@ -1,0 +1,37 @@
+<UserControl x:Class="SRdeckPlugin.Sstv.Views.SstvPluginView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Margin="10" Background="{DynamicResource PanelBackgroundBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <DockPanel Margin="0,0,0,8">
+            <TextBlock Text="SSTV" FontSize="18" FontWeight="SemiBold"
+                       Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}"/>
+            <TextBlock Text="{Binding Status}" Margin="14,0,0,0" VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap"/>
+        </DockPanel>
+        <DockPanel Grid.Row="1" Margin="0,0,0,8">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="再待機" Command="{Binding ResetCommand}"
+                        Style="{DynamicResource PluginButtonStyle}" Margin="4,0"/>
+                <Button Content="PNG保存" Command="{Binding SaveCommand}"
+                        Style="{DynamicResource PluginButtonStyle}"/>
+            </StackPanel>
+            <TextBlock Text="{Binding ImageDescription}" VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap"/>
+        </DockPanel>
+        <Border Grid.Row="2" Background="{DynamicResource PanelRaisedBrush}"
+                BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" Padding="4">
+            <Image Source="{Binding Image}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+        </Border>
+        <StackPanel Grid.Row="3" Margin="0,6,0,0">
+            <TextBlock Text="{Binding ToneText}" Foreground="{DynamicResource TextDimBrush}"/>
+            <TextBlock Text="{Binding SaveStatus}" Foreground="{DynamicResource TextDimBrush}"
+                       TextWrapping="Wrap"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SRdeckPlugin.Contracts\SRdeckPlugin.Contracts.csproj" />
+    <ProjectReference Include="..\SRdeckPlugin.Sdk\SRdeckPlugin.Sdk.csproj" />
+    <ProjectReference Include="..\SRdeckPlugin.Wpf\SRdeckPlugin.Wpf.csproj" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+  </ItemGroup>
+  <PropertyGroup>
+    <AribT98NativeDll>$(MSBuildProjectDirectory)\Native\build\$(Configuration)\arib_t98_fec_native.dll</AribT98NativeDll>
+    <AribT98AnalysisDll>$(MSBuildProjectDirectory)\Native\build\$(Configuration)\arib_t98_analysis_native.dll</AribT98AnalysisDll>
+    <AribT98NativeBuildStamp>$(MSBuildProjectDirectory)\Native\build\$(Configuration)\arib_t98_fec_native.buildstamp</AribT98NativeBuildStamp>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Reuse only successful native builds; a failed LINK can leave a fresh DLL. -->
+    <AribT98NativeInput Include="Native\Build-Native.ps1;Native\CMakeLists.txt;Native\*.c" />
+    <AribT98NativeInput Include="Native\vendor\**\CMakeLists.txt;Native\vendor\**\*.cmake;Native\vendor\**\*.c;Native\vendor\**\*.h;Native\vendor\**\*.in" />
+  </ItemGroup>
+  <Target Name="BuildAribT98Codec" BeforeTargets="PrepareForBuild"
+          Condition="'$(DesignTimeBuild)' != 'true'"
+          Inputs="@(AribT98NativeInput)"
+          Outputs="$(AribT98NativeDll);$(AribT98AnalysisDll);$(AribT98NativeBuildStamp)">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\Native\Build-Native.ps1&quot; -Configuration &quot;$(Configuration)&quot;" />
+  </Target>
+  <ItemGroup>
+    <None Include="Native\build\$(Configuration)\arib_t98_fec_native.dll"
+          Link="arib_t98_fec_native.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(AribT98AnalysisDll)" Link="arib_t98_analysis_native.dll"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="THIRD-PARTY-NOTICES.md" Link="SRdeckPlugin.AribT98.THIRD-PARTY-NOTICES.md"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="Native\vendor\mbelib-neo\LICENSE"
+          Link="licenses\mbelib-neo\LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="Native\vendor\mbelib-neo\LICENSES\*.txt"
+          Link="licenses\mbelib-neo\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="Native\vendor\mbelib-neo\docs\upstream-mbelib-attribution.md"
+          Link="licenses\mbelib-neo\upstream-mbelib-attribution.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="RemoveLegacyAmbeCodec" AfterTargets="Build;Publish">
+    <Delete Files="$(OutDir)mbe-neo.dll;$(OutDir)arib_t98_mbe_native.dll" />
+    <Delete Files="$(PublishDir)mbe-neo.dll;$(PublishDir)arib_t98_mbe_native.dll" Condition="'$(PublishDir)' != ''" />
+  </Target>
+  <Import Project="..\shared\Ambe\Ambe.props" />
+</Project>

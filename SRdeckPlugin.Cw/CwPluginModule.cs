@@ -78,7 +78,7 @@ public sealed partial class CwPluginModule : PluginModuleBase, IPluginChannelBlo
 
     public override PluginDescriptor Descriptor { get; } = new(
         "cw",
-        "CW Skimmer",
+        "アマチュア無線（モールス通信）",
         "10/20/50 kHz multi-signal CW skimmer with adaptive Morse decoding",
         new Version(1, 0, 0),
         new Version(1, 0),

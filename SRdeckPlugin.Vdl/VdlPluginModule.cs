@@ -130,7 +130,7 @@ public sealed partial class VdlPluginModule : PluginModuleBase, IIqBlockConsumer
 
     public override PluginDescriptor Descriptor { get; } = new(
         "vdl",
-        "VDL Mode 2",
+        "航空データ通信（VDL Mode 2）",
         "VHF Data Link Mode 2 (D8PSK / AVLC) receiver",
         new Version(1, 0, 0),
         new Version(1, 0),

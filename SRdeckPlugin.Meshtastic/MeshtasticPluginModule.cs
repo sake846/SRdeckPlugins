@@ -64,7 +64,7 @@ public sealed class MeshtasticPluginModule(
 
     public override PluginDescriptor Descriptor { get; } = new(
         "meshtastic",
-        "Meshtastic",
+        "メッシュ通信（Meshtastic）",
         "Meshtastic LoRa packet receiver and decoder",
         new Version(1, 0),
         new Version(1, 0),

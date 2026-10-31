@@ -5,7 +5,7 @@ set "BUILD_EXIT_CODE=1"
 set "BUILD_CONFIGURATION=Release"
 if not "%~1"=="" set "BUILD_CONFIGURATION=%~1"
 set "PACKAGE_DIRECTORY=%~dp0platform-packages"
-set "PLATFORM_VERSION=1.0.8"
+set "PLATFORM_VERSION=1.0.9"
 
 pushd "%~dp0"
 if errorlevel 1 goto finish
@@ -49,6 +49,7 @@ exit /b %BUILD_EXIT_CODE%
 echo Restoring %~1 with platform version %PLATFORM_VERSION%...
 dotnet restore "%~1" ^
     --configfile "NuGet.Config" ^
+    -m:1 ^
     -p:Configuration=%BUILD_CONFIGURATION% ^
     -p:Platform=x64 ^
     -p:SRdeckPlatformVersion=%PLATFORM_VERSION%
@@ -58,6 +59,7 @@ if not "%BUILD_EXIT_CODE%"=="0" exit /b %BUILD_EXIT_CODE%
 echo Building %~1 in %BUILD_CONFIGURATION%...
 dotnet build "%~1" ^
     --configuration "%BUILD_CONFIGURATION%" ^
+    -m:1 ^
     --no-restore ^
     -p:Platform=x64 ^
     -p:SRdeckPlatformVersion=%PLATFORM_VERSION%

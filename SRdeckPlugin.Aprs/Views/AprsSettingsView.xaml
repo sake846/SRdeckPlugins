@@ -1,0 +1,39 @@
+<UserControl x:Class="SRdeckPlugin.Aprs.Views.AprsSettingsView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource MainFontFamily}"
+ FontSize="10" UseLayoutRounding="True" SnapsToDevicePixels="True">
+ <Border Style="{DynamicResource PluginSettingsPanelStyle}">
+  <Grid>
+   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+   <ContentControl Style="{DynamicResource PluginSettingsHeaderStyle}"><TextBlock Text="設定" Style="{DynamicResource PluginSettingsSectionHeaderStyle}"/></ContentControl>
+   <ScrollViewer Grid.Row="1" MaxHeight="220">
+    <ScrollViewer.Style>
+     <Style TargetType="ScrollViewer" BasedOn="{StaticResource PluginSettingsBodyStyle}">
+      <Style.Triggers>
+       <DataTrigger Binding="{Binding DataContext.IsPluginSettingsExpanded, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
+        <Setter Property="Visibility" Value="Collapsed"/>
+       </DataTrigger>
+      </Style.Triggers>
+     </Style>
+    </ScrollViewer.Style>
+    <StackPanel>
+    <WrapPanel Margin="0,3">
+     <TextBlock Text="周波数（Hz）" Style="{DynamicResource PluginSettingsFieldLabelStyle}" VerticalAlignment="Center"/>
+     <TextBox Text="{Binding FrequencyText, UpdateSourceTrigger=PropertyChanged}" Width="130" MaxLength="10"
+       Style="{DynamicResource PluginNumericTextBoxStyle}" AutomationProperties.Name="APRS受信周波数（Hz）"/>
+     <Button Content="適用" Command="{Binding ApplyFrequencyCommand}" Style="{DynamicResource PluginButtonStyle}" Margin="6,0"/>
+    </WrapPanel>
+    <WrapPanel>
+     <Button Content="日本 144.660" Command="{Binding PresetCommand}" CommandParameter="144660000" Style="{DynamicResource PluginButtonStyle}"/>
+     <Button Content="欧州 144.800" Command="{Binding PresetCommand}" CommandParameter="144800000" Style="{DynamicResource PluginButtonStyle}"/>
+     <Button Content="北米 144.390" Command="{Binding PresetCommand}" CommandParameter="144390000" Style="{DynamicResource PluginButtonStyle}"/>
+     <Button Content="ISS 145.825" Command="{Binding PresetCommand}" CommandParameter="145825000" Style="{DynamicResource PluginButtonStyle}"/>
+    </WrapPanel>
+    <TextBlock Text="AFSK 1200 / AX.25受信専用。地域・運用に合う周波数を選択してください。"
+      TextWrapping="Wrap" Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,5,0,0"/>
+    <TextBlock Text="{Binding OperationStatus}" TextWrapping="Wrap" Style="{DynamicResource PluginSettingsHintStyle}"/>
+   </StackPanel></ScrollViewer>
+  </Grid>
+ </Border>
+</UserControl>

@@ -1,0 +1,201 @@
+<UserControl x:Class="SRdeckPlugin.AribT98.Views.AribT98PluginView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:views="clr-namespace:SRdeckPlugin.AribT98.Views"
+ xmlns:controls="clr-namespace:SRdeckPlugin.Wpf.Controls;assembly=SRdeckPlugin.Wpf"
+ FontSize="10" FontFamily="{DynamicResource MainFontFamily}">
+ <Grid>
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+  <views:AribT98SettingsView/>
+  <Border Grid.Row="1" Style="{DynamicResource PluginFlatOuterPanelStyle}" Margin="6,0,6,6">
+   <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <Border Style="{DynamicResource PluginStatusHeaderStyle}">
+     <DockPanel VerticalAlignment="Center">
+      <Ellipse Style="{DynamicResource PluginStatusIndicatorStyle}" Tag="{Binding OverallStatusKind}"/>
+      <TextBlock Text="{Binding AppliedModulation}" Style="{DynamicResource PluginStatusHeaderTitleStyle}"/>
+      <TextBlock Text="{Binding AppliedChannel}" DockPanel.Dock="Right" Margin="8,0" Foreground="{DynamicResource TextDimBrush}"/>
+      <TextBlock Text="{Binding Status}" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Status}" Foreground="{DynamicResource TextPrimaryBrush}"/>
+     </DockPanel>
+    </Border>
+    <TabControl Grid.Row="1" Style="{DynamicResource PluginTabControlStyle}">
+     <TabItem Header="受信">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+       <StackPanel Margin="12">
+        <Border Background="#181D1A" BorderBrush="#4A544D" BorderThickness="1" CornerRadius="8" Padding="14">
+         <StackPanel>
+          <DockPanel>
+           <TextBlock Text="デジタル簡易無線" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+           <TextBlock Text="RECEIVE ONLY" FontSize="10" Foreground="{DynamicResource TextDimBrush}" HorizontalAlignment="Right"/>
+          </DockPanel>
+          <Border Background="#CCD9B5" BorderBrush="#718065" BorderThickness="2" CornerRadius="4" Padding="16,10" Margin="0,10,0,0">
+           <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="170"/></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <TextBlock Text="{Binding AppliedChannelDescription}" ToolTip="{Binding AppliedChannelDescription}" TextTrimming="CharacterEllipsis" FontSize="12" Foreground="#405139"/>
+            <TextBlock Grid.Column="1" Text="RX" FontSize="13" FontWeight="Bold" HorizontalAlignment="Right">
+             <TextBlock.Style>
+              <Style TargetType="TextBlock">
+               <Setter Property="Foreground" Value="#7D8B6F"/>
+               <Style.Triggers><DataTrigger Binding="{Binding IsReceiving}" Value="True"><Setter Property="Foreground" Value="#1A5125"/></DataTrigger></Style.Triggers>
+              </Style>
+             </TextBlock.Style>
+            </TextBlock>
+            <StackPanel Grid.Row="1" Orientation="Horizontal" VerticalAlignment="Center">
+             <TextBlock Text="{Binding AppliedChannelPrefix}" FontSize="19" FontWeight="SemiBold" Foreground="#203A27" VerticalAlignment="Center" Margin="0,0,12,0"/>
+             <TextBlock Text="{Binding AppliedChannelNumber}" FontFamily="Consolas" FontSize="76" FontWeight="Bold" Foreground="#203A27" AutomationProperties.Name="受信中チャネル"/>
+            </StackPanel>
+            <StackPanel Grid.Row="1" Grid.Column="1" VerticalAlignment="Center">
+             <TextBlock Text="{Binding AppliedUserCode, StringFormat=UC   {0}}" FontSize="16" FontFamily="Consolas" Foreground="#203A27" Margin="0,2"/>
+             <TextBlock Text="{Binding AppliedPrivacy, StringFormat=現在鍵  {0}}" FontSize="12" Foreground="#405139" Margin="0,3"/>
+             <TextBlock Text="{Binding AppliedSpeaker, StringFormat=音声  {0}}" FontSize="12" Foreground="#405139" Margin="0,3"/>
+            </StackPanel>
+            <Border Grid.Row="2" Grid.ColumnSpan="2" BorderBrush="#8D9B7B" BorderThickness="0,1,0,0" Padding="0,7,0,0">
+             <Grid>
+              <Grid.ColumnDefinitions>
+               <ColumnDefinition Width="105"/>
+               <ColumnDefinition Width="*"/>
+               <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Text="{Binding LastUserCode, StringFormat=受信UC  {0}}" Foreground="#405139" FontSize="12"/>
+              <TextBlock Grid.Column="1" Text="{Binding LastCallSign, StringFormat=呼出名称  {0}}" Foreground="#405139" FontSize="12" Margin="8,0,8,0" TextTrimming="CharacterEllipsis"/>
+              <TextBlock Grid.Column="2" Text="{Binding ReceivedPrivacy}" Foreground="#405139" FontSize="12" HorizontalAlignment="Right"/>
+             </Grid>
+            </Border>
+           </Grid>
+          </Border>
+         </StackPanel>
+        </Border>
+        <TextBlock Text="{Binding AudioStatus}" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" Margin="2,12,2,6"/>
+        <TextBlock Text="{Binding PresetPrivacyStatus}" Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" Margin="2,0,2,6"/>
+        <WrapPanel Margin="2,0,0,0">
+         <TextBlock Text="{Binding LastUpdated, StringFormat=最終受信  {0}}" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,4"/>
+        </WrapPanel>
+        <StackPanel Margin="2,6,2,0">
+         <StackPanel.Style>
+          <Style TargetType="StackPanel">
+           <Setter Property="Visibility" Value="Visible"/>
+           <Style.Triggers><DataTrigger Binding="{Binding IsFourFsk}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers>
+          </Style>
+         </StackPanel.Style>
+         <views:EyePatternView Samples="{Binding EyePattern}" Height="220" AutomationProperties.Name="STD-T98 4FSK受信フィルタ後アイパターン"/>
+         <TextBlock Text="アイパターン: 最新4FSKフレームの受信フィルタ後波形 / 2シンボル重ね描き / 周波数偏差・極性・利得補正後の判定レベル ±1・±3" Style="{DynamicResource PluginSettingsHintStyle}"/>
+        </StackPanel>
+        <TextBlock Text="CHや設定を変更すると、ボタン押下または入力欄からフォーカスが外れた時に自動適用・保存します。大きなCH表示は適用済みの受信先です。周波数・変調方式は「詳細設定」、秘話の現在鍵とプリセットは「受信設定」から変更できます。" TextWrapping="Wrap" Foreground="{DynamicResource TextDimBrush}" Margin="2,8,2,4"/>
+       </StackPanel>
+      </ScrollViewer>
+     </TabItem>
+     <TabItem Header="受信履歴">
+      <Grid>
+       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="5"/><RowDefinition Height="160" MinHeight="96" MaxHeight="260"/></Grid.RowDefinitions>
+       <DockPanel Margin="8,6">
+        <Button DockPanel.Dock="Right" Content="受信履歴をクリア" Command="{Binding ClearHistoryCommand}" ToolTip="保存済みの受信履歴も削除します" HorizontalAlignment="Right" Style="{DynamicResource PluginButtonStyle}"/>
+        <TextBlock Text="受信通話" Foreground="{DynamicResource PluginDisplayAccentPrimaryBrush}" VerticalAlignment="Center"/>
+       </DockPanel>
+       <Border Grid.Row="1" Style="{DynamicResource PluginTimelineBorderStyle}">
+        <Grid>
+         <DataGrid x:Name="AribT98HistoryDataGrid" ItemsSource="{Binding Frames}" SelectedItem="{Binding SelectedFrame, Mode=TwoWay}" SelectionMode="Single" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False" EnableRowVirtualization="True" Style="{DynamicResource PluginTimelineDataGridStyle}">
+          <DataGrid.Columns>
+           <DataGridTextColumn Header="通話開始" Binding="{Binding Time}" Width="145" CellStyle="{DynamicResource PluginTimelineTimestampCellStyle}"/>
+           <DataGridTemplateColumn Header="受信通話" Width="*" MinWidth="200">
+            <DataGridTemplateColumn.CellTemplate>
+             <DataTemplate>
+              <Grid Margin="0,2">
+               <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+               <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock Style="{DynamicResource PluginTimelineIdentityTextStyle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding CallSign}">
+                 <Run Text="{Binding CallSign}"/><Run Text="　"/><Run Text="{Binding Privacy}" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                </TextBlock>
+                <Border Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0" Background="{DynamicResource OverlayBackgroundBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="5,1">
+                 <TextBlock Text="{Binding StationType}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/>
+                </Border>
+               </Grid>
+               <Grid Grid.Row="1" Margin="0,3,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock Foreground="{DynamicResource TextDimBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding Kind}">
+                 <Run Text="UC "/><Run Text="{Binding UserCode}"/><Run Text="　"/><Run Text="{Binding Kind}"/><Run Text="　フレーム "/><Run Text="{Binding FrameCount}"/><Run Text="　訂正 "/><Run Text="{Binding Corrections}"/><Run Text="bit"/>
+                </TextBlock>
+                <Border Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0" Background="{DynamicResource OverlayBackgroundBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="5,1">
+                 <TextBlock Text="{Binding Channel}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/>
+                </Border>
+               </Grid>
+              </Grid>
+             </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+           </DataGridTemplateColumn>
+          </DataGrid.Columns>
+         </DataGrid>
+         <TextBlock Text="受信履歴はありません" Foreground="{DynamicResource TextDimBrush}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16">
+          <TextBlock.Style>
+           <Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding HasItems, ElementName=AribT98HistoryDataGrid}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style>
+          </TextBlock.Style>
+         </TextBlock>
+        </Grid>
+       </Border>
+       <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows"/>
+       <controls:SelectionDetailPane Grid.Row="3" DetailContent="{Binding SelectedFrame}" EmptyText="受信通話を選択すると、種別や通話情報が表示されます">
+        <controls:SelectionDetailPane.DetailContentTemplate>
+         <DataTemplate>
+          <StackPanel Margin="6,4">
+           <Grid Margin="0,0,0,4">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding CallSign}" Style="{DynamicResource PluginIdentityTextStyle}" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Grid.Column="1" Text="{Binding Time}" Style="{DynamicResource PluginTimelineDetailTimestampStyle}"/>
+           </Grid>
+           <WrapPanel Margin="0,0,0,4">
+            <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3"><Run Text="種別 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding StationType}"/></TextBlock>
+            <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3"><Run Text="CH " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding Channel}"/></TextBlock>
+            <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3"><Run Text="フレーム種別 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding Kind}"/></TextBlock>
+            <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3"><Run Text="通話 / S " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding Privacy}"/></TextBlock>
+            <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3"><Run Text="UC " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding UserCode}"/></TextBlock>
+            <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3"><Run Text="フレーム数 " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding FrameCount}"/></TextBlock>
+            <TextBlock Style="{DynamicResource PluginTimelineDetailValueStyle}" Margin="0,1,12,3"><Run Text="訂正bit " Foreground="{DynamicResource PluginDisplayAccentSecondaryBrush}"/><Run Text="{Binding Corrections}"/></TextBlock>
+           </WrapPanel>
+           <TextBlock Text="最新TCH" Style="{DynamicResource PluginPrimarySectionHeaderStyle}" Margin="0,2,0,3"/>
+           <TextBlock Text="{Binding TrafficTime, StringFormat=受信時刻：{0}}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap" Margin="0,0,0,3"/>
+           <TextBlock Text="{Binding TrafficStatus}" Style="{DynamicResource PluginTimelineDetailValueStyle}" TextWrapping="Wrap"/>
+          </StackPanel>
+         </DataTemplate>
+        </controls:SelectionDetailPane.DetailContentTemplate>
+       </controls:SelectionDetailPane>
+      </Grid>
+     </TabItem>
+     <TabItem Header="TCH">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+       <StackPanel Margin="12">
+        <TextBlock Text="受信履歴で選択した通話の最新フレーム（未選択なら最新通話）。ビットは送出順・MSB先頭の16進表記。テキスト選択とCtrl+Cでコピーできます。" TextWrapping="Wrap" Foreground="{DynamicResource TextDimBrush}" Margin="0,4"/>
+        <TextBlock Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4"><Run Text="最新フレーム受信時刻: "/><Run Text="{Binding SelectedFrame.TrafficTime}"/></TextBlock>
+        <TextBlock Text="{Binding SelectedFrame.TrafficStatus}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4"/>
+        <TextBlock Text="PSK受信TCH1+TCH2（PN9解除前・256 bit）" Foreground="{DynamicResource TextDimBrush}" Margin="0,12,0,4"/>
+        <TextBox Text="{Binding SelectedFrame.RawTraffic, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" Style="{DynamicResource PluginTextBoxStyle}" AutomationProperties.Name="受信TCHビット列"/>
+        <TextBlock Text="解除後TCH1（PSK: 96 bit / 4FSK: 144 bit）" Foreground="{DynamicResource TextDimBrush}" Margin="0,12,0,4"/>
+        <TextBox Text="{Binding SelectedFrame.Traffic1, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" Style="{DynamicResource PluginTextBoxStyle}" AutomationProperties.Name="TCH1ビット列"/>
+        <TextBlock Text="解除後TCH2（PSK: 160 bit / 4FSK: 144 bit）" Foreground="{DynamicResource TextDimBrush}" Margin="0,12,0,4"/>
+        <TextBox Text="{Binding SelectedFrame.Traffic2, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" Style="{DynamicResource PluginTextBoxStyle}" AutomationProperties.Name="TCH2ビット列"/>
+        <TextBlock Text="PSKの正常フレーム数はRICHのCRC通過数です。TCHの誤り検出や音声互換性を保証するものではありません。受信履歴はプラグイン設定で指定した件数を保存し、次回起動時に復元します。TCH欄には選択通話の最新データフレームを表示します。" TextWrapping="Wrap" Foreground="{DynamicResource TextDimBrush}" Margin="0,16,0,4"/>
+       </StackPanel>
+      </ScrollViewer>
+     </TabItem>
+     <TabItem Header="診断">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+       <StackPanel Margin="12">
+        <TextBlock Text="{Binding AppliedFrequency, StringFormat=受信周波数  {0}}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4"/>
+        <TextBlock Text="{Binding AcceptedFrames, StringFormat=正常フレーム  {0}}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4"/>
+        <TextBlock Text="{Binding SyncQuality, StringFormat=同期品質  {0}}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4"/>
+        <TextBlock Text="{Binding Offset, StringFormat=周波数ずれ  {0}}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4"/>
+        <TextBlock Text="{Binding LastManufacturer, StringFormat=製造者番号  {0}}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4"/>
+        <TextBlock Text="{Binding InputLevel, StringFormat=チャネルIQレベル  {0}}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4"/>
+        <TextBlock Text="{Binding RejectedFrames, StringFormat=同期候補の棄却  {0}}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4"/>
+        <TextBlock Text="{Binding AudioFrames, StringFormat=音声フレーム送出試行  {0}}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4"/>
+        <TextBlock Text="{Binding ProtocolSummary}" TextWrapping="Wrap" Foreground="{DynamicResource TextDimBrush}" Margin="0,8"/>
+        <TextBlock Text="{Binding Pipeline}" TextWrapping="Wrap" Foreground="{DynamicResource TextDimBrush}" Margin="0,8"/>
+        <controls:RuntimeDiagnosticsDetails RuntimeDiagnostics="{Binding RuntimeDiagnostics}" Margin="0,8"/>
+       </StackPanel>
+      </ScrollViewer>
+     </TabItem>
+    </TabControl>
+   </Grid>
+  </Border>
+ </Grid>
+</UserControl>
