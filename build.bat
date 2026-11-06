@@ -5,7 +5,7 @@ set "BUILD_EXIT_CODE=1"
 set "BUILD_CONFIGURATION=Release"
 if not "%~1"=="" set "BUILD_CONFIGURATION=%~1"
 set "PACKAGE_DIRECTORY=%~dp0platform-packages"
-set "PLATFORM_VERSION=1.0.9"
+set "PLATFORM_VERSION=1.0.10"
 
 pushd "%~dp0"
 if errorlevel 1 goto finish

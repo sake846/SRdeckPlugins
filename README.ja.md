@@ -26,8 +26,8 @@ SRdeckの公式プラグインをバージョン付きリリーススナップ�
 
 ## リリースメタデータ
 
-- リリースバージョン: `1.0.9`
-- 必要なSRdeckプラットフォームパッケージ: `1.0.9`
+- リリースバージョン: `1.0.10`
+- 必要なSRdeckプラットフォームパッケージ: `1.0.10`
 
 ## ビルド
 
@@ -36,7 +36,7 @@ SRdeckの公式プラグインをバージョン付きリリーススナップ�
 - Windows x64
 - .NET 10 SDK（`dotnet --info`で10.x SDKが表示されること）
 - Git（Gitでソースを取得する場合のみ。ZIPで取得する場合は不要）
-- `1.0.9`と同じバージョンのSRdeckプラットフォームNuGetパッケージ4個
+- `1.0.10`と同じバージョンのSRdeckプラットフォームNuGetパッケージ4個
 
 プラグインは`SRdeckPlugin.Contracts`、`SRdeckPlugin.Sdk`、`SRdeckPlugin.Wpf`、
 `SRdeckCore.SignalProcessing`をNuGetパッケージとして参照します。ビルド・動作確認に使う
@@ -55,13 +55,13 @@ T98は同梱ソースから誤り訂正・秘話解析用のネイティブDLL�
 以降も同じウィンドウで、各コマンドが成功したことを確認してから次へ進みます。
 
 ```cmd
-set "RELEASE_VERSION=1.0.9"
-set "PLATFORM_VERSION=1.0.9"
+set "RELEASE_VERSION=1.0.10"
+set "PLATFORM_VERSION=1.0.10"
 ```
 
 #### Gitを使わない場合（ZIPをダウンロード）
 
-1. [対応するSRdeckPluginsのリリース](https://github.com/sake846/SRdeckPlugins/releases/tag/v1.0.9)
+1. [対応するSRdeckPluginsのリリース](https://github.com/sake846/SRdeckPlugins/releases/tag/v1.0.10)
    をブラウザーで開き、Assetsの **Source code (zip)** をダウンロードします。
 2. エクスプローラーの「すべて展開」でZIPを展開します。
 3. 展開されたフォルダーのうち、`SRdeckPlugins.sln`が入っているフォルダーを
@@ -89,10 +89,10 @@ cd SRdeckPlugins
 対応する[SRdeckのリリース](https://github.com/sake846/SRdeck/releases)から、次の4ファイルを
 ダウンロードしてください。
 
-- `SRdeckCore.SignalProcessing.1.0.9.nupkg`
-- `SRdeckPlugin.Contracts.1.0.9.nupkg`
-- `SRdeckPlugin.Sdk.1.0.9.nupkg`
-- `SRdeckPlugin.Wpf.1.0.9.nupkg`
+- `SRdeckCore.SignalProcessing.1.0.10.nupkg`
+- `SRdeckPlugin.Contracts.1.0.10.nupkg`
+- `SRdeckPlugin.Sdk.1.0.10.nupkg`
+- `SRdeckPlugin.Wpf.1.0.10.nupkg`
 
 ソースのフォルダーで次のコマンドを実行し、パッケージの配置先を作ります。
 
@@ -115,10 +115,10 @@ C:\SRdeckBuild\
    ├─ SRdeckPlugin.Ais\
    │  └─ SRdeckPlugin.Ais.csproj
    └─ platform-packages\
-      ├─ SRdeckCore.SignalProcessing.1.0.9.nupkg
-      ├─ SRdeckPlugin.Contracts.1.0.9.nupkg
-      ├─ SRdeckPlugin.Sdk.1.0.9.nupkg
-      └─ SRdeckPlugin.Wpf.1.0.9.nupkg
+      ├─ SRdeckCore.SignalProcessing.1.0.10.nupkg
+      ├─ SRdeckPlugin.Contracts.1.0.10.nupkg
+      ├─ SRdeckPlugin.Sdk.1.0.10.nupkg
+      └─ SRdeckPlugin.Wpf.1.0.10.nupkg
 ```
 
 GitHub CLIをインストール済みなら、ブラウザーでのダウンロードの代わりに次のコマンドを使えます。

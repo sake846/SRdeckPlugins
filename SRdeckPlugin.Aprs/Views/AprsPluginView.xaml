@@ -81,7 +81,7 @@
      </Grid></TabItem>
      <TabItem Header="診断"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="10">
       <TextBlock Text="{Binding Diagnostics}" TextWrapping="Wrap"/>
-      <TextBlock Text="信号があっても結果が出ない場合は、AFSK 1200の周波数、入力帯域、周波数補正、ゲインを確認してください。9600 baudには対応していません。"
+      <TextBlock Text="信号があっても結果が出ない場合は、受信方式（AFSK 1200 / GMSK 9600）、周波数、入力帯域、周波数補正、ゲインを確認してください。"
        TextWrapping="Wrap" Margin="0,10"/>
       <controls:RuntimeDiagnosticsDetails RuntimeDiagnostics="{Binding RuntimeDiagnostics}"/>
      </StackPanel></ScrollViewer></TabItem>

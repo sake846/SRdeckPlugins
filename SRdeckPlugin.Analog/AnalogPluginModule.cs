@@ -86,7 +86,9 @@ public sealed partial class AnalogPluginModule :
         PluginComputeDevice.Cpu,
         ".NET CPU",
         "選択プロファイルの復調、スケルチ、AGC、音声フィルターと出力");
-    public PluginIqPreferences IqPreferences { get; } = new(3);
+    // IQ blocks cover 100 ms each; this absorbs short DSP scheduling spikes
+    // without building an excessively long playback/audio backlog.
+    public PluginIqPreferences IqPreferences { get; } = new(8);
     public IReadOnlyList<PluginProfileDescriptor> Profiles => SupportedProfiles;
     public string? SelectedProfileId => _selectedProfileId;
     public WaterfallDisplayRequest WaterfallDisplayRequest => new(
@@ -211,6 +213,7 @@ public sealed partial class AnalogPluginModule :
         await _receiverGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            FinishNarrowbandIqRecording("受信停止");
             ResetDemodulatorState();
         }
         finally
@@ -244,6 +247,7 @@ public sealed partial class AnalogPluginModule :
 
             if (!options.IsReceiverEnabled)
             {
+                FinishNarrowbandIqRecording("受信無効");
                 NotifyReceiverStateChanged();
                 return ValueTask.CompletedTask;
             }
@@ -263,9 +267,13 @@ public sealed partial class AnalogPluginModule :
             int channelCapacity = AnalogDemodulator.GetChannelOutputCapacity(
                 block.Samples.Length, inputRate, options.BandwidthHz);
             float[] audio = ArrayPool<float>.Shared.Rent(capacity);
-            Complex32[] channelSamples = ArrayPool<Complex32>.Shared.Rent(channelCapacity);
+            Complex32[]? channelSamples = null;
+            Complex32[]? preChannelFilterSamples = null;
             try
             {
+                channelSamples = ArrayPool<Complex32>.Shared.Rent(channelCapacity);
+                if (_narrowbandIqRecording is not null)
+                    preChannelFilterSamples = ArrayPool<Complex32>.Shared.Rent(channelCapacity);
                 int outputCount = _demodulator.Process(
                     block.Samples.Span,
                     audio.AsSpan(0, capacity),
@@ -278,6 +286,9 @@ public sealed partial class AnalogPluginModule :
                     options.FrequencyHz - block.Metadata.CenterFrequencyHz,
                     options.IsStereoEnabled,
                     channelSamples.AsSpan(0, channelCapacity),
+                    preChannelFilterSamples is null
+                        ? Span<Complex32>.Empty
+                        : preChannelFilterSamples.AsSpan(0, channelCapacity),
                     out int channelSampleCount);
                 if (channelSampleCount > 0)
                 {
@@ -286,6 +297,11 @@ public sealed partial class AnalogPluginModule :
                     _lastCaptureMetadata = block.Metadata;
                     _pretriggerBuffer.Write(
                         channelSamples.AsSpan(0, channelSampleCount), channelSampleRateHz);
+                    if (preChannelFilterSamples is not null)
+                        CaptureNarrowbandIq(
+                            preChannelFilterSamples.AsSpan(0, channelSampleCount),
+                            channelSampleRateHz,
+                            block.Metadata);
                 }
                 UpdateSignalLevel(
                     _demodulator.ChannelLevelDbfs,
@@ -331,7 +347,10 @@ public sealed partial class AnalogPluginModule :
             }
             finally
             {
-                ArrayPool<Complex32>.Shared.Return(channelSamples);
+                if (preChannelFilterSamples is not null)
+                    ArrayPool<Complex32>.Shared.Return(preChannelFilterSamples);
+                if (channelSamples is not null)
+                    ArrayPool<Complex32>.Shared.Return(channelSamples);
                 ArrayPool<float>.Shared.Return(audio);
             }
             NotifyReceiverStateChanged();

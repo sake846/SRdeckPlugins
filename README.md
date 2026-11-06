@@ -29,8 +29,8 @@ For detailed plugin specifications, reception procedures, and development guides
 
 ## Release metadata
 
-- Release version: `1.0.9`
-- Required SRdeck platform package version: `1.0.9`
+- Release version: `1.0.10`
+- Required SRdeck platform package version: `1.0.10`
 
 ## Building
 
@@ -40,7 +40,7 @@ For detailed plugin specifications, reception procedures, and development guides
 - .NET 10 SDK (`dotnet --info` should show an installed 10.x SDK)
 - Git (only if cloning the source; not required for the ZIP download)
 - The four SRdeck platform NuGet packages with the same version as
-  `1.0.9`
+  `1.0.10`
 
 The plugin projects consume `SRdeckPlugin.Contracts`, `SRdeckPlugin.Sdk`,
 `SRdeckPlugin.Wpf`, and `SRdeckCore.SignalProcessing` as NuGet packages. The
@@ -61,13 +61,13 @@ Command Prompt from the Start menu and set the versions first. Keep using the
 same window, and check that each command succeeds before continuing.
 
 ```cmd
-set "RELEASE_VERSION=1.0.9"
-set "PLATFORM_VERSION=1.0.9"
+set "RELEASE_VERSION=1.0.10"
+set "PLATFORM_VERSION=1.0.10"
 ```
 
 #### Without Git: download the ZIP
 
-1. Open the [matching SRdeckPlugins release](https://github.com/sake846/SRdeckPlugins/releases/tag/v1.0.9)
+1. Open the [matching SRdeckPlugins release](https://github.com/sake846/SRdeckPlugins/releases/tag/v1.0.10)
    in a browser and download **Source code (zip)** under Assets.
 2. Extract the ZIP using File Explorer's **Extract All** command.
 3. Place the extracted folder containing `SRdeckPlugins.sln` at
@@ -95,10 +95,10 @@ cd SRdeckPlugins
 Download these four files from the matching
 [SRdeck release](https://github.com/sake846/SRdeck/releases):
 
-- `SRdeckCore.SignalProcessing.1.0.9.nupkg`
-- `SRdeckPlugin.Contracts.1.0.9.nupkg`
-- `SRdeckPlugin.Sdk.1.0.9.nupkg`
-- `SRdeckPlugin.Wpf.1.0.9.nupkg`
+- `SRdeckCore.SignalProcessing.1.0.10.nupkg`
+- `SRdeckPlugin.Contracts.1.0.10.nupkg`
+- `SRdeckPlugin.Sdk.1.0.10.nupkg`
+- `SRdeckPlugin.Wpf.1.0.10.nupkg`
 
 Run these commands from the source directory to create the package directory:
 
@@ -122,10 +122,10 @@ C:\SRdeckBuild\
    ├─ SRdeckPlugin.Ais\
    │  └─ SRdeckPlugin.Ais.csproj
    └─ platform-packages\
-      ├─ SRdeckCore.SignalProcessing.1.0.9.nupkg
-      ├─ SRdeckPlugin.Contracts.1.0.9.nupkg
-      ├─ SRdeckPlugin.Sdk.1.0.9.nupkg
-      └─ SRdeckPlugin.Wpf.1.0.9.nupkg
+      ├─ SRdeckCore.SignalProcessing.1.0.10.nupkg
+      ├─ SRdeckPlugin.Contracts.1.0.10.nupkg
+      ├─ SRdeckPlugin.Sdk.1.0.10.nupkg
+      └─ SRdeckPlugin.Wpf.1.0.10.nupkg
 ```
 
 If GitHub CLI is installed, this command can download the packages instead of

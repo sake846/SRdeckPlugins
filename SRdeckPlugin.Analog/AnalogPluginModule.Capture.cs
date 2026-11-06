@@ -7,6 +7,107 @@ namespace SRdeckPlugin.Analog;
 
 public sealed partial class AnalogPluginModule
 {
+    private AnalogNarrowbandIqRecording? _narrowbandIqRecording;
+    private int _lastNarrowbandStatusSecond;
+
+    public bool IsNarrowbandIqRecording => _narrowbandIqRecording is not null;
+    public string NarrowbandIqRecordingStatus { get; private set; } = "狭帯域IQ録音: 受信中に開始してください";
+
+    public void StartNarrowbandIqRecording()
+    {
+        ThrowIfDisposed();
+        _receiverGate.Wait();
+        try
+        {
+            if (State != PluginLifecycleState.Streaming || _hostContext is null)
+                throw new InvalidOperationException("受信開始後に録音してください。");
+            if (_narrowbandIqRecording is not null)
+                throw new InvalidOperationException("すでに狭帯域IQを録音中です。");
+            AnalogReceiverOptions options = Volatile.Read(ref _receiverOptions);
+            if (!options.IsReceiverEnabled || options.FrequencyHz <= 0)
+                throw new InvalidOperationException("受信周波数を設定してから録音してください。");
+
+            _narrowbandIqRecording = new AnalogNarrowbandIqRecording(
+                Path.Combine(_hostContext.Settings.DataDirectory, "captures"),
+                _selectedProfileId, options.FrequencyHz, options.BandwidthHz);
+            _lastNarrowbandStatusSecond = 0;
+            string splitInterval = _selectedProfileId == "fm" && options.BandwidthHz > 50_000
+                ? "1分ごと" : "10分ごと";
+            UpdateNarrowbandIqRecordingStatus($"狭帯域IQ録音中: {splitInterval}に分割保存 / IQ入力待ち…");
+        }
+        finally
+        {
+            _receiverGate.Release();
+        }
+    }
+
+    public void StopNarrowbandIqRecording()
+    {
+        ThrowIfDisposed();
+        _receiverGate.Wait();
+        try { FinishNarrowbandIqRecording("手動停止"); }
+        finally { _receiverGate.Release(); }
+    }
+
+    private void CaptureNarrowbandIq(ReadOnlySpan<Complex32> samples, int sampleRateHz, IqBlockMetadata metadata)
+    {
+        if (_narrowbandIqRecording is not { } current) return;
+        try
+        {
+            AnalogReceiverOptions options = Volatile.Read(ref _receiverOptions);
+            string? reason = current.Write(samples, sampleRateHz, metadata,
+                _selectedProfileId, options.FrequencyHz, options.BandwidthHz,
+                _hostContext?.ReceiverTelemetry?.CalibrationOffsetDb);
+            if (reason is not null)
+            {
+                FinishNarrowbandIqRecording(reason);
+                return;
+            }
+
+            int second = (int)current.Seconds;
+            if (second > _lastNarrowbandStatusSecond)
+            {
+                _lastNarrowbandStatusSecond = second;
+                UpdateNarrowbandIqRecordingStatus(
+                    $"狭帯域IQ録音中: {current.Seconds:F0} 秒 / {current.SampleRateHz / 1_000.0:F1} kS/s / {current.SegmentCount}ファイル" +
+                    (current.SourceDiscontinuityCount > 0
+                        ? $" / 入力欠落・再開 {current.SourceDiscontinuityCount}回"
+                        : string.Empty));
+            }
+        }
+        catch (Exception exception)
+        {
+            _hostContext?.Logger.Log(PluginLogLevel.Error, "analog.recording.write", "Narrowband IQ recording failed.", exception);
+            FinishNarrowbandIqRecording($"書き込み失敗: {exception.Message}");
+        }
+    }
+
+    private void FinishNarrowbandIqRecording(string reason)
+    {
+        if (_narrowbandIqRecording is not { } current) return;
+        _narrowbandIqRecording = null;
+        try
+        {
+            string? path = current.Finish(reason);
+            string staging = current.StagingPath is { } temporary ? $"\n未完了の一時ファイル: {temporary}" : string.Empty;
+            UpdateNarrowbandIqRecordingStatus(path is null
+                ? $"狭帯域IQ録音: {reason}（IQ未取得）{staging}"
+                : $"狭帯域IQ録音: {reason}（{current.Seconds:F2} 秒、{current.SegmentCount}ファイル）\n最終ファイル: {path}{staging}");
+        }
+        catch (Exception exception)
+        {
+            UpdateNarrowbandIqRecordingStatus(
+                $"狭帯域IQ保存失敗: {exception.Message}\n一時ファイルを確認してください: {current.StagingPath ?? current.LastPath ?? "(なし)"}");
+            _hostContext?.Logger.Log(PluginLogLevel.Error, "analog.recording.finish", "Narrowband IQ recording finalization failed; retain staging files.", exception);
+        }
+    }
+
+    private void UpdateNarrowbandIqRecordingStatus(string status)
+    {
+        NarrowbandIqRecordingStatus = status;
+        CaptureStatusChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public void StartIqCapture()
     {
         if (State != PluginLifecycleState.Streaming || _hostContext is null)

@@ -205,8 +205,16 @@ internal sealed partial class AnalogDemodulator
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private Complex32 FilterReceiverChannel(Complex32 sample)
     {
-        Vector2 filtered = ProcessCascade(_channelLowPass, new Vector2(sample.I, sample.Q));
-        return new Complex32(filtered.X, filtered.Y);
+        if (!_hasCustomChannelPassband)
+        {
+            Vector2 filtered = ProcessCascade(_channelLowPass, new Vector2(sample.I, sample.Q));
+            return new Complex32(filtered.X, filtered.Y);
+        }
+
+        _channelDownMixer.Mix(sample.I, sample.Q, out float downI, out float downQ);
+        Vector2 channel = ProcessCascade(_channelLowPass, new Vector2(downI, downQ));
+        _channelUpMixer.Mix(channel.X, channel.Y, out float upI, out float upQ);
+        return new Complex32(upI, upQ);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -231,7 +239,7 @@ internal sealed partial class AnalogDemodulator
 
         // An RBJ high-shelf has the square root of its endpoint gain at its
         // corner frequency. Squaring here restores the CIC loss at the channel
-        // edge while the following 8th-order low-pass rejects the boosted stopband.
+        // edge while the following 12th-order low-pass rejects the boosted stopband.
         float shelfGainDb = 40f * MathF.Log10(edgeGain);
         _cicCompensation.ConfigureHighShelf(_processingSampleRateHz, passbandEdgeHz, shelfGainDb);
     }
@@ -303,7 +311,8 @@ internal sealed partial class AnalogDemodulator
         {
             2 => [0.5411961f, 1.306563f],
             4 => [0.5097956f, 0.6013449f, 0.8999762f, 2.5629154f],
-            _ => throw new ArgumentException("Only fourth- and eighth-order filters are supported.", nameof(sections))
+            6 => [0.5043145f, 0.5411961f, 0.6302362f, 0.8213398f, 1.306563f, 3.8306488f],
+            _ => throw new ArgumentException("Only fourth-, eighth-, and twelfth-order filters are supported.", nameof(sections))
         };
         for (int index = 0; index < sections.Length; index++)
             sections[index].ConfigureLowPass(sampleRateHz, cutoffHz, qValues[index]);

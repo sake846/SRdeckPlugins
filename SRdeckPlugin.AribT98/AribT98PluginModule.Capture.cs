@@ -92,7 +92,7 @@ public sealed partial class AribT98PluginModule
             var document = new
             {
                 Format = "SRdeck ARIB STD-T98 channel IQ v1",
-                SavedAtUtc = DateTimeOffset.UtcNow,
+                SavedAtUtc = DateTimeOffset.Now,
                 CaptureMode = "rolling pre-trigger",
                 MaximumDurationSeconds = IqHistorySeconds,
                 FrequencyHz = frequency,
@@ -102,8 +102,8 @@ public sealed partial class AribT98PluginModule
                 SampleRateHz = snapshot.SampleRateHz,
                 SampleCount = snapshot.RawInterleaved.Length / 2,
                 snapshot.DurationSeconds,
-                StartUtc = endUtc.AddSeconds(-snapshot.DurationSeconds),
-                EndUtcExclusive = endUtc,
+                StartUtc = endUtc.AddSeconds(-snapshot.DurationSeconds).ToLocalTime(),
+                EndUtcExclusive = endUtc.ToLocalTime(),
                 WavFile = Path.GetFileName(wavPath),
                 GainFile = gainPath is null ? null : Path.GetFileName(gainPath),
                 AmplitudeCalibration = "Uncalibrated channel IQ; gain=0 is a playback placeholder, not measured RF gain",

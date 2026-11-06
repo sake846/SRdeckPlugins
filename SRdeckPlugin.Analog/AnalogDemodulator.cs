@@ -14,17 +14,18 @@ internal sealed partial class AnalogDemodulator
     private const float TwoPi = 2f * MathF.PI;
     private const float SsbLowFrequencyHz = 250f;
 
-    private readonly Biquad[] _channelLowPass = [new(), new(), new(), new()];
+    private readonly Biquad[] _channelLowPass = [new(), new(), new(), new(), new(), new()];
     private readonly Biquad[] _audioLowPass = [new(), new(), new(), new()];
     private readonly Biquad[] _ssbLowPass = [new(), new(), new(), new()];
     private readonly Biquad[] _audioDiffLowPass = [new(), new()];
     private readonly Biquad _cicCompensation = new();
+    private readonly ComplexFrequencyTranslator _channelDownMixer = new();
+    private readonly ComplexFrequencyTranslator _channelUpMixer = new();
     // The CIC stage handles large integer decimation at O(1) cost per input.
-    // The subsequent 8th-order channel filters remove its pass-band images.
+    // The subsequent 12th-order channel filters remove its pass-band images.
     private readonly BoundedCicDecimator _inputDecimator = new();
     private readonly PolyphaseRationalResampler _audioResampler = new(tapsPerPhase: 48,
         maximumExactPhases: 256, allowUpsampling: false);
-
     private string _profileId = string.Empty;
     private int _inputSampleRateHz;
     private float _processingSampleRateHz;
@@ -32,6 +33,9 @@ internal sealed partial class AnalogDemodulator
     private bool _isLowerSideband;
     private bool _isAfcEnabled;
     private long _frequencyOffsetHz;
+    private int? _channelLowerHz;
+    private int? _channelUpperHz;
+    private bool _hasCustomChannelPassband;
     private bool _isAudioResamplerConfigured;
     private float _amCarrierLevel;
     private float _ssbSignalLevel;
@@ -161,17 +165,58 @@ internal sealed partial class AnalogDemodulator
         Span<Complex32> channelOutput,
         out int channelOutputCount)
     {
+        return Process(
+            input,
+            output,
+            out channels,
+            inputSampleRateHz,
+            profileId,
+            bandwidthHz,
+            isLowerSideband,
+            isAfcEnabled,
+            frequencyOffsetHz,
+            isStereoEnabled,
+            channelOutput,
+            Span<Complex32>.Empty,
+            out channelOutputCount);
+    }
+
+    public int Process(
+        ReadOnlySpan<Complex32> input,
+        Span<float> output,
+        out int channels,
+        int inputSampleRateHz,
+        string profileId,
+        int bandwidthHz,
+        bool isLowerSideband,
+        bool isAfcEnabled,
+        long frequencyOffsetHz,
+        bool isStereoEnabled,
+        Span<Complex32> channelOutput,
+        Span<Complex32> preChannelFilterOutput,
+        out int channelOutputCount,
+        int? channelLowerHz = null,
+        int? channelUpperHz = null)
+    {
         channelOutputCount = 0;
         if (inputSampleRateHz <= 0)
             throw new ArgumentOutOfRangeException(nameof(inputSampleRateHz));
         ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
+        if (channelLowerHz.HasValue != channelUpperHz.HasValue ||
+            channelLowerHz is { } lower && channelUpperHz is { } upper &&
+            (upper - (long)lower < 100 ||
+             frequencyOffsetHz + (double)lower <= -inputSampleRateHz / 2d ||
+             frequencyOffsetHz + (double)upper >= inputSampleRateHz / 2d))
+            throw new ArgumentException("The channel passband must be at least 100 Hz and within the input frequency range.");
 
         if (_inputSampleRateHz != inputSampleRateHz ||
             !string.Equals(_profileId, profileId, StringComparison.Ordinal) ||
             _bandwidthHz != bandwidthHz ||
             _isLowerSideband != isLowerSideband ||
             _isAfcEnabled != isAfcEnabled ||
-            _frequencyOffsetHz != frequencyOffsetHz)
+            _frequencyOffsetHz != frequencyOffsetHz ||
+            _channelLowerHz != channelLowerHz ||
+            _channelUpperHz != channelUpperHz)
         {
             Configure(
                 inputSampleRateHz,
@@ -179,7 +224,9 @@ internal sealed partial class AnalogDemodulator
                 bandwidthHz,
                 isLowerSideband,
                 isAfcEnabled,
-                frequencyOffsetHz);
+                frequencyOffsetHz,
+                channelLowerHz,
+                channelUpperHz);
         }
 
         int mode = profileId switch
@@ -213,6 +260,13 @@ internal sealed partial class AnalogDemodulator
             {
                 if (!_inputDecimator.TryProcess(tuned.I, tuned.Q, out float reducedI, out float reducedQ)) continue;
                 sample = CompensateCic(new Complex32(reducedI, reducedQ));
+            }
+            if (!preChannelFilterOutput.IsEmpty)
+            {
+                if (channelSampleCount >= preChannelFilterOutput.Length)
+                    throw new ArgumentException(
+                        "The pre-channel-filter output buffer is too small.", nameof(preChannelFilterOutput));
+                preChannelFilterOutput[channelSampleCount] = sample;
             }
             sample = FilterReceiverChannel(sample);
             if (!channelOutput.IsEmpty)
@@ -302,6 +356,8 @@ internal sealed partial class AnalogDemodulator
         _tunerCosine = 1f;
         _tunerSine = 0;
         _tunerOscillatorSamples = 0;
+        _channelDownMixer.ResetPhase();
+        _channelUpMixer.ResetPhase();
         InputLevelDbfs = -120f;
         ChannelLevelDbfs = -120f;
         _inputDecimator.Reset();
@@ -315,7 +371,9 @@ internal sealed partial class AnalogDemodulator
         int bandwidthHz,
         bool isLowerSideband,
         bool isAfcEnabled,
-        long frequencyOffsetHz)
+        long frequencyOffsetHz,
+        int? channelLowerHz,
+        int? channelUpperHz)
     {
         _inputSampleRateHz = inputSampleRateHz;
         _profileId = profileId;
@@ -323,6 +381,9 @@ internal sealed partial class AnalogDemodulator
         _isLowerSideband = isLowerSideband;
         _isAfcEnabled = isAfcEnabled;
         _frequencyOffsetHz = frequencyOffsetHz;
+        _channelLowerHz = channelLowerHz;
+        _channelUpperHz = channelUpperHz;
+        _hasCustomChannelPassband = channelLowerHz.HasValue;
         int decimationFactor = SelectDecimationFactor(inputSampleRateHz, bandwidthHz);
         _processingSampleRateHz = inputSampleRateHz / decimationFactor;
         _inputDecimator.Configure(decimationFactor, stageCount: 5);
@@ -375,8 +436,27 @@ internal sealed partial class AnalogDemodulator
             "ssb" => bandwidthHz,
             _ => throw new ArgumentOutOfRangeException(nameof(profileId), profileId, "Unknown analog profile.")
         };
-        channelCutoffHz = Math.Clamp(channelCutoffHz, 500f, _processingSampleRateHz * 0.20f);
-        ConfigureCicCompensation(inputSampleRateHz, decimationFactor, channelCutoffHz);
+        float compensationEdgeHz;
+        if (_hasCustomChannelPassband)
+        {
+            int lower = channelLowerHz!.Value;
+            int upper = channelUpperHz!.Value;
+            float centerHz = (lower + (float)upper) * 0.5f;
+            channelCutoffHz = (upper - (float)lower) * 0.5f;
+            int processingRate = (int)MathF.Round(_processingSampleRateHz);
+            _channelDownMixer.Configure(centerHz, processingRate);
+            _channelUpMixer.Configure(-centerHz, processingRate);
+            compensationEdgeHz = Math.Max(Math.Abs(lower), Math.Abs(upper));
+            channelCutoffHz = Math.Clamp(channelCutoffHz, 1f, _processingSampleRateHz * 0.45f);
+        }
+        else
+        {
+            _channelDownMixer.Configure(0, (int)MathF.Round(_processingSampleRateHz));
+            _channelUpMixer.Configure(0, (int)MathF.Round(_processingSampleRateHz));
+            channelCutoffHz = Math.Clamp(channelCutoffHz, 500f, _processingSampleRateHz * 0.20f);
+            compensationEdgeHz = channelCutoffHz;
+        }
+        ConfigureCicCompensation(inputSampleRateHz, decimationFactor, compensationEdgeHz);
         ConfigureButterworth(_channelLowPass, _processingSampleRateHz, channelCutoffHz);
 
         float ssbHighFrequencyHz = Math.Clamp(bandwidthHz, 1_500f, 4_000f);

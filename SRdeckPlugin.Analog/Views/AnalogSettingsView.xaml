@@ -280,9 +280,10 @@
                             <controls:PluginResetView Grid.Row="0" />
                             <TextBlock Grid.Row="1" Text="過去録音" Style="{DynamicResource PluginSettingsSectionHeaderStyle}" />
                              <Grid Grid.Row="2" Style="{DynamicResource PluginSettingsActionRowStyle}">
-                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
@@ -299,9 +300,19 @@
                                            VerticalAlignment="Center"
                                            Margin="10,0,0,0"
                                             Style="{DynamicResource PluginSettingsActionStatusStyle}" />
-                                <TextBlock Grid.Row="1" Text="保存したIQ WAVを受信時と同じプラグインで再生します。" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,6,16,0" />
-                                <Button Grid.Row="1" Grid.Column="1" Style="{DynamicResource PluginIqPlaybackButtonStyle}" Margin="0,6,0,0" />
-                                <TextBlock Grid.Row="1" Grid.Column="2" Style="{DynamicResource PluginIqPlaybackStatusStyle}" Margin="10,6,0,0" />
+                                <TextBlock Grid.Row="1" Text="復調チャネルIQを内部サンプルレートで録音します（10分ごと、WFMは1分ごとに分割）。WFMは約190～240 MB/分です。" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,6,16,0" />
+                                <Button x:Name="NarrowbandStartButton" Grid.Row="1" Grid.Column="1" Content="狭帯域IQ開始"
+                                        Style="{DynamicResource PluginButtonStyle}" Height="22" Margin="0,6,4,0"
+                                        Click="StartNarrowbandCaptureButton_OnClick" />
+                                <Button x:Name="NarrowbandStopButton" Grid.Row="1" Grid.Column="2" Content="停止して保存"
+                                        Style="{DynamicResource PluginButtonStyle}" Height="22" Margin="4,6,0,0"
+                                        Click="StopNarrowbandCaptureButton_OnClick" />
+                                <TextBlock x:Name="NarrowbandCaptureStatusTextBlock" Grid.Row="1" Grid.Column="3"
+                                           VerticalAlignment="Center" Margin="10,6,0,0"
+                                           Style="{DynamicResource PluginSettingsActionStatusStyle}" />
+                                <TextBlock Grid.Row="2" Text="分割録音は最初のIQ WAVを選ぶと連続再生します。再生中は同じボタンで停止します。" Style="{DynamicResource PluginSettingsHintStyle}" VerticalAlignment="Center" Margin="0,6,16,0" />
+                                <Button Grid.Row="2" Grid.Column="1" Style="{DynamicResource PluginIqPlaybackButtonStyle}" Margin="0,6,0,0" />
+                                <TextBlock Grid.Row="2" Grid.Column="2" Grid.ColumnSpan="2" Style="{DynamicResource PluginIqPlaybackStatusStyle}" Margin="10,6,0,0" />
                              </Grid>
                         </Grid>
                     </ScrollViewer>

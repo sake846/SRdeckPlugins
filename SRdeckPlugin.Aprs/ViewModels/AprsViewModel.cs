@@ -21,6 +21,10 @@ public sealed class AprsViewModel : INotifyPropertyChanged
     private AprsPacket? selectedPacket;
     private string? selectedGraphStation;
     private AprsMeasurement? selectedGraphMetric;
+    private AprsModulation selectedModulation;
+    public IReadOnlyList<KeyValuePair<AprsModulation, string>> Modulations { get; } =
+    [new(AprsModulation.Afsk1200, "AFSK 1200"), new(AprsModulation.Gmsk9600, "GMSK 9600 (G3RUH)")];
+    public AprsModulation SelectedModulation { get => selectedModulation; set { selectedModulation = value; Changed(); } }
     public ObservableCollection<AprsPacket> Packets { get; } = [];
     public ObservableCollection<AprsStationRow> Stations { get; } = [];
     public ObservableCollection<GeoMapMarker> MapMarkers { get; } = [];
@@ -41,7 +45,8 @@ public sealed class AprsViewModel : INotifyPropertyChanged
         ? "数値データは未受信です。局・対象と項目を選ぶと、保持中の受信履歴を表示します。"
         : $"{SelectedGraphStation} / {SelectedGraphMetric?.Label} / {GraphPoints.Count:N0}点。横軸は受信時刻（端末の現地時刻）です。欠測値は描画しません。";
     public IPluginRuntimeDiagnostics RuntimeDiagnostics { get; set; } = NullPluginRuntimeDiagnostics.Instance;
-    public Func<long, CancellationToken, ValueTask<PluginTuningResult>>? ApplyFrequency { get; set; }
+    public Func<long, AprsModulation, CancellationToken, ValueTask<PluginTuningResult>>? ApplySettings { get; set; }
+    public Func<string, CancellationToken, ValueTask>? ApplyProfile { get; set; }
     public Func<PluginExportRequest, CancellationToken, ValueTask<PluginExportResult>>? Export { get; set; }
     public string Status { get => status; set { status = value; Changed(); Changed(nameof(OverallStatusKind)); } }
     public OverallStatusKind OverallStatusKind => status.StartsWith("監視中", StringComparison.Ordinal)
@@ -67,7 +72,12 @@ public sealed class AprsViewModel : INotifyPropertyChanged
     public AprsViewModel()
     {
         ApplyFrequencyCommand = new AsyncCommand(_ => TuneAsync());
-        PresetCommand = new AsyncCommand(async value => { FrequencyText = value?.ToString() ?? ""; await TuneAsync(); });
+        PresetCommand = new AsyncCommand(async value =>
+        {
+            if (value is not string id || ApplyProfile is null) return;
+            await ApplyProfile(id, CancellationToken.None);
+            OperationStatus = "設定しました。";
+        }, e => OperationStatus = $"設定できませんでした（{e.Message}）。");
         ExportCommand = new AsyncCommand(async _ =>
         {
             var dialog = new SaveFileDialog
@@ -86,8 +96,8 @@ public sealed class AprsViewModel : INotifyPropertyChanged
         if (!long.TryParse(FrequencyText, NumberStyles.None, CultureInfo.InvariantCulture, out long frequency) ||
             frequency is < 1_000_000 or > 2_147_483_647)
         { OperationStatus = "周波数を整数Hzで入力してください。"; return; }
-        if (ApplyFrequency is null) return;
-        try { OperationStatus = (await ApplyFrequency(frequency, CancellationToken.None)).Message; }
+        if (ApplySettings is null) return;
+        try { OperationStatus = (await ApplySettings(frequency, SelectedModulation, CancellationToken.None)).Message; }
         catch (Exception e) when (e is not OperationCanceledException)
         { OperationStatus = $"設定できませんでした（{e.GetType().Name}）。"; }
     }

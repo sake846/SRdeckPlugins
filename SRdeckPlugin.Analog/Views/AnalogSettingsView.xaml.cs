@@ -325,6 +325,18 @@ public partial class AnalogSettingsView : UserControl
     private void StartCaptureButton_OnClick(object sender, RoutedEventArgs e) =>
         _plugin?.StartIqCapture();
 
+    private void StartNarrowbandCaptureButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        try { _plugin?.StartNarrowbandIqRecording(); }
+        catch (Exception exception) { NarrowbandCaptureStatusTextBlock.Text = $"録音開始失敗: {exception.Message}"; }
+    }
+
+    private void StopNarrowbandCaptureButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        try { _plugin?.StopNarrowbandIqRecording(); }
+        catch (Exception exception) { NarrowbandCaptureStatusTextBlock.Text = $"録音停止失敗: {exception.Message}"; }
+    }
+
     private void SynchronizeControls(bool forceFrequencyText = false, bool forceSquelchText = false)
     {
         if (_plugin is null) return;
@@ -381,6 +393,10 @@ public partial class AnalogSettingsView : UserControl
             StatusTextBlock.Text = summary;
             StatusTextBlock.ToolTip = $"{summary}\n{snapshot.TuningStatus}";
             CaptureStatusTextBlock.Text = _plugin.CaptureStatus;
+            NarrowbandCaptureStatusTextBlock.Text = _plugin.NarrowbandIqRecordingStatus;
+            NarrowbandStartButton.IsEnabled = _plugin.State == SRdeckPlugin.Contracts.PluginLifecycleState.Streaming &&
+                !_plugin.IsNarrowbandIqRecording;
+            NarrowbandStopButton.IsEnabled = _plugin.IsNarrowbandIqRecording;
         }
         finally
         {

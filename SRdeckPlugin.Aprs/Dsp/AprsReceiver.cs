@@ -2,31 +2,45 @@ using SRdeckPlugin.Contracts;
 
 namespace SRdeckPlugin.Aprs.Dsp;
 
-/// <summary>NFM discriminator, Bell 202 noncoherent tone correlators and bit clock recovery.</summary>
+/// <summary>FM discriminator, Bell 202 or G3RUH 9600 demodulation and bit clock recovery.</summary>
 public sealed class AprsReceiver
 {
     public const int SampleRateHz = 48_000;
     public const int BandwidthHz = 15_000;
+    public const int GmskBandwidthHz = 20_000;
     private const int SamplesPerBit = 40;
     private static readonly double[] MarkCos = Wave(1200, false), MarkSin = Wave(1200, true);
     private static readonly double[] SpaceCos = Wave(2200, false), SpaceSin = Wave(2200, true);
     private readonly double[,] products = new double[4, SamplesPerBit];
     private readonly double[] sums = new double[4];
+    private readonly double[] baseband = new double[5];
     private Complex32 previous;
     private bool hasPrevious, hasTone, lastTone, lastSymbol;
     private int oscillator, ring;
-    private double dc, clock;
+    private int scrambler;
+    private double dc, clock, basebandSum;
+    public AprsModulation Modulation { get; private set; }
     public HdlcDecoder Hdlc { get; } = new();
     public long SamplesProcessed { get; private set; }
     public float SignalPowerDbfs { get; private set; } = -150;
     public event Action<byte[]>? FrameDecoded { add => Hdlc.FrameDecoded += value; remove => Hdlc.FrameDecoded -= value; }
 
-    public void Reset()
+    public AprsReceiver(AprsModulation modulation = AprsModulation.Afsk1200) => Reset(modulation);
+
+    public static int GetBandwidthHz(AprsModulation modulation) =>
+        modulation == AprsModulation.Gmsk9600 ? GmskBandwidthHz : BandwidthHz;
+
+    public void Reset(AprsModulation? modulation = null)
     {
-        Array.Clear(products); Array.Clear(sums);
+        if (modulation is { } value)
+        {
+            if (!Enum.IsDefined(value)) throw new ArgumentOutOfRangeException(nameof(modulation));
+            Modulation = value;
+        }
+        Array.Clear(products); Array.Clear(sums); Array.Clear(baseband);
         previous = default;
         hasPrevious = hasTone = lastTone = lastSymbol = false;
-        oscillator = ring = 0; dc = clock = 0;
+        oscillator = ring = scrambler = 0; dc = clock = basebandSum = 0;
         SamplesProcessed = 0; SignalPowerDbfs = -150;
         Hdlc.Reset();
     }
@@ -54,26 +68,45 @@ public sealed class AprsReceiver
     {
         dc += .001 * (audio - dc);
         audio -= dc;
+        if (Modulation == AprsModulation.Gmsk9600)
+        {
+            basebandSum += audio - baseband[ring];
+            baseband[ring] = audio;
+            ring = (ring + 1) % baseband.Length;
+            PushSymbol(basebandSum >= 0, baseband.Length);
+            return;
+        }
         Update(0, audio * MarkCos[oscillator]); Update(1, audio * MarkSin[oscillator]);
         Update(2, audio * SpaceCos[oscillator]); Update(3, audio * SpaceSin[oscillator]);
         oscillator = (oscillator + 1) % 240;
         ring = (ring + 1) % SamplesPerBit;
         bool tone = sums[0] * sums[0] + sums[1] * sums[1] >= sums[2] * sums[2] + sums[3] * sums[3];
+        PushSymbol(tone, SamplesPerBit);
+    }
+
+    private void PushSymbol(bool tone, int samplesPerBit)
+    {
         if (hasTone && tone != lastTone)
         {
-            // Tone transitions define symbol boundaries, delayed by the correlation
-            // window. Steer gradually so isolated noise cannot reset the bit clock.
+            // Filtered transitions mark delayed symbol boundaries; steer gradually against noise.
             double error = clock < .5 ? clock : clock - 1;
             clock -= .2 * error;
             if (clock < 0) clock += 1;
             if (clock >= 1) clock -= 1;
         }
         double before = clock;
-        clock += 1.0 / SamplesPerBit;
+        clock += 1.0 / samplesPerBit;
         if (before < .5 && clock >= .5)
         {
-            if (hasTone) Hdlc.PushBit(tone == lastSymbol); // NRZI: zero changes tone.
-            lastSymbol = tone;
+            bool symbol = tone;
+            if (Modulation == AprsModulation.Gmsk9600)
+            {
+                // G3RUH: undo 1 + x^12 + x^17 before NRZI decoding.
+                symbol ^= (((scrambler >> 11) ^ (scrambler >> 16)) & 1) != 0;
+                scrambler = ((scrambler << 1) | (tone ? 1 : 0)) & 0x1ffff;
+            }
+            if (hasTone) Hdlc.PushBit(symbol == lastSymbol); // NRZI: zero changes level.
+            lastSymbol = symbol;
         }
         if (clock >= 1) clock -= 1;
         lastTone = tone; hasTone = true;

@@ -89,7 +89,7 @@ internal sealed class OneSegRecordingSink : IOneSegRecordingSink
         var metadata = new
         {
             Schema = "SRdeck OneSeg transport stream recording v1",
-            StartedAtUtc = openedAt, EndedAtUtc = endedAt,
+            StartedAtUtc = openedAt.ToLocalTime(), EndedAtUtc = endedAt?.ToLocalTime(),
             RawTsFile = Path.GetFileName(path), settings.PrefectureId, settings.Channel,
             snapshot.SelectedStation, settings.LastServiceId, snapshot.ServiceName,
             snapshot.AudioTrack, settings.CaptionsEnabled, TsPacketCount = packetCount,

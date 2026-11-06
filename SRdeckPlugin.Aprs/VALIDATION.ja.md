@@ -52,3 +52,38 @@
 
 全リポジトリのRelease全件、実波、対話的GUI、最大履歴数での性能は未検証。
 テレメトリの校正式・単位定義、ベンダー固有形式等の対応範囲はREADMEに記載する。
+
+## GMSK 9600追加の検証（2026-10-31）
+
+G3RUHの`1 + x^12 + x^17`デスクランブルをNRZI復号の前に追加。
+方式選択、日本144.640 MHzプリセット、帯域（9600は20 kHz）、保存設定・復元を更新した。
+旧設定はAFSK 1200として読み込む。方式の根拠はREADMEのG3RUH原典を参照。
+
+- Windows x64／.NET SDK 10.0.403／Release。
+- APRSプラグインのビルド成功。共通回帰プロジェクトもビルド成功（依存先の鉄道プラグインのネイティブリンク警告4件、エラー0）。
+- `dotnet run --project tests/Aprs/Aprs.Tests.csproj -c Release -p:RuntimeIdentifier=win-x64`: 9グループPassed。
+  既存AFSK IQの54条件とGMSK IQの216条件を実行。
+  GMSKはCFO −1000／0／1000 Hz、−150／0／150 ppm、IQ反転、1／731／4096サンプル境界、
+  BT 0.3／0.5、端数サンプル遅延、短い位置報告と最大256バイト・ビット詰めの多い情報部を使用。
+  参照送信器は過去の送信ビットを添字で参照し、本番のシフトレジスタ方式とは別にスクランブルする。
+- 両方式でCRC破損、不連続、停止・再開、非有限IQ、ノイズ、無音、定常割り当てを確認。
+  10秒の無音IQはAFSK 7.2 ms／0 bytes、GMSK 5.1 ms／0 bytes。
+- 共通回帰のAPRS全14件と`Regression catalog completeness`の計15件Passed。
+  `SRdeck.Tests.exe --run-test "<登録名>"`で各登録を個別実行。
+  ホスト試験は両方式で結果・JSON／CSV／TNC2・履歴・再起動後の受信を検証し、
+  同調拒否／保留で方式を維持、受信中の方式切り替え、9600で旧15 kHzチャネルを棄却することも確認。
+  WPF試験で方式選択と「適用」のバインディング、既存の数値グラフを確認。
+- VSTestはtesthostへの接続が90秒でタイムアウトし中止したため、上記は既存の個別ワーカーを直接実行した結果。
+  Git対象外の実行記録は`temp/aprs/gmsk-regression.log`、描画確認は`temp/aprs/numeric-graph.png`。
+
+実波、対話的GUI、全リポジトリの回帰全件は未実行。合成IQの成功は実波での感度・復号率を保証しない。
+
+### スペクトラム表示の調整
+
+青い受信帯域のラベルを空にし、表示幅を受信帯域の10倍（AFSK 150 kHz／GMSK 200 kHz）に変更。
+方式変更時は既存の表示要求変更イベントでホストへ通知する。
+APRSプラグインと共通回帰プロジェクトのReleaseビルドは警告0・エラー0。
+`APRS spectrum display and bandwidth switching`でMainViewModelの初期150 kHzと
+9600／1200切替時の200／150 kHzを検証した。
+同試験、ホスト・履歴、共通能力・設定、登録整合性の4件を個別ワーカーで実行し、すべてPassed。
+実行記録はGit対象外の`temp/aprs/spectrum-regression.log`。実機画面での手動確認は未実行。

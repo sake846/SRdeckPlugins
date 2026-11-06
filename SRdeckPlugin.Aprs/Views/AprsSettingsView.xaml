@@ -19,18 +19,22 @@
     </ScrollViewer.Style>
     <StackPanel>
     <WrapPanel Margin="0,3">
+     <TextBlock Text="受信方式" Style="{DynamicResource PluginSettingsFieldLabelStyle}" VerticalAlignment="Center"/>
+     <ComboBox ItemsSource="{Binding Modulations}" SelectedValue="{Binding SelectedModulation}" SelectedValuePath="Key" DisplayMemberPath="Value"
+       Width="180" Style="{DynamicResource PluginComboBoxStyle}" AutomationProperties.Name="APRS受信方式" Margin="0,0,8,0"/>
      <TextBlock Text="周波数（Hz）" Style="{DynamicResource PluginSettingsFieldLabelStyle}" VerticalAlignment="Center"/>
      <TextBox Text="{Binding FrequencyText, UpdateSourceTrigger=PropertyChanged}" Width="130" MaxLength="10"
        Style="{DynamicResource PluginNumericTextBoxStyle}" AutomationProperties.Name="APRS受信周波数（Hz）"/>
      <Button Content="適用" Command="{Binding ApplyFrequencyCommand}" Style="{DynamicResource PluginButtonStyle}" Margin="6,0"/>
     </WrapPanel>
     <WrapPanel>
-     <Button Content="日本 144.660" Command="{Binding PresetCommand}" CommandParameter="144660000" Style="{DynamicResource PluginButtonStyle}"/>
-     <Button Content="欧州 144.800" Command="{Binding PresetCommand}" CommandParameter="144800000" Style="{DynamicResource PluginButtonStyle}"/>
-     <Button Content="北米 144.390" Command="{Binding PresetCommand}" CommandParameter="144390000" Style="{DynamicResource PluginButtonStyle}"/>
-     <Button Content="ISS 145.825" Command="{Binding PresetCommand}" CommandParameter="145825000" Style="{DynamicResource PluginButtonStyle}"/>
+     <Button Content="日本 144.660 / 1200" Command="{Binding PresetCommand}" CommandParameter="jp-1200" Style="{DynamicResource PluginButtonStyle}"/>
+     <Button Content="日本 144.640 / 9600" Command="{Binding PresetCommand}" CommandParameter="jp-9600" Style="{DynamicResource PluginButtonStyle}"/>
+     <Button Content="欧州 144.800" Command="{Binding PresetCommand}" CommandParameter="eu-1200" Style="{DynamicResource PluginButtonStyle}"/>
+     <Button Content="北米 144.390" Command="{Binding PresetCommand}" CommandParameter="na-1200" Style="{DynamicResource PluginButtonStyle}"/>
+     <Button Content="ISS 145.825" Command="{Binding PresetCommand}" CommandParameter="iss-1200" Style="{DynamicResource PluginButtonStyle}"/>
     </WrapPanel>
-    <TextBlock Text="AFSK 1200 / AX.25受信専用。地域・運用に合う周波数を選択してください。"
+    <TextBlock Text="AFSK 1200 / GMSK 9600 (G3RUH) / AX.25受信専用。方式と周波数を選んで適用してください。プリセットは両方を設定します。"
       TextWrapping="Wrap" Style="{DynamicResource PluginSettingsHintStyle}" Margin="0,5,0,0"/>
     <TextBlock Text="{Binding OperationStatus}" TextWrapping="Wrap" Style="{DynamicResource PluginSettingsHintStyle}"/>
    </StackPanel></ScrollViewer>
